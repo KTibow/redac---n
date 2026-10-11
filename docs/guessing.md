@@ -64,12 +64,12 @@ On the development sets (4,250 cases) and 58 M characters of ordinary text (agen
 same corpus the negatives come from):
 
 - **The vetoes do most of the work.** Without them, the pipeline makes 74 redactions per million characters of
-  ordinary text instead of 5.4, and destroys 7.9% of the look-alikes in the development sets instead of 1.5%, for
+  ordinary text instead of 5.4, and destroys 7.9% of the look-alikes in the development sets instead of 1.4%, for
   1.1 points more recall. A few vetoes (hex, identifier-shaped, object IDs, public IDs, hash words, hex groups,
   placeholders, UUIDs) do most of that; the rest matter for the cases they name. They also throw away some secrets,
   mostly hex keys the hex veto mistakes for hashes.
 - **Context matters.** Scoring each token without the text around it costs 2.1 points of recall and destroys 2.4% of
-  the look-alikes instead of 1.5%.
+  the look-alikes instead of 1.4%.
 - **The forest mostly measures randomness.** Five features (two forms of word-likeness, length, entropy, and whether
   the token has a name) account for nearly 80% of its gain. On the hardest candidates, the ones only the forest
   decides, it ranks weakly (AUC about 0.7): a little over half of what it scores above 0.8 is secret, and about the

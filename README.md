@@ -77,7 +77,7 @@ Other measurements; where a set was first scored blind, that score comes first:
 
 | set | result |
 |---|---|
-| Development sets (4,250 cases, 6,424 secrets, 18,402 look-alikes; held-out 2–8 among them) | 95.3% caught, 1.5% destroyed; 95.4% and 1.5% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
+| Development sets (4,250 cases, 6,424 secrets, 18,402 look-alikes; held-out 2–8 among them) | 95.3% caught, 1.4% destroyed; 95.4% and 1.5% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
 | [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.2% and 3.9%. On the dev split it was tuned on, 91.1% and 2.9%: the gap shows how much of the tuning doesn't carry over to new repositories |
 | Five more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5 and 17.0 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
 | [GitLab's secret-detection rules](https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules), each rule's examples | 81.4% of 2,038 caught and 23% of 168 negatives hit, blind; now 88.0% and 15% |

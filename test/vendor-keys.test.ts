@@ -7,7 +7,7 @@
  * that secret scanners, GitHub's push protection among them, take for a live key.)
  */
 import { test } from "node:test";
-import { b62, hidden } from "./helpers.ts";
+import { b62, hidden, kept } from "./helpers.ts";
 
 test("a vendor key is hidden by its own format, bare, named or inside a URL", () => {
 	const gh = `ghp_${b62(36)}`;
@@ -141,4 +141,12 @@ test("a Telegram bot token, a bootstrap token and a bare Deepgram key are hidden
 		["deepgram = 12e217f37eb173f0c8f1b7309f4207c7dca20186", "12e217f37eb173f0c8f1b7309f4207c7dca20186"],
 	])
 		hidden(t, v);
+});
+
+test("a Slack webhook shown with its secret cut off is kept", () => {
+	kept("SLACK_WEBHOOK=https://hooks.slack.com/services/TP5A3FB2W/BG8EFGY9UV3/... (truncated)", "BG8EFGY9UV3/...");
+	hidden(
+		"SLACK_WEBHOOK=https://hooks.slack\x2ecom/services/TP5A3FB2W/BG8EFGY9UV3/Xk9mQv2Lp7Rt4Wz8Bn3Cd6Fh",
+		"Xk9mQv2Lp7Rt4Wz8Bn3Cd6Fh",
+	);
 });

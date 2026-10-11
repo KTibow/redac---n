@@ -9,6 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { bip39 } from "../src/named.ts";
 import { isPinName, isSettingName, isVendorClient, nameClass, phraseBefore } from "../src/names.ts";
 import { insertCells } from "../src/sql.ts";
@@ -705,4 +706,18 @@ test("every dialect's insert statement is read as rows", () => {
 	assert.deepEqual(rows("REPLACE INTO `app`.`users` (password) VALUES (3)"), ["users.password=3"]);
 	assert.deepEqual(rows('INSERT INTO "my t" (password) VALUES (4)'), ["my t.password=4"]);
 	assert.deepEqual(rows("insert into [dbo].[Users] ([Password]) values (5)"), ["Users.Password=5"]);
+});
+
+test("a reference, a lookup's name or a stand-in under a password's name is no password", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, kept] of [
+		['[smtp]\nuser = "resend"\npass = "env(RESEND_API_KEY)"', "env(RESEND_API_KEY)"],
+		["DATABASE_URL: '%env(resolve:DB_URL)%'", "%env(resolve:DB_URL)%"],
+		['    pw = Secret.load("clickhouse-loader-password").get()', "clickhouse-loader-password"],
+		["vendor=nextcloud user=kendra pass=--obscured-by-rclone--", "--obscured-by-rclone--"],
+		["password: [obscured]", "[obscured]"],
+		["password: **hidden**", "**hidden**"],
+	])
+		assert.ok(off.redact(text).text.includes(kept), text);
+	hidden('pw = SecretStr("Hx7mQ2pL9vRt4")', "Hx7mQ2pL9vRt4");
 });

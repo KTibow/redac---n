@@ -9,7 +9,7 @@ The numbers come from the development sets (4,250 cases holding 6,424 secrets an
 secrets but aren't) and 58 M characters of ordinary text: agent trajectories and repositories with almost no
 secrets, so nearly every redaction there is a mistake. The guessing model's training data comes from that same text,
 so its numbers there are a little flattering. With everything on, redac---n catches 95.3% of the secrets, destroys
-1.5% of the look-alikes and makes 5.4 redactions per million characters of ordinary text.
+1.4% of the look-alikes and makes 5.4 redactions per million characters of ordinary text.
 
 ## What each layer does
 
@@ -18,10 +18,10 @@ the secrets and look-alikes no other layer hides, and the last the redactions in
 
 | layer | recall without it | secrets only it catches | look-alikes only it destroys | ordinary-text redactions only it makes |
 |---|---:|---:|---:|---:|
-| names | 84.0% (−11.3 points) | 781 | 25 | 1.94 per M characters |
+| names | 84.0% (−11.3 points) | 781 | 20 | 1.94 per M characters |
 | structure | 89.5% (−5.8) | 363 | 8 | 1.32 per M |
-| random tokens | 89.9% (−5.4) | 362 | 157 | 0.62 per M |
-| formats | 91.3% (−4.0) | 211 | 18 | 0.09 per M |
+| random tokens | 89.9% (−5.4) | 362 | 158 | 0.62 per M |
+| formats | 91.3% (−4.0) | 211 | 17 | 0.09 per M |
 | where the text came from | 94.5% (−0.8) | 50 | 4 | 0.02 per M |
 | encoded | 95.2% (−0.1) | 6 | 0 | 0 |
 
@@ -36,7 +36,7 @@ values share: a `CERTIFICATE` block can hold a private key.
 
 **Random tokens** (`src/unnamed.ts`; see [How it guesses](guessing.md)) is the only layer that finds a secret with
 no name, format or structure around it: the key passed to `Client("…")`, a token in a neutral header, a value pasted
-into chat. It's also wrong most often: 157 look-alikes, mostly random IDs and hashes, are destroyed by it alone,
+into chat. It's also wrong most often: 158 look-alikes, mostly random IDs and hashes, are destroyed by it alone,
 which is why `guessing` is a setting.
 
 **Formats** (`src/formats.ts`) recognizes 536 vendor token formats by their prefixes and shapes (`ghp_`, `sk-ant-`,
@@ -57,14 +57,14 @@ evidence every other layer looks for: a base64'd `.env`, a Kubernetes Secret's d
 
 | step turned off | recall | look-alikes destroyed | ordinary-text redactions per M characters |
 |---|---:|---:|---:|
-| none (the full pipeline) | 95.3% | 1.5% | 5.4 |
+| none (the full pipeline) | 95.3% | 1.4% | 5.4 |
 | the random layer's vetoes | 96.4% | 7.9% | 74.0 |
 | only its statistical vetoes | 96.3% | 3.9% | 32.0 |
 | its reading of a token's context | 93.3% | 2.4% | 8.0 |
 | the decision stage (`src/policy.ts`) | 95.5% | 2.9% | 6.0 |
 | learning a value and hiding its repeats | 94.5% | 1.4% | 5.2 |
-| hints | 94.6% | 1.5% | 5.4 |
-| normalizing text first (colours, entities, line numbers, split literals) | 94.9% | 1.5% | 5.5 |
+| hints | 94.6% | 1.4% | 5.4 |
+| normalizing text first (colours, entities, line numbers, split literals) | 94.9% | 1.4% | 5.5 |
 
 The vetoes keep the random layer usable: hashes, UUIDs, IDs, public keys and encrypted values are random too, and
 without the rules that set them aside the layer would redact 14 times as much ordinary text. The decision stage

@@ -108,7 +108,8 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 	["Slack token", /\b(xox[abposre]-[A-Za-z0-9-]{10,255}|xapp-\d-[A-Za-z0-9-]{20,255})/, ["xox", "xapp-"]],
 	[
 		"Slack webhook",
-		/hooks\.slack\.com\/(?:services|workflows|triggers)\/([A-Za-z0-9/_-]{20,255})/,
+		// (A services webhook's secret is its third segment: `T…/B…/<24 characters>`; one cut to `T…/B…/...` has none.)
+		/hooks\.slack\.com\/(?:services|workflows|triggers)\/((?<=services\/)T[A-Z0-9]{6,}\/B[A-Z0-9]{6,}\/[A-Za-z0-9]{16,64}|(?<!services\/)[A-Za-z0-9/_-]{20,255})/,
 		["hooks.slack.com"],
 	],
 	[

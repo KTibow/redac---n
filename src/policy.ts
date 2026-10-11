@@ -19,7 +19,7 @@ import {
 import { isBase58Address, isBech32Address, isNatsPublicKey, isStellarPublicKey } from "./checksums.ts";
 import { isPairLabel } from "./named.ts";
 import { nameClass, namesPasswordOrPin } from "./names.ts";
-import { base64Binary } from "./base64.ts";
+import { base64Binary, base64Prefix } from "./base64.ts";
 import { isDerPublicKey, isPgpPublicKey, isPublicPem } from "./publickeys.ts";
 import { inJwk } from "./json.ts";
 import { lineEnd, trailingRun } from "./lines.ts";
@@ -168,10 +168,15 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 		(/(?:www|proxy)-authenticate["']?[ \t]*:[ \t]*$/i.test(above) &&
 			AUTH_CHALLENGE.test(`WWW-Authenticate: ${line.replace(/^[ \t]*-[ \t]+/, "")}`));
 	if (layerOf(f.rule) !== "format" && challenge) return "authentication challenge";
+	// (The whole token, whichever part of it a layer found, named on the line before it.)
+	const wordLead = leftRun.slice(leftRun.lastIndexOf(":") + 1);
 	if (
-		/^eyJ[\w-]+\.[\w-]*\.[\w-]+\.[\w-]+\.[\w-]+$/.test(value) &&
-		/"enc"\s*:/.test(base64Binary(value.split(".")[0]) ?? "") &&
-		/(?:encrypt|cipher|jwe)\w*["'`]?[ \t]*[:=][ \t]*["'`]?$/i.test(line)
+		/^eyJ[\w-]+\.[\w-]*\.[\w-]+\.[\w-]+\.[\w-]+$/.test(word) &&
+		// (Read as far as it decodes: a header with a character past its last whole group still names its `enc`.)
+		/"enc"\s*:/.test(new TextDecoder().decode(base64Prefix(word.split(".")[0]) ?? new Uint8Array())) &&
+		/(?:encrypt|cipher|jwe)\w*["'`]?[ \t]*[:=][ \t]*["'`]?$/i.test(
+			line.endsWith(wordLead) ? line.slice(0, line.length - wordLead.length) : line,
+		)
 	)
 		return "encrypted value";
 	// The name the value sits under (`NAME=`, `"name":`, `name:`, `| name |`), if any.

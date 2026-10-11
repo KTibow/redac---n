@@ -902,7 +902,9 @@ function assignedValue(
 		/^[\w.]{0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes|String|str|Uint8Array|parse|Parse)[\w.]{0,40}\(/.exec(
 			text.slice(at, at + 120),
 		);
-	const converted = converter ? callArguments(text, at + converter[0].length)?.[0]?.literal : undefined;
+	// (Not a lookup, whose argument is a secret's name: Prefect's `Secret.load("db-password")`, `SecretStr.get(…)`.)
+	const lookup = converter && /\.(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0]);
+	const converted = converter && !lookup ? callArguments(text, at + converter[0].length)?.[0]?.literal : undefined;
 	if (converted && converted.value.length >= 4 && !ENCODING.test(converted.value))
 		return [converted.start, converted.end];
 	const span = readValue(text, at, { toEol: wholeLine, shell, toBlank: logfmt });

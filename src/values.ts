@@ -451,6 +451,8 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 		},
 	],
 	["option", (v) => /^--[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/.test(v)], // `--password-stdin`: a flag named, not a value
+	// Symfony's environment references, resolved when the configuration loads: `env(RESEND_API_KEY)`, `%env(resolve:DB_URL)%`.
+	["environment reference", (v) => /^%?env\((?:[a-z]+:)*[A-Za-z_][\w.]*\)%?$/.test(v)],
 	["heredoc marker", (v) => /^<<[-~]?(["']?)[A-Za-z_]\w*\1$/.test(v)], // `<<EOT`: the value is on the lines below
 	[
 		"escaped variable",
@@ -463,14 +465,14 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			(v.match(/%[aAbBcdDeFgGhHIjklmMnpPrRsStTuUVwWxXyYzZ]/g)?.length ?? 0) >= 2 &&
 			/^(?:%[aAbBcdDeFgGhHIjklmMnpPrRsStTuUVwWxXyYzZ]|[-:T _/.,])+$/.test(v),
 	],
-	// SOPS `ENC[…]`, Ansible `!vault |`, Jasypt `ENC(…)`, IIS configuration encryption (`[enc:IISCngProvider:…:enc]`),
-	// Splunk's `$7$…` (and older `$1$…`): one base64 field, where a crypt hash has a salt and a hash.
+	// A value in an encryption wrapper (ENCRYPTION_WRAPPER), Ansible's `!vault |`, Splunk's `$7$…` (and older `$1$…`: one
+	// base64 field, where a crypt hash has a salt and a hash).
 	// (Pulumi's passphrase-encrypted values and its stack's salt: `v1:<salt>:v1:<nonce>:<ciphertext>`, `v1:<nonce>:<ciphertext>`.)
 	[
 		"encrypted",
 		(v) =>
 			/^\$[17]\$[A-Za-z0-9+/]{16,}={0,2}$/.test(v) ||
-			/^ENC[[(]|^!vault\b|^\$ANSIBLE_VAULT|^\[enc:\w+:[A-Za-z0-9+/=]+:enc\]$/.test(v) ||
+			ENCRYPTED_VALUE.test(v) ||
 			/^v1:[A-Za-z0-9+/=]{8,}:(?:v1:[A-Za-z0-9+/=]{8,}:)?[A-Za-z0-9+/=]{8,}$/.test(v),
 	],
 	// What a secret listing shows instead of the value: `16 bytes`, a timestamp, an object repr (`Secret{name=db}`),
@@ -1290,6 +1292,15 @@ export function isCredentialReference(value: string): boolean {
 		(/^\$?(?:credentials?|creds|secrets?|vault)$/i.test(parts[0]) && /^[a-z_][a-z0-9_]*$/.test(parts.at(-1)!))
 	);
 }
+
+/**
+ * What an encryption tool writes before its ciphertext: SOPS `ENC[AES256_GCM,data:`, Jasypt `ENC(`, Spring Cloud
+ * Config `{cipher}`, Vault's `${VAULT::…::`, IIS configuration encryption `[enc:IISCngProvider:`, DigitalOcean App
+ * Platform's `EV[1:<nonce>:`. A value that starts with one (ENCRYPTED_VALUE), or a token right after one (the random
+ * layer's `encrypted` veto), is ciphertext, whose key isn't there.
+ */
+export const ENCRYPTION_WRAPPER = String.raw`ENC\[[A-Z0-9_]+,data:|ENC\(|\{cipher\}|\$\{VAULT::(?:[^:}\s]+::){0,3}|\[enc:\w+:|\bEV\[\d+:(?:[A-Za-z0-9+/=]+:)?`;
+const ENCRYPTED_VALUE = new RegExp(String.raw`^(?:${ENCRYPTION_WRAPPER}|ENC\[|!vault\b|\$ANSIBLE_VAULT)`);
 
 /** Default passwords and words that show up in ordinary output, too common to be anyone's secret. */
 export const COMMON_WORDS = new Set([

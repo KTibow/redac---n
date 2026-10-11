@@ -21,6 +21,7 @@ import { alphabetOf, entropyZ, shape, type Alphabet } from "./random.ts";
 import type { Finding, Guessing } from "./types.ts";
 import { trailingRun } from "./lines.ts";
 import {
+	ENCRYPTION_WRAPPER,
 	ANALYTICS_COOKIE,
 	isIdentifierShaped,
 	isInert,
@@ -49,6 +50,9 @@ const API_OBJECT_ID =
  */
 const OBJECT_ID =
 	/^(?:env|usr|svc|srv|db|setl|order|job|raysubmit|ins|client|sia|sms|idn|pri|pro|sub|txn|ctm|add|biz|dsc|dpl|prj|team|conn|directory|user|ap|in|ta|fu|vol|sb|sess(?=_)|we|promo|qt|cs|dp|cus|pi|ch|il|ii|price|prod|evt|acct|tr|po|pm|seti|src|card|ba|btok|tok|re|plink|si|pmc|ipi|cbtxn|ich|ic|fee|link|req|test_clock|whe|wh|ca|cn|du|py|mandate|pyr|trr|setatt|sched|subi|ri|gsk_live_?)[-_]/;
+/** Right after an encryption wrapper (values.ts ENCRYPTION_WRAPPER), or SOPS's `,iv:` and `,tag:` fields, or Splunk's `$7$`. */
+const AFTER_ENCRYPTION_WRAPPER = new RegExp(String.raw`(?:${ENCRYPTION_WRAPPER}|,iv:|,tag:|(?:^|[\s=:"'])\$[17]\$)$`);
+
 /** Shapes that are IDs or encodings, not keys. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$|^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
@@ -475,13 +479,7 @@ const VETOES: Veto[] = [
 			/^(?::[A-Za-z0-9+/=]+)*(?:["'\s,]|$)/.test(f.ctx.right),
 	],
 	// (And DigitalOcean App Platform's `EV[1:<nonce>:<ciphertext>]`.)
-	[
-		"encrypted",
-		(f) =>
-			/(?:ENC\[[A-Z0-9_]+,data:|,iv:|,tag:|\{cipher\}|ENC\(|\$\{VAULT::(?:[^:}\s]+::){0,3}|\[enc:\w+:|(?:^|[\s=:"'])\$[17]\$|\bEV\[\d+:(?:[A-Za-z0-9+/=]+:)?)$/.test(
-				f.ctx.left,
-			),
-	],
+	["encrypted", (f) => AFTER_ENCRYPTION_WRAPPER.test(f.ctx.left)],
 	// Analytics and load-balancer cookies: `__cf_bm=`, `cf_clearance=`, `AWSALB=`, `ai_user=`, PostHog `ph_…`.
 	[
 		"analytics-cookie",

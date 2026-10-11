@@ -326,3 +326,22 @@ test("a Cisco type-5 hash is kept", () => {
 	const t = "enable secret 5 $1$abc$xyz";
 	assert.equal(r().redact(t).text, t);
 });
+
+test("a value in an encryption wrapper is ciphertext, under any name", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const value of [
+		"{cipher}f4c18c30ba955ea000bf139742992cf8d00917732fde4af3ab08550112ece117",
+		"ENC[AES256_GCM,data:Tr7o3w==,iv:1BH0fsl1=,tag:Kq0F2mR8==,type:str]",
+		"ENC(Hx7mQ2pL9vRt4Wz8Bn3Cd6Fh)",
+	])
+		assert.ok(off.redact(`spring:\n  datasource:\n    password: "${value}"`).text.includes(value), value);
+});
+
+test("an encrypted JWT named as encrypted data is kept, its header read as far as it decodes", () => {
+	const header = Buffer.from('{"alg":"PBES2-HS256+A128KW","enc":"A256GCM","p2c":600000}').toString("base64url");
+	const part = (n: number) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 37) % 251)).toString("base64url");
+	for (const h of [header, `${header}Q`]) {
+		const jwe = `${h}.${part(40)}.${part(12)}.${part(80)}.${part(16)}`;
+		assert.ok(r().redact(`"encryptedKey": "${jwe}"`).text.includes(jwe), h);
+	}
+});
