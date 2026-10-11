@@ -264,3 +264,33 @@ test("code's joints and operators separate no seed phrase's words", () => {
 		'        _advance(chunk.output_index)\n        tool_output = chunk.item.model_dump(exclude_none=True, mode="json")\n        tool_output["index"] = current_index\n        content.append(tool_output)\n    elif (\n        chunk.type == "response.output_item.done"\n        and chunk.item.type == "custom_tool_call"\n    ):\n        _advance(chunk.output_index)\n        tool_output = chunk.item.model_dump(exclude_none=True, mode="json")\n';
 	assert.equal(new Redactor({ guessing: "off", fingerprintKey: "test" }).redact(code).text, code);
 });
+
+test("a value's syntax says it is no credential: country codes, ternaries, XAML, prompts, comments, types", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, value] of [
+		['{"AF":"Afghanistan","AL":"Albania","DZ":"Algeria","SK":"Slovakia","PW":"Palau","SI":"Slovenia"}', "Slovakia"],
+		["    'confirmation question should '.($expected ? 'pass' : 'cancel'));", "cancel"],
+		['    <converter:Minus10Converter x:Key="Minus10Converter" />', "Minus10Converter"],
+		["    SET /P KEYSTORE_PASSWORD=Elasticsearch keystore password:", "Elasticsearch"],
+		["sa-token: # any name will do\n    redis:", "# any name will do"],
+		["  public decode(secret: Base32SecretKey): SecretKey {", "Base32SecretKey"],
+		[
+			'            \'PublicKey(key_id="568250167242549743", key="g0y8X95+p3dndYPe9Bx5h1l/qHwUH5UUGnYQlzJ2cg2=")\',',
+			"g0y8X95+p3dndYPe9Bx5h1l",
+		],
+		['    "passphrase": "{AQAAABAAAAAQmEZaw8Ev9tClXWVQye1TR2KgF3p/wGoYs/TEQCmsxCk=}",', "AQAAABAAAAAQmEZaw8Ev9tCl"],
+		['    bindKey: bindKey("Alt-Left|Home", "Command-Left|Home|Ctrl-A"),', "Command-Left|Home|Ctrl-A"],
+		['<PasswordBox Password="{Binding LightBrush, Mode=OneWay}" />', "{Binding LightBrush, Mode=OneWay}"],
+		['  Password: <input name="password" type="password"><br>', '<input name="password" type="password">'],
+		['    "ChangePassword": "iam:ChangePassword",', "iam:ChangePassword"],
+	])
+		assert.ok(off.redact(text).text.includes(value), text);
+	// The same places with a credential in them are read as before.
+	hidden('config = {"SK": "Hx7mQ2pL9vRt4wZ"}', "Hx7mQ2pL9vRt4wZ");
+	hidden("password: SunnySecret)", "SunnySecret");
+	hidden('DB_PASSWORD="admin:Hx7mQ2pL9vRt"', "Hx7mQ2pL9vRt");
+	hidden(
+		'func openDB() (*sql.DB, error) {\n\treturn sql.Open("pgx", "host=db user=readonly password=glacier.ruby.reef.birch.iris.hickory dbname=export")\n}\n',
+		"glacier.ruby.reef.birch.iris.hickory",
+	);
+});

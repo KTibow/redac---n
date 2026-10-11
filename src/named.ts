@@ -758,6 +758,8 @@ function assignments(text: string, out: Finding[]) {
 			unquoted &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
 			underSection(m.index);
+		// `key: # a comment`: YAML has no value there.
+		if (yamlLine && text[at] === "#") continue;
 		const wholeLine = (envLine || yamlLine || iniLine) && unquoted;
 		// Outside a call's parentheses (`env=dict(os.environ, PGPASSWORD=quote(pw))` passes an expression):
 		const inLiteral = (before.replace(/\\./g, "").match(/"/g)?.length ?? 0) % 2 === 1;
@@ -815,6 +817,16 @@ function assignments(text: string, out: Finding[]) {
 		const raw = text.slice(span[0], span[1]);
 		// A quoted value was read without its quotes; let the value tests see them.
 		const quoted = span[0] > at;
+		// Inside a call's or a signature's parentheses, an unquoted name before `)`, `,`, `|` or `=` is a parameter's type
+		// or a variable: `decode(secret: Base32SecretKey): …`, Swift's and Kotlin's `login(password: pw)`.
+		if (
+			!quoted &&
+			op === ":" &&
+			openParens > 0 &&
+			/^[A-Za-z_$][\w$.]*$/.test(raw) &&
+			/^[ \t]*[),|=]/.test(text.slice(span[1], span[1] + 3))
+		)
+			continue;
 		// `readPassword("password: ")).thenReturn(…)`: the name was inside a string, and what follows its
 		// closing quote is code.
 		if (quoted && m[1] === "" && /["'`]/.test(text[m.index - 1] ?? "") && /^\)[).;]/.test(raw)) continue;
@@ -875,6 +887,22 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 	if (quote && /^===?$/.test(op) && !m[0].includes("]")) return false;
 	// `Cookie:` and `Set-Cookie:` headers are read pair by pair (structure.ts), with analytics cookies kept.
 	if (/^(?:set-)?cookies?$/i.test(name) && op === ":") return false;
+	// `$expected ? 'pass' : 'cancel'`, `type={shown ? 'text' : 'password'}`: a ternary's strings, not a key and its value.
+	if (quote && op === ":" && /\?[ \t]*$/.test(text.slice(Math.max(0, m.index - 4), m.index))) return false;
+	// A country's ISO code among others, `{"SK": "Slovakia", "PW": "Palau", …}`: a map of countries, not a secret key.
+	if (
+		/^[A-Z]{2}$/.test(name) &&
+		(text.slice(Math.max(0, m.index - 300), m.index + 300).match(/["'][A-Z]{2}["'][ \t]*:/g)?.length ?? 0) >= 5
+	)
+		return false;
+	// XAML's own attributes, `x:Key="Minus10Converter"`, `x:Name`: a resource's or an element's name.
+	if (text[m.index - 1] === ":" && /(?:^|[\s<])x$/.test(text.slice(Math.max(0, m.index - 3), m.index - 1)))
+		return false;
+	// Windows `SET /P NAME=prompt`: what follows the `=` is the prompt the value is read with.
+	if (op === "=" && /(?:^|[\s(&])set[ \t]+\/p[ \t]+$/i.test(text.slice(Math.max(0, m.index - 20), m.index)))
+		return false;
+	// `PublicKey(key_id=…, key="…")`: a public key's constructor takes its key.
+	if (isGenericName(name) && /public[_-]?key|pub[_-]?key/i.test(enclosingCall(text, m.index) ?? "")) return false;
 	// `cache key=…`, `next page token: …`, `public key: …`: the word before a bare generic name decides.
 	// (Read as context.ts reads the same words: names.ts readPhrase. A declaration's keyword is no part of the phrase.)
 	if (isGenericName(name)) {
@@ -882,6 +910,21 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 		if (before.length && readPhrase(before, name).class !== "credential") return false;
 	}
 	return true;
+}
+
+/** The name of the call whose arguments `at` is among, on its line: `PublicKey` in `PublicKey(key_id=1, key="…")`. */
+function enclosingCall(text: string, at: number): string | undefined {
+	let depth = 0;
+	for (let i = at - 1; i >= Math.max(0, at - 300); i--) {
+		const c = text[i];
+		if (c === "\n") return undefined;
+		if (c === ")") depth++;
+		else if (c === "(") {
+			if (depth === 0) return /([A-Za-z_$][\w$.]*)$/.exec(text.slice(Math.max(0, i - 80), i))?.[1];
+			depth--;
+		}
+	}
+	return undefined;
 }
 
 /** Reads an assignment's value at `at` (after its operator, blanks and a literal's prefix). */
@@ -2497,6 +2540,9 @@ function prose(text: string, out: Finding[]) {
 		const last = lastWord(name);
 		const value = withoutUnopenedClosers(m[4]);
 		if (!isCredentialName(name.replace(/\s+/g, "_")) || /cookie/i.test(name) || clientSdkAt(text, m.index)) continue;
+		// A signature's parameter and its type, `decode(secret: Base32SecretKey): …`: the line opens a bracket before the
+		// name and the value closes it.
+		if (/^[A-Za-z_$][\w$.<>[\]]*\)/.test(m[4]) && enclosingCall(text, m.index) !== undefined) continue;
 		const bare = value.replace(/[.,;:!?]+$/, "").toLowerCase();
 		// (A passphrase of words, cut at its first blank by the value's grammar: read whole, before any test of one word.)
 		const phrase = takesAnyWord(name.replace(/\s+/g, "_"))

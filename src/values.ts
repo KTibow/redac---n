@@ -1200,6 +1200,24 @@ export function isForeignText(v: string): boolean {
  */
 export const QUANTITY = /^\d+(?:\.\d+)?x$|^~?[$€£¥]\d[\d,.]*[kKmM]?$|^\d+\/\d+[ \t]*[—–-][ \t]*\d+(?:\.\d+)?%$/;
 
+/** HTML's elements, opened with an attribute or closed: `<input name="password" …>`, `any</span>`, a comment's end. */
+const HTML_ELEMENT =
+	"a|b|i|p|br|hr|em|li|ol|ul|td|th|tr|h[1-6]|div|span|img|form|input|button|label|select|option|textarea|table|thead|tbody|script|style|link|meta|strong|small|code|pre|iframe|section|header|footer|nav|main|article";
+const HTML_MARKUP = new RegExp(
+	String.raw`^<(?:${HTML_ELEMENT})(?:\s[^<>]*=[^<>]*)?\/?>|<\/(?:${HTML_ELEMENT})>|\s-->$`,
+	"i",
+);
+
+/**
+ * Bytes percent-encoded, none a letter or a digit, fewer than a key has: a test's `%07%7F`, a URL's `%E2%9C%93` (✓).
+ */
+function isEscapedSymbols(v: string): boolean {
+	const m = /^(?:%[0-9A-Fa-f]{2}){1,12}$/.exec(v);
+	return (
+		!!m && v.match(/%[0-9A-Fa-f]{2}/g)!.every((e) => !/[0-9A-Za-z]/.test(String.fromCharCode(parseInt(e.slice(1), 16))))
+	);
+}
+
 /**
  * A package's path, a host and then words: Go's `github.com/hashicorp/go-secure-stdlib/password`. (No piece is long
  * and unreadable, as a webhook's token in `hooks.example.com/<token>` is; at least half read as words.)
@@ -1216,9 +1234,10 @@ function isPackagePath(v: string): boolean {
  * Values that are never a secret, whatever names them and whichever rule read them: counts, ratios and
  * percentages (`12/12`, `98.5%`), ranges (`8-64`), versions (`v2.4.1`), dates and times, algorithm and
  * encoding names, key chords (`ctrl+shift+F12`, `ctrl-p,ctrl-q`), type annotations (`str|None`), cloud regions, the
- * words of a password rule (`min.`, `at least`), and code that a reader can take for a value: regular expressions,
- * package paths, tickets (`[GH-784]`), hash schemes (`md5$`), short escaped byte strings, constants and the
- * brackets after them (`None):`). Every name- and structure-based finding passes this
+ * words of a password rule (`min.`, `at least`), and code or markup that a reader can take for a value: regular
+ * expressions, package and class paths, IAM actions (`iam:ChangePassword`), XAML bindings, HTML elements, tickets
+ * (`[GH-784]`), hash schemes (`md5$`), short escaped or percent-encoded bytes, hex numbers, constants and the brackets
+ * after them (`None):`). Every name- and structure-based finding passes this
  * gate (policy.ts keepReason), so a new rule can't bring back an over-redaction another rule already ruled out.
  * Values from secret files and formats don't: there the file or the vendor format says what it is.
  */
@@ -1239,10 +1258,15 @@ export function isBenignValue(value: string): boolean {
 		/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(v) || // dates
 		ALGORITHM.test(v) ||
 		/^(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|mod|win|control|command)\+)+\S{1,12}$/i.test(v) || // key chords
-		// Key chords with `-`, a key's name after them, in a sequence: Docker's `ctrl-p,ctrl-q`, Emacs's `C-x`.
-		/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|control|command|[CMS])-)+(?:[a-z0-9@[\]\\^_]|f\d{1,2}|enter|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown)(?:,|$))+$/i.test(
+		// Key chords with `-`, a key's name after them, in a sequence: Docker's `ctrl-p,ctrl-q`, Emacs's `C-x`, an editor's
+		// `Down|Ctrl-N`, `Command-Left|Home|Ctrl-A`. (A key named alone, `Home`, only in a list.)
+		/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|control|command|[CMS])-)+(?:[a-z0-9@[\]\\^_]|f\d{1,2}|enter|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown|insert)(?:[,|]|$))+$/i.test(
 			v,
 		) ||
+		(/\|/.test(v) &&
+			/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|control|command)-)*(?:f\d{1,2}|enter|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown|insert|[a-z0-9])(?:\||$))+$/i.test(
+				v,
+			)) ||
 		/^\[[A-Z][A-Z0-9]{1,9}-\d{1,6}\]$/.test(v) || // a ticket, `[GH-784]`, `[PROJ-1234]`
 		// A constant and the brackets that close its call or literal, read past the value: `password=None):`, `True))[:-2]`.
 		/^(?:None|True|False|null|nil|undefined)[)\]}][)\]},;:[\]\d-]*$/.test(value.trim()) ||
@@ -1250,6 +1274,21 @@ export function isBenignValue(value: string): boolean {
 		/\(\?(?:[:=!]|<[=!])|\[\^?(?:a-z|A-Z|0-9|a-f|A-F|\\[dwsDWS])/.test(v) ||
 		/^\{[!-]?[A-Za-z_$][\w$.]*\}\/?>$/.test(value.trim()) || // a JSX attribute's expression with its tag's end, `key={idx}>`
 		isPackagePath(v) ||
+		// An AWS IAM action: a service, then a verb and what it acts on, `iam:ChangePassword`, `ec2:GetPasswordData`.
+		/^[a-z][a-z0-9-]{1,40}:(?:Get|Put|List|Create|Delete|Describe|Update|Set|Change|Reset|Admin|Associate|Disassociate|Attach|Detach|Enable|Disable|Start|Stop|Tag|Untag|Add|Remove|Modify|Invoke|Retrieve|Send|Receive|Register|Deregister|Import|Export|Run|Batch|Decrypt|Encrypt|Generate|Assume|Pass|Rotate|Restore|Copy|Upload|Download|Respond|Confirm|Initiate|Verify|Validate|Accept|Reject|Cancel|Publish|Subscribe|Unsubscribe|Search|Query|Scan|Execute)[A-Z][A-Za-z]*$/.test(
+			v,
+		) ||
+		// A class by its module's path, `allauth.account.forms.SetPasswordForm`.
+		/^[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)+\.[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)*$/.test(v) ||
+		// XAML's markup extensions, `{Binding LightBrush, Mode=OneWay}`, `{StaticResource Brush}`.
+		/^\{(?:Binding|MultiBinding|StaticResource|DynamicResource|ThemeResource|TemplateBinding|RelativeSource|x:Static|x:Bind|x:Null|x:Type)\b[^{}]*\}$/.test(
+			value.trim(),
+		) ||
+		/^-?0x[0-9a-f]{1,16}$/i.test(v) || // a number in hex, `-0x3f879678`
+		isEscapedSymbols(v) ||
+		// Markup: an HTML element, `<input name="password" type="password">`, or text closing one or a comment, `any</span> -->`.
+		HTML_MARKUP.test(value.trim()) ||
+		/^\$\{\([^()]*\)[^{}]*\}$/.test(v) || // a shell's expansion with flags, zsh's `${(j:-:)words}`
 		/^(?:md5|sha1|sha224|sha256|sha384|sha512|bcrypt|bcrypt_sha256|crypt|scrypt|argon2(?:id|i|d)?|pbkdf2_sha\d+|unsalted_\w+)\$+$/.test(
 			v,
 		) || // a hash's scheme, `password__startswith="md5$"`
@@ -1341,7 +1380,10 @@ export function isCredentialReference(value: string): boolean {
  * layer's `encrypted` veto), is ciphertext, whose key isn't there.
  */
 export const ENCRYPTION_WRAPPER = String.raw`ENC\[[A-Z0-9_]+,data:|ENC\(|\{cipher\}|\$\{VAULT::(?:[^:}\s]+::){0,3}|\[enc:\w+:|\bEV\[\d+:(?:[A-Za-z0-9+/=]+:)?`;
-const ENCRYPTED_VALUE = new RegExp(String.raw`^(?:${ENCRYPTION_WRAPPER}|ENC\[|!vault\b|\$ANSIBLE_VAULT)`);
+// (Jenkins's `hudson.util.Secret`, `{AQAAABAAAA…}`: a version byte and the IV's length, then the IV and the ciphertext.)
+const ENCRYPTED_VALUE = new RegExp(
+	String.raw`^(?:${ENCRYPTION_WRAPPER}|ENC\[|!vault\b|\$ANSIBLE_VAULT|\{?AQAAABAAAA[A-Za-z0-9+/]{30,}={0,2}\}?$)`,
+);
 
 /** Default passwords and words that show up in ordinary output, too common to be anyone's secret. */
 export const COMMON_WORDS = new Set([

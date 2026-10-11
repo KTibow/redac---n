@@ -89,6 +89,7 @@ in them would otherwise read as real ones to secret scanners.
 | 2026-10-11 | rescored after the ablation and understanding reviews | held-out 1 (aggregates): 93.0/3.2, off 90.7/1.2, eager 93.2/3.4; real text 4.45 per M chars (off 3.64); CredData test 83.2/3.9 (dev split 91.1/2.9); GitLab examples 88.0/15.5; ICSME 2.0% of snippets hit; levainbot 81 of 85, 4 of 116 clean sections hit; issue reports 76.6/3.1 |
 | 2026-10-11 | rescored after the non-guessing misfire fixes | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.31 per M chars (off 3.57); dev 95.4/1.4 |
 | 2026-10-11 | rescored after the guessing-off precision fixes (code read as values, found in 577 M characters of public text) | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.14 per M chars (off 3.41); dev unchanged |
+| 2026-10-11 | rescored after fixes for the false hits on CredData's dev split that Claude Haiku and jev agreed were mistakes | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.11 per M chars (off 3.37); CredData dev 91.1/2.6 (off 53.1/1.8), test 83.2/3.7 (off 74.5/3.4): the test split, not looked at, lost 32 false lines in each mode and no true one |
 
 ## Notes
 

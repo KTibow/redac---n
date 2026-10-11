@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 438" width="760" height="438" role="img" aria-labelledby="t d">
-<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.4 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.5 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
+<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.4 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
 .ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
@@ -34,14 +34,14 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <path d="M259.20000000000005,121 h12.27586726158296 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-12.27586726158296 z" class="other"><title>gitleaks: 2.28 per MB</title></path>
 <text class="tick" x="281.475867261583" y="133">2.3</text>
 <text x="249.20000000000005" y="159" text-anchor="end" class="ours">guessing off</text>
-<path d="M259.20000000000005,147 h20.35290771983904 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-20.35290771983904 z" class="accent"><title>redac---n guessing off: 3.41 per MB</title></path>
-<text class="tick" x="289.5529077198391" y="159">3.4</text>
+<path d="M259.20000000000005,147 h20.115318376230846 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-20.115318376230846 z" class="accent"><title>redac---n guessing off: 3.37 per MB</title></path>
+<text class="tick" x="289.3153183762309" y="159">3.4</text>
 <text x="249.20000000000005" y="185" text-anchor="end" class="ours">guessing confident</text>
-<path d="M259.20000000000005,173 h25.579873279219157 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-25.579873279219157 z" class="accent"><title>redac---n guessing confident: 4.14 per MB</title></path>
-<text class="tick" x="294.7798732792192" y="185">4.1</text>
+<path d="M259.20000000000005,173 h25.342283935610965 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-25.342283935610965 z" class="accent"><title>redac---n guessing confident: 4.11 per MB</title></path>
+<text class="tick" x="294.542283935611" y="185">4.1</text>
 <text x="249.20000000000005" y="211" text-anchor="end" class="ours">guessing eager</text>
-<path d="M259.20000000000005,199 h27.836972043496928 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-27.836972043496928 z" class="accent"><title>redac---n guessing eager: 4.45 per MB</title></path>
-<text class="tick" x="297.036972043497" y="211">4.5</text>
+<path d="M259.20000000000005,199 h27.599382699888736 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-27.599382699888736 z" class="accent"><title>redac---n guessing eager: 4.42 per MB</title></path>
+<text class="tick" x="296.7993826998888" y="211">4.4</text>
 <text x="249.20000000000005" y="237" text-anchor="end">Nosey Parker</text>
 <path d="M259.20000000000005,225 h56.58899491538176 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-56.58899491538176 z" class="other"><title>noseyparker: 8.48 per MB</title></path>
 <text class="tick" x="325.7889949153818" y="237">8.5</text>
