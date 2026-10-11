@@ -1328,7 +1328,8 @@ function flagListItems(text: string, out: Finding[]) {
 	if (!/(?:pass|token|secret|key|auth)/i.test(text) || !/["'\s]-{1,2}[A-Za-z]/.test(text)) return;
 	// `["--password", "x"]`, `- "--requirepass"` then `- "x"`, and unquoted YAML list items `- --password` / `- x`.
 	for (const m of text.matchAll(
-		/(["']?)(--?[A-Za-z][\w-]{0,60})\1[ \t]*(?:,[ \t\r\n]{0,80}(["'])([^"'\n]{3,})\3|\r?\n[ \t]*-[ \t]+(?:(["'])([^"'\n]{3,})\5|([^\s"'#-][^\n#]{2,4095}?))[ \t]*(?=\r?\n|$))/g,
+		// (A flag starts a word: not `-password` inside `/run/secrets/db-password`.)
+		/(?<![\w/.=-])(["']?)(--?[A-Za-z][\w-]{0,60})\1[ \t]*(?:,[ \t\r\n]{0,80}(["'])([^"'\n]{3,})\3|\r?\n[ \t]*-[ \t]+(?:(["'])([^"'\n]{3,})\5|([^\s"'#-][^\n#]{2,4095}?))[ \t]*(?=\r?\n|$))/g,
 	)) {
 		const flag = m[2].replace(/^-+/, "");
 		const value = m[4] ?? m[6] ?? m[7];

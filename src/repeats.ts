@@ -3,7 +3,7 @@ import { KeywordSet } from "./aho.ts";
 import { continuesToken } from "./syntax.ts";
 import { isBenignValue } from "./values.ts";
 import { covered, secretValue } from "./spans.ts";
-import { layerOf, PLACEHOLDER_RULE } from "./rules.ts";
+import { isGuess, layerOf, PLACEHOLDER_RULE, REPEATED_GUESS } from "./rules.ts";
 import type { Finding } from "./types.ts";
 
 /**
@@ -19,6 +19,8 @@ export function repeats(text: string, found: Finding[]): Finding[] {
 export interface Remembered {
 	kind: string;
 	value: string;
+	/** Whether the random layer guessed it: its other occurrences are proposed, not vouched for (rules.ts). */
+	guess?: boolean;
 }
 
 /** The values of confident findings worth looking for elsewhere, each as written (one secret may be written two ways). */
@@ -37,7 +39,7 @@ export function repeatable(text: string, found: Finding[]): Map<string, Remember
 			continue;
 		// (Only a value that can be a secret wherever it is: not a version range, a date, a count.)
 		if (isBenignValue(v)) continue;
-		const remembered = { kind: f.kind, value: v };
+		const remembered = { kind: f.kind, value: v, ...(isGuess(f.rule) ? { guess: true } : {}) };
 		values.set(v, remembered);
 		// (As it is written here too, when that's another form of it: `Delta2018%26` in a URL, `Delta2018&` in prose.)
 		const raw = text.slice(f.start, f.end);
@@ -64,8 +66,8 @@ export function occurrences(text: string, values: ReadonlyMap<string, Remembered
 			covered(found, at, at + v.length)
 		)
 			return;
-		const { kind, value } = values.get(v)!;
-		out.push({ start: at, end: at + v.length, kind, rule: "repeat", confidence: 0.9, value });
+		const { kind, value, guess } = values.get(v)!;
+		out.push({ start: at, end: at + v.length, kind, rule: guess ? REPEATED_GUESS : "repeat", confidence: 0.9, value });
 	};
 	// A few values: a scan each. Many in a long text: every value in one pass.
 	// (Overlapping occurrences too, as the automaton finds them. Each scan is a fast `indexOf`; past about 8 M character comparisons the automaton's one pass is cheaper.)

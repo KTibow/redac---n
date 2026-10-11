@@ -330,7 +330,7 @@ export class Redactor {
 		// before a value, `\n` for a line break) and can miss what makes a value public (a label on the line above, a
 		// quote that closed a string, a name the escapes hide). A raw finding inside one stays only where the decoded
 		// pass found something too. (Not secret-file or secret-command findings, nor known values: the hint that makes
-		// them is the raw text's.)
+		// them is the raw text's; nor another occurrence of a value found elsewhere in it, which no one literal holds.)
 		// (Literals come in text order and don't overlap; the decoded findings, merged, neither.)
 		// (Nor a finding that is a one-line literal's whole value, read under a name outside it, `"client_secret":"p\/ye…"`:
 		// the decoded text has no name to judge it by.)
@@ -345,7 +345,10 @@ export class Redactor {
 		};
 		const decoded = merge(extra);
 		return merge([
-			...found.filter((f) => isVouched(f.rule) || !insideLiteral(f) || overlaps(decoded, f.start, f.end)),
+			...found.filter(
+				(f) =>
+					isVouched(f.rule) || layerOf(f.rule) === "repeat" || !insideLiteral(f) || overlaps(decoded, f.start, f.end),
+			),
 			...extra,
 		]);
 	}
@@ -458,7 +461,13 @@ export class Redactor {
 				if (inner.length) found = merge([...found, ...decide(inner)]);
 			}
 		}
-		return this.without.has("repeats") ? merge(found, text) : merge([...found, ...repeats(text, found)], text);
+		if (this.without.has("repeats")) return merge(found, text);
+		// (Another occurrence of a guess is judged where it stands: `PublicKey = <it>` says what it is.)
+		const again = repeats(text, found);
+		return merge(
+			[...found, ...again.filter((f) => !needsJudging(f.rule)), ...decide(again.filter((f) => needsJudging(f.rule)))],
+			text,
+		);
 	}
 
 	/** The text that replaces a secret: `[REDACTED <kind> #<fingerprint>]` unless a placeholder function was given. */

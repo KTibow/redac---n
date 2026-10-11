@@ -721,3 +721,36 @@ test("a reference, a lookup's name or a stand-in under a password's name is no p
 		assert.ok(off.redact(text).text.includes(kept), text);
 	hidden('pw = SecretStr("Hx7mQ2pL9vRt4")', "Hx7mQ2pL9vRt4");
 });
+
+test("code, a store's path or a setting is no credential's value", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, value] of [
+		[
+			"argument_spec=dict(\n    password_expire_warn=dict(type='int', no_log=False),\n)",
+			"dict(type='int', no_log=False)",
+		],
+		["DB_PASSWORD=getpass('Password: ')", "getpass('Password: ')"],
+		["if self.update_password == 'always' and self.password:", "always"],
+		["password_mechanism=sshpass", "sshpass"],
+		['{Contents: `{{ with secret "kv-v2/data/app" }}{{ .Data.data.password }}{{ end }}`}', "kv-v2/data/app"],
+		["both anonymously and via a username and password [GH-975]", "GH-975"],
+		["format of the key (DER/PEM/P12); has no effect", "DER/PEM/P12"],
+		["pub fn find(pwd: &Path, file: &str)", "&Path"],
+		["res.append('Set-Cookie', 'fizz=buzz')", "fizz=buzz"],
+		[
+			"        password, the authorization server MUST protect the endpoint against\n        brute force attacks (e.g., using rate-limitation",
+			"brute force",
+		],
+		["    environment:\n      - PASSWORD_FILE_PATH=/run/secrets/db-password\n      - DB_HOST=db", "DB_HOST=db"],
+	])
+		assert.ok(off.redact(text).text.includes(value), text);
+	for (const [text, value] of [
+		["DB_PASSWORD=Tiger(6859)", "Tiger(6859)"],
+		['command:\n  - "--requirepass"\n  - "Hx7mQ2pL9vRt"', "Hx7mQ2pL9vRt"],
+		[
+			"Name\tWert\tDomain\tPfad\tLäuft ab / Max. Alter\nJSESSIONID\tC25F5ED6367A45DE471ACDE182108D96\tshop.example\t/\tSitzung",
+			"C25F5ED6367A45DE471ACDE182108D96",
+		],
+	])
+		assert.ok(!off.redact(text).text.includes(value), text);
+});

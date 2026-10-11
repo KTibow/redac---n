@@ -50,8 +50,10 @@ const SECRET_FILE = [
 ];
 const SECRET_DIR =
 	/(^|\/)\.(aws|ssh|gnupg|docker|kube|azure)\/|(^|\/)\.config\/(gcloud|gh|rclone|sops)\/|(^|\/)\.?secrets\//;
+// (Also a key's public half or a certificate by its name, `cache-pub-key.pem`, `server.pub.pem`, `fullchain.pem`: a
+// private key that is in one anyway is found by its DER.)
 const NOT_SECRET_PATH =
-	/\.pub$|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
+	/\.pub$|(?:^|[/._-])(?:pub|public|pubkey|cert|certs|certificate|crt|chain|fullchain|cacert|ca-bundle)(?=[._-][^/]*$)|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
 
 /** Whether a path names a file whose whole content is secret material (`.env`, `id_rsa`, `credentials.json`). */
 export function isSecretFile(path: string): boolean {
@@ -682,7 +684,11 @@ function passesThrough(c: ShellCommand): boolean {
 	const program = programName(words[0]);
 	// (A grep passes the lines it matches; counting, listing or testing them passes none: `grep -c`, `-l`, `-q`.)
 	if (/^(?:grep|egrep|fgrep|rg|ag|ack)$/.test(program)) return !words.slice(1).some((w) => COUNTS_MATCHES.test(w.text));
-	return !printsNamesOnly(words) && !PRINTS_NONE_OF_INPUT.test(program) && !consumesInput(words);
+	// (Nor a stage that prints the public key of the private key it reads: `wg pubkey`, `openssl pkey -pubout`.)
+	const publicOfInput =
+		(program === "wg" && words[1]?.text === "pubkey") ||
+		(program === "openssl" && words.some((w) => w.text === "-pubout"));
+	return !printsNamesOnly(words) && !PRINTS_NONE_OF_INPUT.test(program) && !consumesInput(words) && !publicOfInput;
 }
 
 /** How much of a command SECRET_TOOLS reads: its patterns have several `.*`, quadratic on a very long line. */

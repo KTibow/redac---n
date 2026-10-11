@@ -38,17 +38,23 @@ export function isVouched(rule: string): boolean {
 	return ["known", "repeat", "file", "command", "safety", "placeholder"].includes(layerOf(rule)) && !needsJudging(rule);
 }
 
-/** A secret file's value under no credential's name: proposed by the file, judged like any guess (isOpaqueSetting). */
+/**
+ * Proposed, not vouched for: a secret file's value under no credential's name (isOpaqueSetting), and another occurrence
+ * of a guess (a repeat of the random layer's finding), each judged in its own place like any proposal.
+ */
 export function needsJudging(rule: string): boolean {
-	return rule === "file:opaque";
+	return rule === "file:opaque" || rule === REPEATED_GUESS;
 }
 
+/** Another occurrence of a value the random layer guessed (repeats.ts). */
+export const REPEATED_GUESS = "repeat:guess";
+
 /**
- * A guess about one place (the random-token layer's): never learned, never spread to other occurrences, and no reason
- * on its own to call decoded text a secret.
+ * A guess about one place (the random-token layer's, and its repeats): never learned, judged again wherever it's
+ * repeated, and no reason on its own to call decoded text a secret.
  */
 export function isGuess(rule: string): boolean {
-	return layerOf(rule) === "unnamed";
+	return layerOf(rule) === "unnamed" || rule === REPEATED_GUESS;
 }
 
 /** Rules that take a whole line as the secret, which give way to a narrower finding inside it. */

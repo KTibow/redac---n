@@ -147,6 +147,10 @@ function isLabel(value: string, name: string): boolean {
 	return flat(value) === flat(name) || (/^[\p{L} _.-]+$/u.test(value) && flat(value).endsWith(flat(lastWord(name))));
 }
 
+/** Names about how a credential is handled, not the credential: `update_password`, `password_mechanism`, `pin_mode`. */
+const SETTING_OF_CREDENTIAL =
+	/(?:^|[^a-z])(?:update|change|check|rotate|lock|expire|expiry|mechanism|method|mode|strategy|policy|type|format)(?:$|[^a-z])/i;
+
 /** Words near a PIN that make it a postal code. */
 const POSTAL = /\b(?:city|state|address|street|road|district|postal|zip|country|landmark|locality)\b/i;
 
@@ -251,6 +255,9 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		return /^\d{4,8}$|^\d{2,8}(?:[- ]\d{2,8}){1,3}$/.test(value) && !/^[$%{<]/.test(value);
 	// (Under a password's name, `PurpleRain1984` unquoted in an INI file is a password, not a class name.)
 	const passwordName = takesAnyWord(name);
+	// A name about how a credential is handled takes a setting, a word or two in lower case: Ansible's
+	// `update_password: always`, `password_mechanism: sshpass`, `password_lock: false`.
+	if (SETTING_OF_CREDENTIAL.test(name) && /^[a-z]+(?:[_-][a-z]+)*$/.test(value)) return false;
 	// (And digits with separators, a date or a phone number, are one: `DB_PASSWORD=21.05.1987`; an ISO date is a date, isGroupedDigits.)
 	if (passwordName && isGroupedDigits(value)) return true;
 	if (
@@ -907,6 +914,17 @@ function assignedValue(
 	const converted = converter && !lookup ? callArguments(text, at + converter[0].length)?.[0]?.literal : undefined;
 	if (converted && converted.value.length >= 4 && !ENCODING.test(converted.value))
 		return [converted.start, converted.end];
+	// Any other call that is the whole value is code, whose value isn't in the text: `getpass("Password: ")`, Ansible's
+	// `password_expire_warn=dict(type='int', no_log=False)` (which, cut at its comma, would read as `dict(type='int'`).
+	// (A function's name, and the call ending the value: a password with brackets in it, `Pa(ss)w0rd`, goes on.)
+	const call = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(/.exec(text.slice(at, at + 64));
+	if (call && (/[._]/.test(call[1]) || (call[1].length >= 4 && naturalness(call[1].toLowerCase()) > 0.3))) {
+		const close = closingBracket(text, at + call[0].length);
+		// (Code's arguments, not a number alone: `Tiger(6859)`, `Summer(2024)` are passwords.)
+		const args = close > 0 ? text.slice(at + call[0].length, close).trim() : "";
+		if (close > 0 && !/^[\d.]+$/.test(args) && /^[ \t]*(?:[,;)\]}\r\n#]|$)/.test(text.slice(close + 1, close + 3)))
+			return undefined;
+	}
 	const span = readValue(text, at, { toEol: wholeLine, shell, toBlank: logfmt });
 	// A pair in helm's list of them, `--set a.password=x,b.c=d`: the value ends at the list's next unescaped comma. (A
 	// quoted one was written whole: `--set adminPassword='p-NK,fX…'`.)
@@ -1425,6 +1443,9 @@ function pairCalls(text: string, out: Finding[]) {
 		const name = args[0]?.literal?.value ?? "";
 		const value = args[1]?.literal;
 		if (!value || !/^[A-Za-z_][\w.{}$-]{1,200}$/.test(name)) continue;
+		// A cookie set by name, `res.append('Set-Cookie', 'theme=dark')`, holds a secret only as a session's cookie,
+		// which the structure layer reads as cookies are read.
+		if (/^(?:set-)?cookie$/i.test(name)) continue;
 		// WordPress's keys and salts: 64 generated characters, spaces among them (`define('AUTH_SALT', 'k%Y …')`).
 		if (/^define/.test(match[0]) && (isCredentialName(name) || /_SALT$/.test(name)) && isWordpressKey(value.value)) {
 			namedFinding(out, value.start, value.end, name, "named:define");
@@ -2001,7 +2022,13 @@ function columnTables(text: string, out: Finding[]) {
 		// (Its cells read as the rows' are, quotes and all: `"name, full",password`; a blank after the delimiter is allowed.)
 		const delim = header.length < 2000 ? (/[\t,;]/.exec(header)?.[0] ?? "") : "";
 		const names = delim ? delimitedCells(header.replace(/\r$/, ""), delim).map((c) => c.text.trim()) : [];
-		if (names.length >= 2 && names.every((n) => /^[\p{L}_][\p{L}\w ./,-]{0,60}$/u.test(n))) {
+		// (Names of a few words each: a wrapped sentence, `password, the authorization server MUST protect the
+		// endpoint`, or a line of code, `from picobox import Stack, pass_`, has commas but no columns.)
+		if (
+			names.length >= 2 &&
+			names.every((n) => /^[\p{L}_][\p{L}\w ./,-]{0,60}$/u.test(n) && (n.match(/\p{L}+/gu)?.length ?? 0) <= 4) &&
+			!/^[ \t]*(?:from|import|def|class|return|if|for|while|let|const|var|use)\b/.test(header)
+		) {
 			const credIdx = names.map((n, k) => (isCredentialName(n) ? k : -1)).filter((k) => k >= 0);
 			// A name column and a value column (DevTools cookie tables, exports of settings): each row names its value.
 			const nameIdx = names.findIndex((n) => /^(?:name|key|cookie|nombre|nom)$/i.test(n));
@@ -2581,10 +2608,12 @@ function isProseValue(value: string): boolean {
 /**
  * Code where prose names a credential (a value prose delimits is otherwise a literal, brackets and all): a call
  * or a type cut at its bracket (`from_private_bytes(`, `&ChangePassword{`, `[parameters(`), an instance or shell
- * variable (`@user_password`, `${JWT_SECRET:?…`), a call's end (`bool):`).
+ * variable (`@user_password`, `${JWT_SECRET:?…`), a call's end (`bool):`), a reference type (`pwd: &Path`), an
+ * interpolation's hole cut at its brace (`{result2`); and an issue's reference (`[GH-975]`) or a list of formats
+ * (`(DER/PEM/P12)`) that a sentence about a password goes on to.
  */
 const PROSE_CODE =
-	/^(?:[@$&%]{0,2}\{?)[A-Za-z_][\w.]*[([{][\w"'., :=$({[]*[)\]}]?:?$|^[@$]{1,2}\{?[A-Za-z_]\w*[})]?$|^\$\{|^\[[A-Za-z_][\w.]*\(|^[\w.]+\):?$/;
+	/^(?:[@$&%]{0,2}\{?)[A-Za-z_][\w.]*[([{][\w"'., :=$({[]*[)\]}]?:?$|^[@$]{1,2}\{?[A-Za-z_]\w*[})]?$|^\$\{|^\[[A-Za-z_][\w.]*\(|^[\w.]+\):?$|^&(?:mut )?[A-Z][\w:]*(?:<[^>]*>)?$|^\{[A-Za-z_]\w*$|^\[?[A-Z][A-Z0-9]{1,9}-\d{1,6}\]?$|^\(?[A-Z0-9]{2,8}(?:\/[A-Z0-9]{2,8})+\)?$/;
 
 /** How far into a sentence a credential's noun reaches to the verb or the value that gives it (`the admin password for the billing team's production cluster is …`). */
 const SENTENCE_REACH = 200;
@@ -2852,6 +2881,8 @@ function labelledProse(text: string, out: Finding[]) {
 		if (/\?$/.test(value) || /^[A-Za-z]+ed(?:\/[A-Za-z]+ed)*$/.test(v)) return false;
 		// (A PIN is a few digits, which no other value test takes: checked first.)
 		if (isPinName(noun.replace(/\s+/g, "_"))) return /^\d{4,8}$/.test(v);
+		// (A secret's path or name in a store, not the secret: consul-template's `{{ with secret "kv-v2/data/app" }}`.)
+		if (/^[a-z0-9_.-]+(?:\/[a-z0-9_.*-]+)+$/.test(v)) return false;
 		if (v.length < 4 || !isProseValue(v)) return false;
 		// (A password, or a secret a person set: `Set the webhook secret to Maple1319%`.)
 		if (/pass|secret/i.test(noun))

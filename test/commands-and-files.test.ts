@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
+import { isSecretFile, printsSecret } from "../src/commands.ts";
 import { findInSecretFile } from "../src/secretfile.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 
@@ -459,4 +460,18 @@ test("with guessing off, a secret file still has its generated values hidden, hi
 		!off.redact("HOOK=Kx9mQ2vLp7RtWz8\nPORT=8080", { hint: { command: "cat .env" } }).text.includes("Kx9mQ2vLp7RtWz8"),
 	);
 	assert.ok(off.redact("HOOK=Kx9mQ2vLp7RtWz8\nPORT=8080").text.includes("Kx9mQ2vLp7RtWz8"));
+});
+
+test("a public key's file and the public key a pipeline prints are not secret", () => {
+	for (const path of ["/var/lib/nix-serve/cache-pub-key.pem", "server.pub.pem", "fullchain.pem"])
+		assert.ok(!isSecretFile(path), path);
+	for (const path of ["key.pem", "id_ed25519", ".env"]) assert.ok(isSecretFile(path), path);
+	assert.ok(!printsSecret("wg genkey | tee kp.key | wg pubkey | tee kp.pub"));
+	assert.ok(printsSecret("wg genkey | tee kp.key"));
+});
+
+test("another occurrence of a guess is judged where it stands", () => {
+	const pub = "rC6LxV3uCapgW94Y9+Wq/lsyx4zf04YAIuEZjQoHgWW=";
+	const out = r().redact(`$ cat key.txt\n${pub}\n\n[Peer]\nPublicKey = ${pub}\nAllowedIPs = 10.8.0.9/32`).text;
+	assert.ok(out.includes(`PublicKey = ${pub}`), out);
 });
