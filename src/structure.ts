@@ -1581,8 +1581,9 @@ function mnemonics(text: string, out: Finding[]) {
 			end - at >= BIP39_WORD_LENGTHS[0] && end - at <= BIP39_WORD_LENGTHS[1] ? text.slice(at, end).toLowerCase() : "";
 		if (list.has(w)) {
 			const gap = last < 0 ? "" : text.slice(last, at);
-			// (A line's indentation is one separator, not twelve.)
-			if (gap.replace(/\s+/g, " ").length > MAX_PHRASE_GAP) flush();
+			// (A line's indentation is one separator, not twelve. Code's joints and operators separate no phrase's words:
+			// `chunk.item.type == "…"`, `model_dump`, `ignore_index=True`.)
+			if (gap.replace(/\s+/g, " ").length > MAX_PHRASE_GAP || /[_=()]|\.(?=[A-Za-z])/.test(gap)) flush();
 			words.push({ word: w, start: at, end, lineBreakBefore: /\n/.test(gap) });
 		} else flush();
 		last = end;

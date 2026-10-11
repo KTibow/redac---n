@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("built-in type names are types", () => {
@@ -212,4 +213,54 @@ test("a declaration's type is no value, nor a generic type in an interface, but 
 
 test("a port in a list is no password", () => {
 	kept("x = ['http://localhost:8080','a@b.com']", "8080");
+});
+
+test("an entry of a call or a literal written over several lines is code, not an env or YAML line", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, value] of [
+		[
+			"        await login(\n            password=user_input[CONF_PASSWORD],\n            session=s,\n        )",
+			"user_input[CONF_PASSWORD]",
+		],
+		["    {\n        'user': 'ci',\n        'password': None},\n", "None"],
+		[
+			'tests := map[string]testCase{\n\t"missing": {\n\t\tPassword: &dbplugin.ChangePassword{\n\t\t\tNewPassword: "",',
+			"&dbplugin.ChangePassword{",
+		],
+		["Entry(\n    key=sha1(uuid4().bytes).hexdigest(),\n)", "sha1(uuid4().bytes).hexdigest()"],
+	])
+		assert.ok(off.redact(text).text.includes(value), text);
+	// A literal in the entry is still read, and a quoted `NAME=value` pair in a list is a literal.
+	hidden("creds = {\n    'user': 'ci',\n    'password': 'Hx7mQ2pL9vRt4',\n}", "Hx7mQ2pL9vRt4");
+	hidden(
+		'"Env": [\n    "DATABASE_HOST=db",\n    "DB_PASSWORD=aspen.garnet.lava.sage.cinder",\n]',
+		"aspen.garnet.lava.sage.cinder",
+	);
+});
+
+test("a struct's fields and their types are no table, and a package's import alias no credential", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	const struct =
+		"type connectionInfo struct {\n\tUser           string\n\tPassword       string\n\tHostKey        string\n\tPort           uint16\n\tTimeout        time.Duration\n}";
+	assert.equal(off.redact(struct).text, struct);
+	const imports = 'import (\n\t"fmt"\n\tpwd "github.com/hashicorp/go-secure-stdlib/password"\n)';
+	assert.equal(off.redact(imports).text, imports);
+	// A table with a password column is still one.
+	hidden("USER           PASSWORD       HOST\nalice          Xk9#mPq2vL     db1\n", "Xk9#mPq2vL");
+});
+
+test("a parameter's type before its default is no value; the default is", () => {
+	kept("def extract_text(pdf_file: FileOrName, password: str='', page_numbers=None):", "password: str=''");
+	hidden("def connect(password: str='Hx7mQ2pL9vRt4'):", "Hx7mQ2pL9vRt4");
+});
+
+test("OpenSSL's stack functions are no secret keys", () => {
+	kept("if (!ossl_cmp_ctx_set0_statusString(ctx, sk_ASN1_UTF8STRING_new_null()))", "sk_ASN1_UTF8STRING_new_null");
+	kept("    sk_X509_NAME_ENTRY_pop_free(entries, X509_NAME_ENTRY_free);", "sk_X509_NAME_ENTRY_pop_free");
+});
+
+test("code's joints and operators separate no seed phrase's words", () => {
+	const code =
+		'        _advance(chunk.output_index)\n        tool_output = chunk.item.model_dump(exclude_none=True, mode="json")\n        tool_output["index"] = current_index\n        content.append(tool_output)\n    elif (\n        chunk.type == "response.output_item.done"\n        and chunk.item.type == "custom_tool_call"\n    ):\n        _advance(chunk.output_index)\n        tool_output = chunk.item.model_dump(exclude_none=True, mode="json")\n';
+	assert.equal(new Redactor({ guessing: "off", fingerprintKey: "test" }).redact(code).text, code);
 });

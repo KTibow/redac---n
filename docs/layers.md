@@ -9,7 +9,7 @@ The numbers come from the development sets (4,250 cases holding 6,424 secrets an
 secrets but aren't) and 58 M characters of ordinary text: agent trajectories and repositories with almost no
 secrets, so nearly every redaction there is a mistake. The guessing model's training data comes from that same text,
 so its numbers there are a little flattering. With everything on, redac---n catches 95.4% of the secrets, destroys
-1.4% of the look-alikes and makes 5.2 redactions per million characters of ordinary text.
+1.4% of the look-alikes and makes 5.1 redactions per million characters of ordinary text.
 
 ## What each layer does
 
@@ -18,7 +18,7 @@ the secrets and look-alikes no other layer hides, and the last the redactions in
 
 | layer | recall without it | secrets only it catches | look-alikes only it destroys | ordinary-text redactions only it makes |
 |---|---:|---:|---:|---:|
-| names | 84.1% (−11.3 points) | 788 | 20 | 1.75 per M characters |
+| names | 84.1% (−11.3 points) | 788 | 20 | 1.64 per M characters |
 | structure | 89.5% (−5.9) | 372 | 7 | 1.32 per M |
 | random tokens | 90.0% (−5.4) | 362 | 140 | 0.62 per M |
 | formats | 91.2% (−4.2) | 233 | 17 | 0.09 per M |
@@ -57,14 +57,14 @@ evidence every other layer looks for: a base64'd `.env`, a Kubernetes Secret's d
 
 | step turned off | recall | look-alikes destroyed | ordinary-text redactions per M characters |
 |---|---:|---:|---:|
-| none (the full pipeline) | 95.4% | 1.4% | 5.2 |
-| the random layer's vetoes | 96.5% | 7.8% | 73.8 |
-| only its statistical vetoes | 96.4% | 3.8% | 31.8 |
-| its reading of a token's context | 93.3% | 2.4% | 7.8 |
+| none (the full pipeline) | 95.4% | 1.4% | 5.1 |
+| the random layer's vetoes | 96.5% | 7.8% | 73.7 |
+| only its statistical vetoes | 96.4% | 3.8% | 31.7 |
+| its reading of a token's context | 93.3% | 2.4% | 7.7 |
 | the decision stage (`src/policy.ts`) | 95.6% | 2.9% | 5.8 |
-| learning a value and hiding its repeats | 94.6% | 1.4% | 5.1 |
-| hints | 94.7% | 1.3% | 5.2 |
-| normalizing text first (colours, entities, line numbers, split literals) | 95.0% | 1.4% | 5.3 |
+| learning a value and hiding its repeats | 94.6% | 1.4% | 5.0 |
+| hints | 94.7% | 1.3% | 5.1 |
+| normalizing text first (colours, entities, line numbers, split literals) | 95.0% | 1.4% | 5.2 |
 
 The vetoes keep the random layer usable: hashes, UUIDs, IDs, public keys and encrypted values are random too, and
 without the rules that set them aside the layer would redact 14 times as much ordinary text. The decision stage

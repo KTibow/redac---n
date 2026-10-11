@@ -695,9 +695,14 @@ function assignments(text: string, out: Finding[]) {
 		}
 		// (No blank after the operator: `NAME=value`, not `name = value`.)
 		const tight = at === opEnd || op !== m[3];
-		// `password: str = "x"`, `apiKey: string = "x"`: skip a type annotation.
+		// `password: str = "x"`, `apiKey: string = "x"`: skip a type annotation. (Unspaced, `password: str='x'`, only a
+		// built-in type's: `start='…'` and `MAC id="…"` aren't annotations.)
 		const typed =
-			op === ":" ? /^[A-Za-z_&*][\w.<>\[\]|?, &'*]{0,60}?[ \t]+=(?!=)[ \t]*/.exec(text.slice(at, at + 80)) : null;
+			op === ":"
+				? /^(?:[A-Za-z_&*][\w.<>\[\]|?, &'*]{0,60}?[ \t]+=(?!=)[ \t]*|(?:str|bytes|int|float|bool|string|number|boolean|SecretStr|(?:Optional|Union|list|dict)\[[\w., |]{1,40}\])(?:[ \t]*\|[ \t]*None)?=(?=["']))/.exec(
+						text.slice(at, at + 80),
+					)
+				: null;
 		if (typed) at += typed[0].length;
 		// Aligned columns: `SecretID:          <value>`.
 		while (text[at] === " " || text[at] === "\t") at++;
@@ -718,14 +723,25 @@ function assignments(text: string, out: Finding[]) {
 		if (head && text[head.open] !== "`") at = head.open;
 		const prefix = head?.prefix ?? "";
 		const unquoted = !/["'`]/.test(text[at] ?? "");
-		// A whole-line `NAME=value` (env, export) or YAML `key: value` runs to the end of the line, spaces included.
-		const envLine = op === "=" && m[1] === "" && tight && ENV_LINE_START.test(before);
 		// (Not an object literal's entry: code before its `,`, a name, a constant or a bracketed expression, its brackets
 		// balanced as a random password's rarely are: `  password: userPassword,`, `Keys: []string{"a"},`, an interface's
 		// generic type, `password: Secret<String>;`.)
 		const entry = /^(.*?)[ \t]*[,;{][ \t]*\r?$/.exec(text.slice(at, lineEndAt(text, at)))?.[1];
+		// `"NAME=value with spaces"` (docker inspect, compose lists): the value runs to the quote that opened the pair,
+		// escaped as it was (`\"NAME=value\"` inside a JSON string).
+		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
+		// An entry of a call or a literal written over several lines, the line before opening a bracket or ending an entry
+		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`): code, its value read as code is,
+		// not a whole-line env, YAML or INI value nor a log's pair.
+		const continued =
+			entry !== undefined &&
+			pairQuote < 0 &&
+			/[,([{][ \t]*\r?\n$/.test(text.slice(Math.max(0, lineStart - 400), lineStart));
+		// A whole-line `NAME=value` (env, export) or YAML `key: value` runs to the end of the line, spaces included.
+		const envLine = op === "=" && m[1] === "" && tight && !continued && ENV_LINE_START.test(before);
 		const yamlLine =
 			op === ":" &&
+			!continued &&
 			YAML_LINE_START.test(before) &&
 			!(
 				entry !== undefined &&
@@ -737,14 +753,12 @@ function assignments(text: string, out: Finding[]) {
 		const iniLine =
 			op === "=" &&
 			m[1] === "" &&
+			!continued &&
 			/^[ \t]*$/.test(before) &&
 			unquoted &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
 			underSection(m.index);
 		const wholeLine = (envLine || yamlLine || iniLine) && unquoted;
-		// `"NAME=value with spaces"` (docker inspect, compose lists): the value runs to the quote that opened the pair,
-		// escaped as it was (`\"NAME=value\"` inside a JSON string).
-		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
 		// Outside a call's parentheses (`env=dict(os.environ, PGPASSWORD=quote(pw))` passes an expression):
 		const inLiteral = (before.replace(/\\./g, "").match(/"/g)?.length ?? 0) % 2 === 1;
 		const openParens = inLiteral ? 0 : (before.match(/\(/g)?.length ?? 0) - (before.match(/\)/g)?.length ?? 0);
@@ -755,6 +769,7 @@ function assignments(text: string, out: Finding[]) {
 		const shellTest = /^===?$/.test(op) && /(?:^|\s)(?:\[\[?|test)\s/.test(before);
 		const literal =
 			!typed &&
+			!continued &&
 			(envLine ||
 				yamlLine ||
 				iniLine ||
@@ -1947,8 +1962,15 @@ function dslCalls(text: string, out: Finding[]) {
 		const close = literalEnd(text, at);
 		if (close < 0 || !/^[ \t]*[,;]?[ \t]*(?:\/\/.*|#.*)?\r?$/.test(text.slice(close + 1, lineEndAt(text, close + 1))))
 			continue;
+		if (inGoImports(text, m.index)) continue;
 		namedValue(out, m[1], { value: text.slice(at + 1, close), start: at + 1, end: close }, "named:dsl-call");
 	}
+}
+
+/** Whether `at` is in a Go `import ( … )` block, where a name before a string is a package's alias: `pwd "…/password"`. */
+function inGoImports(text: string, at: number): boolean {
+	const open = text.lastIndexOf("import (", at);
+	return open >= 0 && (open === 0 || text[open - 1] === "\n") && !/\n[ \t]*\)/.test(text.slice(open, at));
 }
 
 /** Credentials given as a pair in prose: `wifi: guest / Cherry-Jade-57*`, `user \`ro\` pass \`p@ss\``, `login admin/hunter22`. */
@@ -2077,6 +2099,8 @@ function columnTables(text: string, out: Finding[]) {
 		if (isListingLine(header) && !/^[ \t]*[A-Z][A-Z_ ]+$/.test(header)) continue;
 		const cols: [number, number, string][] = [];
 		for (const c of header.matchAll(/[A-Za-z_][\w.-]{0,60}/g)) cols.push([c.index, c.index + c[0].length, c[0]]);
+		// A declaration, not a header: a struct's field and its type (`Password       string`, gofmt's alignment).
+		if (cols.length >= 2 && cols.slice(1).every(([, , n]) => DECLARED_TYPE.test(n))) continue;
 		const credCols = cols.filter(([, , n]) => isCredentialName(n));
 		// A name/value table (`SELECT name, value FROM settings`, `vault kv get`'s `Key  Value`): each row names its own value.
 		const pairs =
@@ -2170,6 +2194,10 @@ function columnTables(text: string, out: Finding[]) {
 		i = Math.max(i, j - 1);
 	}
 }
+
+/** A type as a declaration writes it after a field's name (Go's built-in types, a package's type: `time.Duration`). */
+const DECLARED_TYPE =
+	/^(?:string|bool|byte|rune|error|any|int(?:8|16|32|64)?|uint(?:8|16|32|64|ptr)?|float(?:32|64)|complex(?:64|128)|func|map|chan|interface|struct|[a-z][a-z0-9]*\.[A-Z]\w*)$/;
 
 /** Java system properties on a command line: `-Dspring.datasource.password=…`, `-Djavax.net.ssl.keyStorePassword=…`. */
 function javaProperties(text: string, out: Finding[]) {

@@ -67,13 +67,18 @@ export function isDerPublicKey(b64: string): boolean {
  * A private key's DER, whatever armor it's in: a SEQUENCE whose first element is a one-byte INTEGER version, 0 to 2
  * (PKCS #1's RSAPrivateKey and PKCS #8's PrivateKeyInfo start with 0, OneAsymmetricKey with 1, SEC 1's EC key with
  * 1). No public structure starts so: a SubjectPublicKeyInfo or a certificate opens with a SEQUENCE, an RSAPublicKey
- * with its modulus.
+ * with its modulus. (SEC 1's explicit ECParameters start with version 1 too, then a field's SEQUENCE and the curve's:
+ * PKCS #8 has its key's OCTET STRING after the algorithm's SEQUENCE.)
  */
 export function isDerPrivateKey(b64: string): boolean {
 	const b = head(b64);
 	if (b[0] !== 0x30) return false;
 	const inner = derContent(b, 0);
-	return inner >= 0 && b[inner] === 0x02 && b[inner + 1] === 0x01 && b[inner + 2] <= 2;
+	if (inner < 0 || b[inner] !== 0x02 || b[inner + 1] !== 0x01 || b[inner + 2] > 2) return false;
+	if (b[inner + 3] !== 0x30) return true;
+	const algorithm = derElement(b, inner + 3);
+	const next = algorithm ? algorithm.content + algorithm.length : -1;
+	return next >= b.length || b[next] === 0x04;
 }
 
 /**

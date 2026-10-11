@@ -33,8 +33,8 @@ look-alikes.
 
 | | secrets caught | look-alikes destroyed | redactions per million characters of ordinary text |
 |---|---:|---:|---:|
-| **redac---n** (default) | **93.0%** | **3.2%** | 4.3 |
-| redac---n, `guessing: "off"` | 90.7% | 1.2% | 3.6 |
+| **redac---n** (default) | **93.0%** | **3.2%** | 4.1 |
+| redac---n, `guessing: "off"` | 90.7% | 1.2% | 3.4 |
 | gitleaks + Betterleaks + Kingfisher | 70.6% | 2.2% | 17.3 |
 | all seven scanners combined | 84.2% | 28.6% | 51.4 |
 | CredSweeper, the best single scanner | 70.1% | 15.2% | 11.6 |

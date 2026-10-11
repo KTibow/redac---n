@@ -924,6 +924,11 @@ const CODE_ONLY: [shape: string, test: (v: string) => boolean][] = [
 	// `oauth2.Token`. (A pointer or a slice is code anywhere.)
 	["a qualified type", (v) => /^[a-z][a-z0-9]*\.[A-Z][A-Za-z0-9]*$/.test(v) && readsAsWords(v)],
 	["a Ruby symbol", (v) => /^:[A-Za-z_]\w*$/.test(v) && isNameLike(v.slice(1))],
+	// `password: !prompt.echo,`: a member negated.
+	[
+		"a negated member",
+		(v) => /^!{1,2}[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && readsAsWords(v.replace(/^!+/, "")),
+	],
 	// `parts['password']`, `config["db"]["password"]`.
 	[
 		"a subscript",
@@ -1196,10 +1201,24 @@ export function isForeignText(v: string): boolean {
 export const QUANTITY = /^\d+(?:\.\d+)?x$|^~?[$€£¥]\d[\d,.]*[kKmM]?$|^\d+\/\d+[ \t]*[—–-][ \t]*\d+(?:\.\d+)?%$/;
 
 /**
+ * A package's path, a host and then words: Go's `github.com/hashicorp/go-secure-stdlib/password`. (No piece is long
+ * and unreadable, as a webhook's token in `hooks.example.com/<token>` is; at least half read as words.)
+ */
+function isPackagePath(v: string): boolean {
+	const m = /^(?:[a-z0-9-]+\.)+[a-z]{2,}((?:\/[a-z0-9._~-]+)+)$/.exec(v);
+	if (!m) return false;
+	const pieces = m[1].split(/[/._~-]/).filter(Boolean);
+	const words = pieces.filter((w) => naturalness(w) > 0.5).length;
+	return words * 2 >= pieces.length && pieces.every((w) => w.length <= 12 || naturalness(w) > 0.5);
+}
+
+/**
  * Values that are never a secret, whatever names them and whichever rule read them: counts, ratios and
  * percentages (`12/12`, `98.5%`), ranges (`8-64`), versions (`v2.4.1`), dates and times, algorithm and
- * encoding names, key chords (`ctrl+shift+F12`), type annotations (`str|None`), cloud regions, and the
- * words of a password rule (`min.`, `at least`). Every name- and structure-based finding passes this
+ * encoding names, key chords (`ctrl+shift+F12`, `ctrl-p,ctrl-q`), type annotations (`str|None`), cloud regions, the
+ * words of a password rule (`min.`, `at least`), and code that a reader can take for a value: regular expressions,
+ * package paths, tickets (`[GH-784]`), hash schemes (`md5$`), short escaped byte strings, constants and the
+ * brackets after them (`None):`). Every name- and structure-based finding passes this
  * gate (policy.ts keepReason), so a new rule can't bring back an over-redaction another rule already ruled out.
  * Values from secret files and formats don't: there the file or the vendor format says what it is.
  */
@@ -1209,6 +1228,8 @@ export function isBenignValue(value: string): boolean {
 	return (
 		/^\d+(?:[/.:]\d+)+%?$|^\d+(?:\.\d+)?%$/.test(v) || // 12/12, 98.5%, 10:30, 1.2.3.4
 		/^\d{1,4}-\d{1,4}$/.test(v) || // 8-64
+		/^\d{1,7}[-:]$/.test(value.trim()) || // a listing's line number, `1800-` in grep's context lines
+		/^\(?(?:e\.g|i\.e|etc|cf|viz)\.?$/i.test(v) || // an abbreviation, `(e.g`
 		QUANTITY.test(v) ||
 		// v2.4.1, 1.0.0-rc1, and PEP 440's pre-, post- and dev-releases: 4.12.0b2, 1.1.0rc3, 0.1.dev3, 1.0.post1.
 		/^v?\d+(?:\.\d+){1,3}(?:[-.]?(?:a|b|c|rc|alpha|beta|pre|preview|dev|post)\d*)*(?:-(?:alpha|beta|rc|dev|pre)[.\w]*)?$/i.test(
@@ -1218,8 +1239,26 @@ export function isBenignValue(value: string): boolean {
 		/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(v) || // dates
 		ALGORITHM.test(v) ||
 		/^(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|mod|win|control|command)\+)+\S{1,12}$/i.test(v) || // key chords
+		// Key chords with `-`, a key's name after them, in a sequence: Docker's `ctrl-p,ctrl-q`, Emacs's `C-x`.
+		/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|control|command|[CMS])-)+(?:[a-z0-9@[\]\\^_]|f\d{1,2}|enter|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown)(?:,|$))+$/i.test(
+			v,
+		) ||
+		/^\[[A-Z][A-Z0-9]{1,9}-\d{1,6}\]$/.test(v) || // a ticket, `[GH-784]`, `[PROJ-1234]`
+		// A constant and the brackets that close its call or literal, read past the value: `password=None):`, `True))[:-2]`.
+		/^(?:None|True|False|null|nil|undefined)[)\]}][)\]},;:[\]\d-]*$/.test(value.trim()) ||
+		// A regular expression: a group's construct or a character range, `(?:%s)`, `[a-zA-Z_][a-zA-Z0-9_-]*`.
+		/\(\?(?:[:=!]|<[=!])|\[\^?(?:a-z|A-Z|0-9|a-f|A-F|\\[dwsDWS])/.test(v) ||
+		/^\{[!-]?[A-Za-z_$][\w$.]*\}\/?>$/.test(value.trim()) || // a JSX attribute's expression with its tag's end, `key={idx}>`
+		isPackagePath(v) ||
+		/^(?:md5|sha1|sha224|sha256|sha384|sha512|bcrypt|bcrypt_sha256|crypt|scrypt|argon2(?:id|i|d)?|pbkdf2_sha\d+|unsalted_\w+)\$+$/.test(
+			v,
+		) || // a hash's scheme, `password__startswith="md5$"`
 		/^(?:str|bytes|bytearray|int|bool|None|dict|list|tuple|Path|PathLike|Any|SecretStr|SecretBytes|object|float)(?:\|(?:str|bytes|bytearray|int|bool|None|dict|list|tuple|Path|PathLike|Any|SecretStr|SecretBytes|object|float))+$/.test(
 			v,
+		) ||
+		// A parameter's type before its default, read up to the `=`: `password: str=''`, `token: str | None=None`.
+		/^(?:str|bytes|int|bool|float|string|number|boolean|Any|None)(?:\s*\|\s*(?:str|bytes|int|bool|float|None))*\s*=$/.test(
+			value.trim(),
 		) ||
 		// A parameter's type in API docs, with its note: `string (required)`, `boolean (optional)`, `SecureString`.
 		/^(?:string|str|integer|int|number|boolean|bool|object|array|list|map|dict|bytes|float|double|long|any|secret|securestring)(?:\s*\((?:required|optional|sensitive|secret|read-only|write-only|default[^()]{0,30})\)?)?$/i.test(
@@ -1245,6 +1284,8 @@ export function isBenignValue(value: string): boolean {
 				v,
 			)) ||
 		/^(?:\\x[0-9a-f]{2}|\\u[0-9a-f]{4}|\\u\{[0-9a-f]{1,6}\}|\\[0-7]{3}){1,3}$/i.test(v) || // `"\x41"`: one to three escaped characters
+		// Bytes escaped, fewer than a key has: an object identifier's encoding, `"\x2B\x06\x01\x05\x05\x07\x03\x01"`.
+		/^(?:\\x[0-9a-f]{2}){4,12}$/i.test(v) ||
 		(/^\*+[\p{L} _-]{1,24}\*+$/u.test(v) &&
 			v
 				.replace(/^\*+|\*+$/g, "")

@@ -97,10 +97,11 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 	["API key", /\b(sk-(?:[A-Za-z0-9_-]|\.(?=[A-Za-z0-9_-])){20,255})/, ["sk-"]],
 	["Stripe key", /\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,255})\b/, ["sk_", "rk_"]],
 	["secret key", /\b(sk_(?:live|test)_[A-Za-z0-9]{8,}_[A-Za-z0-9_]{40,250})\b/, ["sk_live_", "sk_test_"]],
-	// The `<vendor>_sk_` convention (`aria_sk_…`, ElevenLabs' `sk_…`): a secret key by name, with a random body.
+	// The `<vendor>_sk_` convention (`aria_sk_…`, ElevenLabs' `sk_…`): a secret key by name, with a random body. (Not
+	// OpenSSL's stack functions, a type's words in capitals then the operation's: `sk_X509_NAME_ENTRY_pop_free`.)
 	[
 		"API secret key",
-		/\b((?:[a-z][a-z0-9]{1,15}_)?sk_(?!live_|test_)(?=[A-Za-z_-]{0,40}\d)[A-Za-z0-9_-]{24,255})/,
+		/\b((?:[a-z][a-z0-9]{1,15}_)?sk_(?!live_|test_)(?!(?:[A-Z][A-Z0-9]*_)+[a-z]+(?:_[a-z]+)*\b)(?=[A-Za-z_-]{0,40}\d)[A-Za-z0-9_-]{24,255})/,
 		["sk_"],
 	],
 	["Twitter bearer token", /\b(A{18,24}[A-Za-z0-9%]{60,160})/, ["aaaaaaaaaaaaaaaaaa"]],

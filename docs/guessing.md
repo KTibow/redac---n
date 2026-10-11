@@ -64,7 +64,7 @@ On the development sets (4,250 cases) and 58 M characters of ordinary text (agen
 same corpus the negatives come from):
 
 - **The vetoes do most of the work.** Without them, the pipeline makes 74 redactions per million characters of
-  ordinary text instead of 5.2, and destroys 7.8% of the look-alikes in the development sets instead of 1.4%, for
+  ordinary text instead of 5.1, and destroys 7.8% of the look-alikes in the development sets instead of 1.4%, for
   1.1 points more recall. A few vetoes (hex, identifier-shaped, object IDs, public IDs, hash words, hex groups,
   placeholders, UUIDs) do most of that; the rest matter for the cases they name. They also throw away some secrets,
   mostly hex keys the hex veto mistakes for hashes.

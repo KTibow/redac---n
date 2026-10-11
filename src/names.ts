@@ -1431,14 +1431,15 @@ export const PHRASE_STOP =
 
 /**
  * The words just before a name, up to `max` (`next page` in `next page token:`), for readPhrase: none that are a pair's
- * value (`msg=hello token=…` in a log line) or follow a quote.
+ * value (`msg=hello token=…`, `id=web-portal secret=…` in a log line) or follow a quote, nor a word that continues a
+ * token (`portal` in `web-portal`).
  */
 export function phraseBefore(text: string, max: number): string[] {
 	let pattern = PHRASE_BEFORE.get(max);
 	if (!pattern)
 		PHRASE_BEFORE.set(
 			max,
-			(pattern = new RegExp(String.raw`(?<![=:"'\p{L}\p{N}_])((?:\p{L}{1,30}[ \t_-]{1,3}){1,${max}})["']?$`, "u")),
+			(pattern = new RegExp(String.raw`(?<![=:"'\p{L}\p{N}_./-])((?:\p{L}{1,30}[ \t_-]{1,3}){1,${max}})["']?$`, "u")),
 		);
 	return (
 		pattern

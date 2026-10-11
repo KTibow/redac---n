@@ -143,3 +143,9 @@ test("a private key's DER is a private key under any armor; a public key's stays
 		kept(spki, spki.split("\n")[1]);
 	}
 });
+
+test("SEC 1's explicit EC parameters start as an EC key does and are public", () => {
+	const params =
+		"-----BEGIN EC PARAMETERS-----\nMIG3AgEBMCUGByqGSM49AQIwGgICAKMGCSqGSM49AQIDAzAJAgEBAgECAgEIMEQE\nFQclRrVDUjSkIuB4lnX0MsiUNd5SQgQUyVF9BtUkDTz/OMdLILbNTW+d1NkDFQDS\nwPsVdghg3vHu9NaW5naHVhUXVAQrBAevaZiVRhA9eTKfzD10iA8zu+gDywHsIyEb\nWWat6h0/h/fqWEiu8LfKnwIVBAAAAAAAAAAAAAHmD8iCHMdNrq/BAgEC\n-----END EC PARAMETERS-----";
+	kept(params, "MIG3AgEBMCUGByqGSM49AQIwGgICAKMGCSqGSM49AQIDAzAJAgEBAgECAgEIMEQE");
+});

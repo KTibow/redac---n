@@ -658,6 +658,13 @@ test("a French credential name is a credential", () => {
 
 test("the phrase before a name is read word by word", () => {
 	assert.deepEqual(phraseBefore("Ingrese su contraseña ", 3), ["Ingrese", "su", "contraseña"]);
+	// (Not from inside a pair's value: `portal` of `id=web-portal` is no word before `secret`.)
+	assert.deepEqual(phraseBefore("id=web-portal ", 2), []);
+	assert.deepEqual(phraseBefore("the search-only ", 2), ["search", "only"]);
+	hidden(
+		"client registration: id=web-portal secret=Ap07QKFzylBs6qeRKd2mfcBW5EeAh9Fsu3b5pxOZ tokenUri=https://sso.example/token",
+		"Ap07QKFzylBs6qeRKd2mfcBW5EeAh9Fsu3b5pxOZ",
+	);
 });
 
 test("a trailing comment is no evidence that a positional SDK key is public", () => {
