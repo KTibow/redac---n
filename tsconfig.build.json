@@ -1,0 +1,15 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"allowImportingTsExtensions": false,
+		"rewriteRelativeImportExtensions": true,
+		"declaration": true,
+		"stripInternal": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		"types": [],
+		"lib": ["ES2023", "DOM"]
+	},
+	"include": ["src/**/*.ts"]
+}

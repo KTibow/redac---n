@@ -1,0 +1,317 @@
+/**
+ * The value gates against generated secrets: every shape that rules a value out (values.ts INERT_SHAPES, code, benign
+ * values, placeholders) must reject random passwords and keys from every generator of the recall fuzz
+ * (eval/fuzz-secrets.ts). A shape that a random value can satisfy by chance (a leading `:` or `@`, `%i` inside it,
+ * `Fake` in the middle of it) fails here, named, before it leaks somewhere in the pipeline. And what the gates keep:
+ * hashes, public keys, addresses, stand-ins.
+ */
+import assert from "node:assert/strict";
+import { createHmac, generateKeyPairSync } from "node:crypto";
+import { test } from "node:test";
+import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
+import { isBech32Address } from "../src/checksums.ts";
+import { Redactor } from "../src/index.ts";
+import { isPlaceholder, isPublicJwt } from "../src/public.ts";
+import { isDerPublicKey, isPgpPublicKey, isRsaPublicKey } from "../src/publickeys.ts";
+import { alphabetOf, shape } from "../src/random.ts";
+import {
+	inertShape,
+	isBenignValue,
+	isCode,
+	isIdentifierShaped,
+	isPasswordHash,
+	isRandomToken,
+	looksSecret,
+} from "../src/values.ts";
+import { hidden, kept, r } from "./helpers.ts";
+import { randomBytes } from "./random.ts";
+
+// (A person's phrase is shaped like an identifier, `Lambda-Lunar:join` like `acme-prod-2024`: only a password's name tells
+// them apart, which the fuzz tries.)
+test("no value gate accepts a generated secret", () => {
+	seed(7);
+	const hits = new Map<string, string[]>();
+	for (const [gen, make] of Object.entries(GENERATORS)) {
+		for (let i = 0; i < 10_000; i++) {
+			const v = make();
+			const gate =
+				inertShape(v) ??
+				(isCode(v, true)
+					? "code"
+					: isBenignValue(v)
+						? "benign"
+						: isPlaceholder(v)
+							? "placeholder"
+							: !looksSecret(v, true)
+								? "not secret-looking"
+								: !["phrase", "marked", "codelike"].includes(gen) && isIdentifierShaped(v)
+									? "identifier-shaped"
+									: undefined);
+			if (gate) hits.set(`${gen}: ${gate}`, [...(hits.get(`${gen}: ${gate}`) ?? []), v]);
+		}
+	}
+	assert.equal(
+		hits.size,
+		0,
+		[...hits]
+			.map(
+				([k, vs]) =>
+					`${k} (${vs.length}) ${vs
+						.slice(0, 3)
+						.map((v) => JSON.stringify(v))
+						.join(" ")}`,
+			)
+			.join("\n"),
+	);
+});
+
+test("public keys are recognised by structure, and private keys and random base64 aren't", () => {
+	// SubjectPublicKeyInfo prefixes from `openssl pkey -pubout` (RSA, P-384, Ed25519, X25519); PKCS #8 and PKCS #1 private keys.
+	for (const pub of [
+		"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC",
+		"MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEWjawrhMY",
+		"MCowBQYDK2VwAyEASnZI8OdJjHCx2uFQ4kQXEjcT",
+		"MCowBQYDK2VuAyEAq9X3J62JV0XiqutjddwDou3r",
+	])
+		assert.ok(isDerPublicKey(pub), pub);
+	for (const priv of [
+		"MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSj",
+		"MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGb",
+		"MC4CAQAwBQYDK2VwBCIEIGgLKVifQEFYw6VB6CRl",
+		"MIICXQIBAAKBgQDF3QM26NYCoYbG/vNugxGLPbtd",
+	])
+		assert.ok(!isDerPublicKey(priv), priv);
+	// OpenPGP: an old-format RSA 2048 key packet (`mQENB…`, as `gpg --export --armor` writes), a new-format Ed25519 one,
+	// and a secret key packet (tag 5), a v4 RSA packet whose modulus doesn't start at its stated size and one whose length
+	// isn't its fields'.
+	const packet = (...bytes: number[]) => Buffer.from([...bytes, ...new Array(24).fill(0x5a)]).toString("base64");
+	const time = [0x5f, 0x00, 0x00, 0x00];
+	assert.ok(isPgpPublicKey(packet(0x99, 0x01, 0x0d, 0x04, ...time, 0x01, 0x08, 0x00, 0xc3)));
+	assert.ok(
+		isPgpPublicKey(
+			packet(0xc6, 0x33, 0x04, ...time, 0x16, 0x09, 0x2b, 0x06, 0x01, 0x04, 0x01, 0xda, 0x47, 0x0f, 0x01, 0x01, 0x07),
+		),
+	);
+	assert.ok(!isPgpPublicKey(packet(0x95, 0x01, 0xd8, 0x04, ...time, 0x01, 0x08, 0x00, 0xc3)));
+	assert.ok(!isPgpPublicKey(packet(0x99, 0x01, 0x0d, 0x04, ...time, 0x01, 0x08, 0x00, 0x43)));
+	assert.ok(!isPgpPublicKey(packet(0x99, 0x01, 0x2d, 0x04, ...time, 0x01, 0x08, 0x00, 0xc3)));
+	assert.ok(!isPgpPublicKey("mJMGzFqZ0RwWjxj6LkosHlPd0vlw9r677d56j1PT"));
+	assert.ok(isPgpPublicKey("mQENBFXbjPUBCADjNjCUQwfxKL+RR2GA6pv/1K+zJZ8UWIF9S0lk7cVIEfJiprzzwiMw"));
+	seed(11);
+	for (const [gen, make] of Object.entries(GENERATORS)) {
+		for (let i = 0; i < 30_000; i++) {
+			const v = make();
+			assert.ok(!isDerPublicKey(v) && !isPgpPublicKey(v), `${gen}: ${v}`);
+		}
+	}
+});
+
+test("a password hash is recognised whole, not by how it starts", () => {
+	for (const hash of [
+		"$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW",
+		"$6$rounds=5000$saltsalt$1tySNNgq6Honi21SstQhFBZIa4TOpuhR6v7fJtbxWwEy6BU3rZRVNtB.144R0..s/NUKKimOuL4AFnrIBJcFA0",
+		"$y$j9T$S.4T3ozMcqze9SUeNROJ00$3CvWhykBSornxDsGuF1dAIS37HOTfoT0MvlYvjMZXH1",
+		"$apr1$xEDJX9Qs$EZOndyCNeMgSMllTStRGR/",
+		"pbkdf2_sha256$870000$Kx9mQ2vR7tL4pW8n$Hq3nT8wZ5rK2mV7bX4cJ9pL6sD1gQ8aF5eY0uI3oP2k=",
+		"argon2$argon2id$v=19$m=102400,t=2,p=8$Kx9mQ2vR7tL4pW8n$Hq3nT8wZ5rK2mV7bX4cJ9pL6sD1g",
+		"sha1$Kx9mQ2$2fd4e1c67a2d28fced849ee1bb76e7391b93eb12",
+		"{SSHA}W6ph5Mm5Pz8GgiULbPgzG37mj9g=",
+		"{CRYPT}$6$saltsalt$1tySNNgq6Honi21SstQhFBZIa4TOpuhR6v7fJtbxWwEy6BU3rZRVNtB.144R0..s/NUKKimOuL4AFnrIBJcFA0",
+		"*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19",
+		"md5d41d8cd98f00b204e9800998ecf8427e",
+	])
+		assert.ok(isPasswordHash(hash), hash);
+	for (const password of [
+		"md5$Xk9#mP2vQ!&z",
+		"{SSHA}Xk9#mP2vQ!&z",
+		"$1$Xk9#mP2vQ!&z",
+		"$y$wJES6#Q&",
+		"sha1$hunter2",
+		"$1$Summer$2024",
+		"$2b$Harbor$2291",
+		"$6$$",
+		"$5$a$b",
+		"sha1$Harbor$2291Harbor2291Harbor",
+	])
+		assert.ok(!isPasswordHash(password), password);
+});
+
+test("a random token is told from words, numbers and dates by its characters", () => {
+	const alphabets = [
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+		"0123456789abcdef",
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",
+		"abcdefghijklmnopqrstuvwxyz",
+	];
+	for (const alphabet of alphabets) {
+		let missed = 0;
+		for (let i = 0; i < 2000; i++)
+			if (!isRandomToken(Array.from(randomBytes(32), (b) => alphabet[b % alphabet.length]).join(""))) missed++;
+		assert.ok(missed <= 2, `${alphabet}: ${missed} of 2000 read as not random`);
+	}
+	for (const v of ["2ccccbfc5a83859dfc3a267a3bdc5f1b", "HeCyNZaswaFJeXfywkHbZg", "qwhzkfmtvbnrxplo"])
+		assert.ok(isRandomToken(v), v);
+	for (const v of [
+		"reset-password-confirm",
+		"ProjectSettingsPage",
+		"VerifyEmailPage2024.tsx",
+		"sso-saml-setup-v2",
+		"my-awesome-blog-post-2024",
+		"2024-01-15T10-30-00",
+		"1234567890123456",
+		"deadbeefcafebabe",
+	])
+		assert.ok(!isRandomToken(v), v);
+});
+
+/** A bech32 string: `hrp`, `1`, and `data` (5-bit values) with their checksum. */
+function bech32(hrp: string, data: number[]): string {
+	const CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+	const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+	const polymod = (values: number[]) => {
+		let chk = 1;
+		for (const v of values) {
+			const top = chk >>> 25;
+			chk = ((chk & 0x1ffffff) << 5) ^ v;
+			for (let i = 0; i < 5; i++) if ((top >>> i) & 1) chk ^= GEN[i];
+		}
+		return chk;
+	};
+	const expanded = [...hrp]
+		.map((c) => c.charCodeAt(0) >> 5)
+		.concat(
+			[0],
+			[...hrp].map((c) => c.charCodeAt(0) & 31),
+		);
+	const mod = polymod([...expanded, ...data, 0, 0, 0, 0, 0, 0]) ^ 1;
+	const checksum = Array.from({ length: 6 }, (_, i) => (mod >>> (5 * (5 - i))) & 31);
+	return `${hrp}1${[...data, ...checksum].map((v) => CHARSET[v]).join("")}`;
+}
+
+test("password hashes are kept whole by default and hidden whole with hashes: hide", () => {
+	const strict = new Redactor({ fingerprintKey: "t", hashes: "hide" });
+	for (const h of [
+		"$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW",
+		"$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHRzb21lc2FsdA$RdescudvJCsgt3ub+b+dWRWJTmaaJObG",
+		"admin:$$apr1$$hQ8m3eOZ$$BipdBoppF6aFcg575ydC9h",
+		'"pgbouncer" "SCRAM-SHA-256$4096:qLbMj3qclZjjuEL/zmcR+m==$6WxFxeMa1A7shll8oBYVkInYiCleL7JmJYsxMicZoFA=:zCrBeYZOjNvODYYYW+2L+QW8SQXuN9TcPtoBEIQhi1p="',
+		"IDENTIFIED BY PASSWORD '*94BDCEBE19083CE2A1F959FD02F964C7AF4CFC29'",
+	]) {
+		kept(h, h);
+		assert.ok(!strict.redact(h).text.includes(h.slice(-22, -2)), h);
+	}
+	assert.match(
+		strict.redact("password_hash: $2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW").text,
+		/^password_hash: \[REDACTED password hash #\w+\]$/,
+	);
+});
+
+test("a SCRAM hash is kept by default", () => {
+	const t =
+		" app_ro     | SCRAM-SHA-256$4096:RISB38K6PgWJthH+HeyHTm==$65IhIKafyYFvTDz4agc3ML3Xt8jgScvGEm9VRBethcx=:mGXsmSKxFxLZDGA1XPFCoi9FhIW6ko/a9zjU/ZbdFh4=";
+	assert.equal(r().redact(t).text, t);
+});
+
+test("a password that starts like a crypt hash is a password", () => {
+	hidden('DB_PASSWORD="$1$Summer$2024"', "Summer$2024");
+});
+
+test("a shadow entry and an argon2 hash are kept whole", () => {
+	kept(
+		"root:$6$saltsalt$1tySNNgq6Honi21SstQhFBZIa4TOpuhR6v7fJtbxWwEy6BU3rZRVNtB.144R0..s/NUKKimOuL4AFnrIBJcFA0:19000:0:99999:7:::",
+		"1tySNNgq6Honi21",
+	);
+	kept(
+		"password: '$argon2id$v=19$m=65536,t=3,p=4$/2bS0qjwpY4RD8lrQDsO+0$rnSRriSxuwsOo/fFtuVGeV1xYWly6vlVLpWzDglAr23'",
+		"/2bS0qjwpY4RD8lrQDsO+0",
+	);
+});
+
+test("a password that holds a placeholder word is still a password", () => {
+	for (const v of [
+		"Winter...2024",
+		"Lunar…Tiger9",
+		"Harbor123456789!",
+		"Fake!Orbit2291",
+		"invalidXk9mP2vQ7tL4",
+		"Q7tL4wR8nZ_HERE91kd",
+		"eternal.There9748",
+	])
+		hidden(`DB_PASSWORD='${v}'`, v);
+});
+
+test("a key cut short with ... or a placeholder word is a placeholder", () => {
+	for (const v of ["sk-proj-abc...xyz", "YOUR_API_KEY_HERE", "sk_test_xxxxxxxxxxxx", "not-a-real-key"])
+		kept(`OPENAI_API_KEY=${v}`, v);
+});
+
+test("hashes: hide holds in redactValue", () => {
+	const hashing = new Redactor({ hashes: "hide" });
+	const bcrypt = "$2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW";
+	assert.ok(!JSON.stringify(hashing.redactValue({ content: `stored: ${bcrypt}` }).value).includes(bcrypt));
+});
+
+test("a PKCS#1 RSA public key is public at every modulus size, and zero filler is not a key", () => {
+	for (const modulusLength of [1024, 2048, 4096]) {
+		const { publicKey } = generateKeyPairSync("rsa", { modulusLength });
+		const der = publicKey.export({ type: "pkcs1", format: "der" }).toString("base64");
+		assert.ok(isRsaPublicKey(der), `${modulusLength} bits`);
+	}
+	assert.ok(!isRsaPublicKey("MIGJAoGBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
+});
+
+test("a bech32 string is an address unless its prefix says secret, in either case", () => {
+	const data = Array.from({ length: 40 }, (_, i) => (i * 7 + 3) % 32);
+	assert.ok(isBech32Address(bech32("skale", data)), "an HRP that merely starts with sk");
+	assert.ok(isBech32Address(bech32("security", data)));
+	for (const hrp of ["sk", "sec", "priv", "nsec"]) assert.ok(!isBech32Address(bech32(hrp, data)), hrp);
+	assert.ok(isBech32Address("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"));
+	assert.ok(isBech32Address("BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4"));
+	assert.ok(!isBech32Address("Bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"));
+});
+
+test("a stand-in word plus a tail is a weak password, not a placeholder", () => {
+	for (const v of [
+		"Changed2024",
+		"Example7392",
+		"Here2024",
+		"ExampleXkqz",
+		"Fake!Orbit2291",
+		"invalidXk9mP2vQ7tL4",
+		"Q7tL4wR8nZ_HERE91kd",
+	])
+		assert.ok(!isPlaceholder(v), v);
+	for (const v of [
+		"YOUR_KEY_HERE",
+		"YOUR_API_KEY_HERE",
+		"example-token",
+		"<your-key>",
+		"sk_test_xxxxxxxx",
+		"changeMe",
+		"exampleToken",
+		"xxxx1234",
+		"[REDACTED-SECRET]",
+		"not-a-real-key",
+	])
+		assert.ok(isPlaceholder(v), v);
+	hidden("DB_PASSWORD=Changed2024", "Changed2024");
+	kept("DB_PASSWORD=YOUR_KEY_HERE", "YOUR_KEY_HERE");
+});
+
+test("a JWT signed with a weak common key is a real token, one signed with a documented key is public", () => {
+	const sign = (key: string, claims: object) => {
+		const part = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+		const unsigned = `${part({ alg: "HS256", typ: "JWT" })}.${part(claims)}`;
+		return `${unsigned}.${createHmac("sha256", key).update(unsigned).digest("base64url")}`;
+	};
+	const claims = { uid: 4821, scope: "admin" };
+	for (const key of ["secret", "test", "changeme", "key"]) assert.ok(!isPublicJwt(sign(key, claims)), key);
+	for (const key of ["your-256-bit-secret", "shhhhh", "keyboard cat"]) assert.ok(isPublicJwt(sign(key, claims)), key);
+	const token = sign("secret", claims);
+	hidden(`export SESSION_TOKEN=${token}`, token.split(".")[2]);
+});
+
+test("an empty token has no NaN in its shape, and = is no alphabet", () => {
+	assert.equal(shape("").expectedSwitches, 0);
+	assert.equal(alphabetOf("abcDEF12=="), alphabetOf("abcDEF12"));
+});

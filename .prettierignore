@@ -1,0 +1,9 @@
+# Generated: rebuilt by scripts (gen-formats.ts, train-unnamed.py, train-charlm.ts) in their own layout.
+src/*-data.ts
+# Corpora, snapshots and outputs.
+eval/corpora/
+eval/out/
+dist/
+pnpm-lock.yaml
+# Prose: prettier would pad every Markdown table to its widest cell.
+*.md

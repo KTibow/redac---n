@@ -1,0 +1,57 @@
+/**
+ * Linear time on adversarial input, asserted as a ratio (timing.ts) so that a busy machine can't fail it.
+ *
+ *   node --test test/performance.test.ts
+ *
+ * (A fake key's vendor prefix is written with an escape, `"ghp\x5f…"`: written whole, the repository would hold text
+ * that secret scanners, GitHub's push protection among them, take for a live key.)
+ */
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { b62, r } from "./helpers.ts";
+import { assertLinear } from "./timing.ts";
+
+test("redaction time is linear in the length of adversarial repeated input", () => {
+	for (const unit of [
+		"-----BEGIN PRIVATE KEY-----\\n",
+		'\\"',
+		"a=",
+		'"key": "',
+		"password ",
+		"=".repeat(10),
+		"https://a:b@",
+		"AAAA",
+	]) {
+		assertLinear(JSON.stringify(unit), (n) => r().redact(unit.repeat(n)), 2_500);
+	}
+});
+
+test("a stream releases text while it reads a long base64 finding", () => {
+	assertLinear(
+		"a stream over a wrapped base64 .env",
+		(n) => {
+			let env = `STRIPE_SECRET=sk\x5flive_51${b62(40)}\n`;
+			while (env.length < n) env += `SOME_SETTING_${env.length}=value${env.length}\n`;
+			const blob =
+				Buffer.from(env)
+					.toString("base64")
+					.match(/.{1,76}/g)!
+					.join("\n") + "\n";
+			const st = r().stream({ holdback: 8192 }); // nothing is released before twice the holdback is buffered
+			let released = 0;
+			for (let i = 0; i < blob.length; i += 3850) released += st.write(blob.slice(i, i + 3850)).length;
+			st.end();
+			assert.ok(released > 0, "nothing released before end()");
+		},
+		14_000,
+	);
+});
+
+test("a long run of blanks before a block scalar costs linear time", () => {
+	assertLinear("blanks before a block scalar", (n) => r().redact(`${" ".repeat(n)}k: |`), 20_000);
+});
+
+test("a long camel-case name costs what a short one does", () => {
+	// A name rule that reads a name two ways backtracks exponentially in its parts.
+	assertLinear("a camel-case name", (n) => r().redact(`is${"PasswordStrengthIndicator".repeat(n)}Visible: false`), 2);
+});

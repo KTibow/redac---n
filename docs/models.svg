@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 480" width="760" height="480" role="img" aria-labelledby="t d">
+<title id="t">Why a forest: secrets caught against look-alikes destroyed</title><desc id="d">the forest with its vetoes: 95.41% caught at 1.73% destroyed, 95.31% caught at 1.62% destroyed, 95.28% caught at 1.53% destroyed, 95.00% caught at 1.46% destroyed, 94.24% caught at 1.31% destroyed; one logistic sum, the statistical vetoes on: 95.30% caught at 1.89% destroyed, 95.17% caught at 1.84% destroyed, 95.00% caught at 1.76% destroyed, 94.79% caught at 1.62% destroyed; one logistic sum, with a language model's labels: 95.22% caught at 2.06% destroyed, 94.94% caught at 1.77% destroyed, 94.57% caught at 1.59% destroyed, 94.08% caught at 1.41% destroyed, 93.82% caught at 1.31% destroyed; one logistic sum, without them: 94.88% caught at 1.98% destroyed, 94.60% caught at 1.69% destroyed, 94.30% caught at 1.52% destroyed, 93.90% caught at 1.40% destroyed, 93.40% caught at 1.29% destroyed, 93.00% caught at 1.19% destroyed, 92.09% caught at 1.09% destroyed; a linear model of the 40 characters before the token: 94.70% caught at 1.54% destroyed; the product P(generated) × P(secret | generated): 93.26% caught at 1.27% destroyed; the forest given the vetoes' context as features: 93.20% caught at 1.26% destroyed</desc>
+<style>
+.bg { fill: #fcfcfb; } .s0 { fill: #2a78d6; stroke: #2a78d6; } .s1 { fill: #c98a00; stroke: #c98a00; } .s2 { fill: #c84f00; stroke: #c84f00; } .s3 { fill: #b4518d; stroke: #b4518d; } .s4 { fill: #00876a; stroke: #00876a; } .s5 { fill: #7a7974; stroke: #7a7974; } .s6 { fill: #8c6d1f; stroke: #8c6d1f; }
+.ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis { stroke: #c3c2b7; stroke-width: 1; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ours { fill: #0b0b0b; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; } .s0 { fill: #3987e5; stroke: #3987e5; } .s1 { fill: #e69f00; stroke: #e69f00; } .s2 { fill: #e3712c; stroke: #e3712c; } .s3 { fill: #d38ab8; stroke: #d38ab8; } .s4 { fill: #2fb38f; stroke: #2fb38f; } .s5 { fill: #a3a29c; stroke: #a3a29c; } .s6 { fill: #b8964a; stroke: #b8964a; } .ring { stroke: #1a1a19; }
+  .grid { stroke: #2c2c2a; } .axis { stroke: #383835; }
+  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
+}
+</style>
+<rect width="760" height="480" rx="8" class="bg"/>
+<text x="16" y="26" class="title">Why a forest: secrets caught against look-alikes destroyed</text>
+<text x="16" y="44">Development sets; each line is one model with its threshold swept. Up and to the left is better.</text>
+<line class="grid" x1="64" x2="736" y1="428" y2="428"/>
+<text class="tick" x="56" y="432" text-anchor="end">92%</text>
+<line class="grid" x1="64" x2="736" y1="336.9999999999998" y2="336.9999999999998"/>
+<text class="tick" x="56" y="340.9999999999998" text-anchor="end">93%</text>
+<line class="grid" x1="64" x2="736" y1="245.9999999999995" y2="245.9999999999995"/>
+<text class="tick" x="56" y="249.9999999999995" text-anchor="end">94%</text>
+<line class="grid" x1="64" x2="736" y1="154.9999999999992" y2="154.9999999999992"/>
+<text class="tick" x="56" y="158.9999999999992" text-anchor="end">95%</text>
+<line class="grid" x1="64" x2="736" y1="63.99999999999898" y2="63.99999999999898"/>
+<text class="tick" x="56" y="67.99999999999898" text-anchor="end">96%</text>
+<line class="grid" x1="64" x2="64" y1="64" y2="428"/>
+<text class="tick" x="64" y="446" text-anchor="middle">1.0%</text>
+<line class="grid" x1="176" x2="176" y1="64" y2="428"/>
+<text class="tick" x="176" y="446" text-anchor="middle">1.2%</text>
+<line class="grid" x1="288" x2="288" y1="64" y2="428"/>
+<text class="tick" x="288" y="446" text-anchor="middle">1.4%</text>
+<line class="grid" x1="400.00000000000006" x2="400.00000000000006" y1="64" y2="428"/>
+<text class="tick" x="400.00000000000006" y="446" text-anchor="middle">1.6%</text>
+<line class="grid" x1="512.0000000000002" x2="512.0000000000002" y1="64" y2="428"/>
+<text class="tick" x="512.0000000000002" y="446" text-anchor="middle">1.8%</text>
+<line class="grid" x1="624.0000000000002" x2="624.0000000000002" y1="64" y2="428"/>
+<text class="tick" x="624.0000000000002" y="446" text-anchor="middle">2.0%</text>
+<line class="grid" x1="736.0000000000005" x2="736.0000000000005" y1="64" y2="428"/>
+<text class="tick" x="736.0000000000005" y="446" text-anchor="middle">2.2%</text>
+<line class="axis" x1="64" x2="736" y1="428" y2="428"/>
+<text x="736" y="470" text-anchor="end">look-alike values destroyed (lower is better) →</text>
+<text transform="translate(12 428) rotate(-90)">secrets caught (higher is better) →</text>
+<polyline fill="none" class="s3" style="fill:none" stroke-width="2" points="612.8000000000002,165.92000000000007 450.4,191.40000000000035 355.2,218.70000000000041 288,255.10000000000053 226.4,300.5999999999996 170.40000000000003,336.9999999999998 114.39999999999999,419.8099999999999"/>
+<polyline fill="none" class="s2" style="fill:none" stroke-width="2" points="657.6,134.9799999999994 495.20000000000005,160.4599999999997 394.4000000000001,194.13000000000005 293.6,238.72000000000028 237.60000000000005,262.37999999999977"/>
+<polyline fill="none" class="s1" style="fill:none" stroke-width="2" points="562.4000000000001,127.70000000000016 534.4000000000001,139.52999999999992 489.60000000000014,155.00000000000023 411.19999999999993,174.1100000000002"/>
+<polyline fill="none" class="s0" style="fill:none" stroke-width="2.5" points="472.80000000000007,117.69000000000028 411.19999999999993,126.7900000000003 360.8,129.51999999999998 321.6,155.00000000000023 237.60000000000005,224.15999999999983"/>
+<circle cx="209.6" cy="318.7999999999997" r="4" class="s6 ring" stroke-width="2"><title>the forest given the vetoes' context as features: 93.20% caught, 1.26% destroyed</title></circle>
+<circle cx="215.2" cy="313.34000000000026" r="4" class="s5 ring" stroke-width="2"><title>the product P(generated) × P(secret | generated): 93.26% caught, 1.27% destroyed</title></circle>
+<circle cx="366.40000000000003" cy="182.30000000000035" r="4" class="s4 ring" stroke-width="2"><title>a linear model of the 40 characters before the token: 94.70% caught, 1.54% destroyed</title></circle>
+<circle cx="612.8000000000002" cy="165.92000000000007" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 94.88% caught, 1.98% destroyed</title></circle>
+<circle cx="450.4" cy="191.40000000000035" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 94.60% caught, 1.69% destroyed</title></circle>
+<circle cx="355.2" cy="218.70000000000041" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 94.30% caught, 1.52% destroyed</title></circle>
+<circle cx="288" cy="255.10000000000053" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 93.90% caught, 1.40% destroyed</title></circle>
+<circle cx="226.4" cy="300.5999999999996" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 93.40% caught, 1.29% destroyed</title></circle>
+<circle cx="170.40000000000003" cy="336.9999999999998" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 93.00% caught, 1.19% destroyed</title></circle>
+<circle cx="114.39999999999999" cy="419.8099999999999" r="4" class="s3 ring" stroke-width="2"><title>one logistic sum, without them: 92.09% caught, 1.09% destroyed</title></circle>
+<circle cx="657.6" cy="134.9799999999994" r="4" class="s2 ring" stroke-width="2"><title>one logistic sum, with a language model's labels: 95.22% caught, 2.06% destroyed</title></circle>
+<circle cx="495.20000000000005" cy="160.4599999999997" r="4" class="s2 ring" stroke-width="2"><title>one logistic sum, with a language model's labels: 94.94% caught, 1.77% destroyed</title></circle>
+<circle cx="394.4000000000001" cy="194.13000000000005" r="4" class="s2 ring" stroke-width="2"><title>one logistic sum, with a language model's labels: 94.57% caught, 1.59% destroyed</title></circle>
+<circle cx="293.6" cy="238.72000000000028" r="4" class="s2 ring" stroke-width="2"><title>one logistic sum, with a language model's labels: 94.08% caught, 1.41% destroyed</title></circle>
+<circle cx="237.60000000000005" cy="262.37999999999977" r="4" class="s2 ring" stroke-width="2"><title>one logistic sum, with a language model's labels: 93.82% caught, 1.31% destroyed</title></circle>
+<circle cx="562.4000000000001" cy="127.70000000000016" r="4" class="s1 ring" stroke-width="2"><title>one logistic sum, the statistical vetoes on: 95.30% caught, 1.89% destroyed</title></circle>
+<circle cx="534.4000000000001" cy="139.52999999999992" r="4" class="s1 ring" stroke-width="2"><title>one logistic sum, the statistical vetoes on: 95.17% caught, 1.84% destroyed</title></circle>
+<circle cx="489.60000000000014" cy="155.00000000000023" r="4" class="s1 ring" stroke-width="2"><title>one logistic sum, the statistical vetoes on: 95.00% caught, 1.76% destroyed</title></circle>
+<circle cx="411.19999999999993" cy="174.1100000000002" r="4" class="s1 ring" stroke-width="2"><title>one logistic sum, the statistical vetoes on: 94.79% caught, 1.62% destroyed</title></circle>
+<circle cx="472.80000000000007" cy="117.69000000000028" r="5" class="s0 ring" stroke-width="2"><title>the forest with its vetoes: 95.41% caught, 1.73% destroyed</title></circle>
+<circle cx="411.19999999999993" cy="126.7900000000003" r="5" class="s0 ring" stroke-width="2"><title>the forest with its vetoes: 95.31% caught, 1.62% destroyed</title></circle>
+<circle cx="360.8" cy="129.51999999999998" r="5" class="s0 ring" stroke-width="2"><title>the forest with its vetoes: 95.28% caught, 1.53% destroyed</title></circle>
+<circle cx="321.6" cy="155.00000000000023" r="5" class="s0 ring" stroke-width="2"><title>the forest with its vetoes: 95.00% caught, 1.46% destroyed</title></circle>
+<circle cx="237.60000000000005" cy="224.15999999999983" r="5" class="s0 ring" stroke-width="2"><title>the forest with its vetoes: 94.24% caught, 1.31% destroyed</title></circle>
+<line x1="406" x2="424" y1="298.5" y2="298.5" class="s0" stroke-width="2"/><circle cx="415" cy="298.5" r="4" class="s0"/><text x="432" y="302.5" class="ours">the forest with its vetoes</text>
+<line x1="406" x2="424" y1="317.5" y2="317.5" class="s1" stroke-width="2"/><circle cx="415" cy="317.5" r="4" class="s1"/><text x="432" y="321.5">one logistic sum, the statistical vetoes on</text>
+<line x1="406" x2="424" y1="336.5" y2="336.5" class="s2" stroke-width="2"/><circle cx="415" cy="336.5" r="4" class="s2"/><text x="432" y="340.5">one logistic sum, with a language model's labels</text>
+<line x1="406" x2="424" y1="355.5" y2="355.5" class="s3" stroke-width="2"/><circle cx="415" cy="355.5" r="4" class="s3"/><text x="432" y="359.5">one logistic sum, without them</text>
+<line x1="406" x2="424" y1="374.5" y2="374.5" class="s4" stroke-width="2"/><circle cx="415" cy="374.5" r="4" class="s4"/><text x="432" y="378.5">a linear model of the 40 characters before the token</text>
+<line x1="406" x2="424" y1="393.5" y2="393.5" class="s5" stroke-width="2"/><circle cx="415" cy="393.5" r="4" class="s5"/><text x="432" y="397.5">the product P(generated) × P(secret | generated)</text>
+<line x1="406" x2="424" y1="412.5" y2="412.5" class="s6" stroke-width="2"/><circle cx="415" cy="412.5" r="4" class="s6"/><text x="432" y="416.5">the forest given the vetoes' context as features</text>
+</svg>

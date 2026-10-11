@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460" role="img" aria-labelledby="t d">
+<title id="t">Held-out test set: secrets caught vs. look-alikes destroyed</title><desc id="d">redac---n guessing off: 90.7% of secrets caught, 1.2% of keep values lost; redac---n guessing confident: 93.0% of secrets caught, 3.2% of keep values lost; redac---n guessing eager: 93.2% of secrets caught, 3.4% of keep values lost; gitleaks: 54.6% of secrets caught, 1.5% of keep values lost; betterleaks: 67.0% of secrets caught, 1.7% of keep values lost; kingfisher: 43.1% of secrets caught, 0.5% of keep values lost; trufflehog: 38.5% of secrets caught, 0.4% of keep values lost; noseyparker: 42.1% of secrets caught, 1.5% of keep values lost; detect-secrets: 47.2% of secrets caught, 15.2% of keep values lost; credsweeper: 70.1% of secrets caught, 15.2% of keep values lost; union(all 7): 84.2% of secrets caught, 28.6% of keep values lost; union(all but detect-secrets): 83.1% of secrets caught, 16.9% of keep values lost; gitleaks+betterleaks+kingfisher: 70.6% of secrets caught, 2.2% of keep values lost</desc>
+<style>
+.bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ours { fill: #0b0b0b; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
+  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
+}
+</style>
+<rect width="760" height="460" rx="8" class="bg"/>
+<text x="16" y="26" class="title">Held-out test set: secrets caught vs. look-alikes destroyed</text>
+<text x="16" y="44" class="sub">1112 cases, 1554 secrets, 3115 look-alike values that must survive; never used for tuning</text>
+<line class="grid" x1="56" x2="736" y1="408" y2="408"/>
+<text class="tick" x="48" y="412" text-anchor="end">30%</text>
+<line class="grid" x1="56" x2="736" y1="358.85714285714283" y2="358.85714285714283"/>
+<text class="tick" x="48" y="362.85714285714283" text-anchor="end">40%</text>
+<line class="grid" x1="56" x2="736" y1="309.71428571428567" y2="309.71428571428567"/>
+<text class="tick" x="48" y="313.71428571428567" text-anchor="end">50%</text>
+<line class="grid" x1="56" x2="736" y1="260.57142857142856" y2="260.57142857142856"/>
+<text class="tick" x="48" y="264.57142857142856" text-anchor="end">60%</text>
+<line class="grid" x1="56" x2="736" y1="211.42857142857144" y2="211.42857142857144"/>
+<text class="tick" x="48" y="215.42857142857144" text-anchor="end">70%</text>
+<line class="grid" x1="56" x2="736" y1="162.28571428571428" y2="162.28571428571428"/>
+<text class="tick" x="48" y="166.28571428571428" text-anchor="end">80%</text>
+<line class="grid" x1="56" x2="736" y1="113.14285714285722" y2="113.14285714285722"/>
+<text class="tick" x="48" y="117.14285714285722" text-anchor="end">90%</text>
+<line class="grid" x1="56" x2="736" y1="64" y2="64"/>
+<text class="tick" x="48" y="68" text-anchor="end">100%</text>
+<line class="grid" x1="56" x2="56" y1="64" y2="408"/>
+<text class="tick" x="56" y="426" text-anchor="middle">0%</text>
+<line class="grid" x1="180.0111861486094" x2="180.0111861486094" y1="64" y2="408"/>
+<text class="tick" x="180.0111861486094" y="426" text-anchor="middle">1%</text>
+<line class="grid" x1="231.37830133733794" x2="231.37830133733794" y1="64" y2="408"/>
+<text class="tick" x="231.37830133733794" y="426" text-anchor="middle">2%</text>
+<line class="grid" x1="333.297442198671" x2="333.297442198671" y1="64" y2="408"/>
+<text class="tick" x="333.297442198671" y="426" text-anchor="middle">5%</text>
+<line class="grid" x1="448.1578035687299" x2="448.1578035687299" y1="64" y2="408"/>
+<text class="tick" x="448.1578035687299" y="426" text-anchor="middle">10%</text>
+<line class="grid" x1="610.594884397342" x2="610.594884397342" y1="64" y2="408"/>
+<text class="tick" x="610.594884397342" y="426" text-anchor="middle">20%</text>
+<line class="grid" x1="735.2372403656558" x2="735.2372403656558" y1="64" y2="408"/>
+<text class="tick" x="735.2372403656558" y="426" text-anchor="middle">30%</text>
+<line class="axis" x1="56" x2="736" y1="408" y2="408"/>
+<text x="736" y="450" text-anchor="end">text that must survive but was redacted (lower is better, √ scale) →</text>
+<text transform="translate(14 408) rotate(-90)">secrets caught (higher is better) →</text>
+<polyline fill="none" class="accent-line" stroke-width="2" points="192.96942553695692,109.53778268063985 278.1937486206931,98.46957161242875 283.6808402620245,97.52086780658203"/>
+<circle cx="624.92" cy="74" r="6" class="accent"/><text x="635.92" y="78" class="ours">redac---n</text>
+<circle cx="624.92" cy="94" r="5" class="other"/><text x="635.92" y="98">other scanners</text>
+<circle cx="209.94034469409104" cy="287.26162897591473" r="5" class="other ring" stroke-width="2"><title>gitleaks: 54.6% caught, 1.5% lost</title></circle>
+<circle cx="219.27839244707948" cy="226.22835079977938" r="5" class="other ring" stroke-width="2"><title>betterleaks: 67.0% caught, 1.7% lost</title></circle>
+<circle cx="144.8774994482772" cy="343.86762272476557" r="5" class="other ring" stroke-width="2"><title>kingfisher: 43.1% caught, 0.5% lost</title></circle>
+<circle cx="136.1130953739465" cy="366.0040448611877" r="5" class="other ring" stroke-width="2"><title>trufflehog: 38.5% caught, 0.4% lost</title></circle>
+<circle cx="208.32835949118075" cy="348.29490715205" r="5" class="other ring" stroke-width="2"><title>noseyparker: 42.1% caught, 1.5% lost</title></circle>
+<circle cx="540.2600480620406" cy="323.62860820003675" r="5" class="other ring" stroke-width="2"><title>detect-secrets: 47.2% caught, 15.2% lost</title></circle>
+<circle cx="539.750032072132" cy="211.04908990623272" r="5" class="other ring" stroke-width="2"><title>credsweeper: 70.1% caught, 15.2% lost</title></circle>
+<circle cx="719.6120496050027" cy="141.47747747747746" r="5" class="other ring" stroke-width="2"><title>union(all 7): 84.2% caught, 28.6% lost</title></circle>
+<circle cx="565.5944718414523" cy="147.16970031255744" r="5" class="other ring" stroke-width="2"><title>union(all but detect-secrets): 83.1% caught, 16.9% lost</title></circle>
+<circle cx="239.2256589830112" cy="208.51921309064167" r="5" class="other ring" stroke-width="2"><title>gitleaks+betterleaks+kingfisher: 70.6% caught, 2.2% lost</title></circle>
+<circle cx="192.96942553695692" cy="109.53778268063985" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing off: 90.7% caught, 1.2% lost</title></circle>
+<circle cx="278.1937486206931" cy="98.46957161242875" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing confident: 93.0% caught, 3.2% lost</title></circle>
+<circle cx="283.6808402620245" cy="97.52086780658203" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing eager: 93.2% caught, 3.4% lost</title></circle>
+<text x="293.6808402620245" y="101.52086780658203" text-anchor="start" class="ours">guessing eager</text>
+<text x="270.1937486206931" y="88.46957161242875" text-anchor="end" class="ours">guessing confident</text>
+<text x="182.96942553695692" y="113.53778268063985" text-anchor="end" class="ours">guessing off</text>
+<text x="709.6120496050027" y="145.47747747747746" text-anchor="end">all seven combined</text>
+<text x="555.5944718414523" y="151.16970031255744" text-anchor="end">all but detect-secrets</text>
+<text x="249.2256589830112" y="212.51921309064167" text-anchor="start">gitleaks + Betterleaks + Kingfisher</text>
+<text x="549.750032072132" y="215.04908990623272" text-anchor="start">CredSweeper</text>
+<text x="229.27839244707948" y="230.22835079977938" text-anchor="start">Betterleaks</text>
+<text x="219.94034469409104" y="291.26162897591473" text-anchor="start">gitleaks</text>
+<text x="550.2600480620406" y="327.62860820003675" text-anchor="start">detect-secrets</text>
+<text x="134.8774994482772" y="347.86762272476557" text-anchor="end">Kingfisher</text>
+<text x="218.32835949118075" y="352.29490715205" text-anchor="start">Nosey Parker</text>
+<text x="146.1130953739465" y="370.0040448611877" text-anchor="start">TruffleHog</text>
+</svg>

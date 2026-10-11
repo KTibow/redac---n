@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 438" width="760" height="438" role="img" aria-labelledby="t d">
+<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.6 per MB; redac---n guessing confident: 4.5 per MB; redac---n guessing eager: 4.8 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
+<style>
+.bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ours { fill: #0b0b0b; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
+  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
+}
+</style>
+<rect width="760" height="438" rx="8" class="bg"/>
+<text x="16" y="26" class="title">Redactions per million characters of ordinary text</text>
+<text x="16" y="44" class="sub">60 M characters of agent trajectories and source repos never used in development, with few real secrets (lower is better)</text>
+<line class="grid" x1="259.20000000000005" x2="259.20000000000005" y1="60" y2="402"/>
+<text class="tick" x="259.20000000000005" y="418" text-anchor="middle">0</text>
+<line class="grid" x1="402.1333333333333" x2="402.1333333333333" y1="60" y2="402"/>
+<text class="tick" x="402.1333333333333" y="418" text-anchor="middle">20</text>
+<line class="grid" x1="545.0666666666666" x2="545.0666666666666" y1="60" y2="402"/>
+<text class="tick" x="545.0666666666666" y="418" text-anchor="middle">40</text>
+<line class="grid" x1="688" x2="688" y1="60" y2="402"/>
+<text class="tick" x="688" y="418" text-anchor="middle">60</text>
+<text x="249.20000000000005" y="81" text-anchor="end">Kingfisher</text>
+<path d="M259.20000000000005,69 h1.5836916882802825 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-1.5836916882802825 z" class="other"><title>kingfisher: 0.78 per MB</title></path>
+<text class="tick" x="270.7836916882803" y="81">0.8</text>
+<text x="249.20000000000005" y="107" text-anchor="end">TruffleHog</text>
+<path d="M259.20000000000005,95 h10.256234097736865 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-10.256234097736865 z" class="other"><title>trufflehog: 1.99 per MB</title></path>
+<text class="tick" x="279.4562340977369" y="107">2.0</text>
+<text x="249.20000000000005" y="133" text-anchor="end">gitleaks</text>
+<path d="M259.20000000000005,121 h12.27586726158296 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-12.27586726158296 z" class="other"><title>gitleaks: 2.28 per MB</title></path>
+<text class="tick" x="281.475867261583" y="133">2.3</text>
+<text x="249.20000000000005" y="159" text-anchor="end" class="ours">guessing off</text>
+<path d="M259.20000000000005,147 h22.016033125096328 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-22.016033125096328 z" class="accent"><title>redac---n guessing off: 3.64 per MB</title></path>
+<text class="tick" x="291.2160331250964" y="159">3.6</text>
+<text x="249.20000000000005" y="185" text-anchor="end" class="ours">guessing confident</text>
+<path d="M259.20000000000005,173 h27.836972043496928 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-27.836972043496928 z" class="accent"><title>redac---n guessing confident: 4.45 per MB</title></path>
+<text class="tick" x="297.036972043497" y="185">4.5</text>
+<text x="249.20000000000005" y="211" text-anchor="end" class="ours">guessing eager</text>
+<path d="M259.20000000000005,199 h30.094070807774642 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-30.094070807774642 z" class="accent"><title>redac---n guessing eager: 4.77 per MB</title></path>
+<text class="tick" x="299.2940708077747" y="211">4.8</text>
+<text x="249.20000000000005" y="237" text-anchor="end">Nosey Parker</text>
+<path d="M259.20000000000005,225 h56.58899491538176 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-56.58899491538176 z" class="other"><title>noseyparker: 8.48 per MB</title></path>
+<text class="tick" x="325.7889949153818" y="237">8.5</text>
+<text x="249.20000000000005" y="263" text-anchor="end">CredSweeper</text>
+<path d="M259.20000000000005,251 h79.16136557013186 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-79.16136557013186 z" class="other"><title>credsweeper: 11.64 per MB</title></path>
+<text class="tick" x="348.3613655701319" y="263">12</text>
+<text x="249.20000000000005" y="289" text-anchor="end">Betterleaks</text>
+<path d="M259.20000000000005,277 h115.15835666691748 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-115.15835666691748 z" class="other"><title>betterleaks: 16.67 per MB</title></path>
+<text class="tick" x="384.35835666691753" y="289">17</text>
+<text x="249.20000000000005" y="315" text-anchor="end">gitleaks + Betterleaks + Kingfisher</text>
+<path d="M259.20000000000005,303 h119.3164249454241 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-119.3164249454241 z" class="other"><title>gitleaks+betterleaks+kingfisher: 17.26 per MB</title></path>
+<text class="tick" x="388.51642494542415" y="315">17</text>
+<text x="249.20000000000005" y="341" text-anchor="end">detect-secrets</text>
+<path d="M259.20000000000005,329 h181.56864717220856 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-181.56864717220856 z" class="other"><title>detect-secrets: 25.97 per MB</title></path>
+<text class="tick" x="450.7686471722086" y="341">26</text>
+<text x="249.20000000000005" y="367" text-anchor="end">all but detect-secrets</text>
+<path d="M259.20000000000005,355 h202.71539441718488 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-202.71539441718488 z" class="other"><title>union(all but detect-secrets): 28.92 per MB</title></path>
+<text class="tick" x="471.9153944171849" y="367">29</text>
+<text x="249.20000000000005" y="393" text-anchor="end">all seven combined</text>
+<path d="M259.20000000000005,381 h363.3356319183538 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-363.3356319183538 z" class="other"><title>union(all 7): 51.40 per MB</title></path>
+<text class="tick" x="632.5356319183538" y="393">51</text>
+<line class="axis" x1="259.20000000000005" x2="259.20000000000005" y1="60" y2="402"/>
+<rect x="571.92" y="68" width="12" height="12" rx="3" class="accent"/><text x="589.92" y="78" class="ours">redac---n</text>
+<rect x="571.92" y="88" width="12" height="12" rx="3" class="other"/><text x="589.92" y="98">other scanners</text>
+</svg>

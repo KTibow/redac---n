@@ -1,0 +1,52 @@
+/**
+ * SQL `INSERT … VALUES` statements read into cells: each row's values under their table and column. One reader for
+ * every rule that asks what a value in a row is: the name layer hides a credential column's values (named.ts sqlRows),
+ * the random layer keeps the other columns' IDs and data (context.ts, `sqlCell`). A statement without a column list
+ * (`INSERT INTO t VALUES …`, as mysqldump writes by default) names no column, so it isn't read.
+ */
+import { type Argument, callArguments, closingBracket } from "./calls.ts";
+import { delimitedCells } from "./syntax.ts";
+
+export interface SqlCell {
+	/** The table, without its schema or quotes: `users` in `` `app`.`users` ``. */
+	table: string;
+	/** The column, without quotes: `password` in `"password"`, `` `password` ``, `[password]`. */
+	column: string;
+	/** The value as an argument of the row: a string literal's content is its `literal`. */
+	value: Argument;
+}
+
+/** An identifier as SQL dialects quote it: `"name"`, `` `name` ``, `[name]`. */
+const unquote = (name: string) => name.trim().replace(/^["`[]|["`\]]$/g, "");
+
+/**
+ * `INSERT [INTO] <table> (<columns>) VALUES`, and the dialects' other forms (`INSERT IGNORE`, `INSERT OR REPLACE`,
+ * `REPLACE INTO`), the table quoted as any dialect quotes it (`"my table"`, `` `app`.`users` ``, `[dbo].[users]`).
+ */
+const INSERT =
+	/\b(?:INSERT(?:\s+IGNORE|\s+OR\s+(?:REPLACE|IGNORE|ABORT|FAIL|ROLLBACK))?|REPLACE)\s+(?:INTO\s+)?((?:"[^"\n]{1,100}"|`[^`\n]{1,100}`|\[[^\]\n]{1,100}\]|[\w.]){1,200})\s*\(([^()]{1,2000})\)\s*VALUES\s*/gi;
+
+/** What may stand between two rows: blanks, comments and one comma. */
+const BETWEEN_ROWS = /(?:\s|--[^\n]*|\/\*[\s\S]{0,2000}?\*\/)*,?(?:\s|--[^\n]*|\/\*[\s\S]{0,2000}?\*\/)*/y;
+
+/**
+ * The cells of every `INSERT` in `text`, row by row (up to 10,000 rows a statement); with `wants`, only of the
+ * statements whose table and columns it accepts (so a dump's other tables cost no reading).
+ */
+export function* insertCells(text: string, wants?: (table: string, columns: string[]) => boolean): Generator<SqlCell> {
+	if (!/\b(?:INSERT|REPLACE)\b/i.test(text)) return;
+	for (const m of text.matchAll(INSERT)) {
+		const table = unquote(m[1].split(".").at(-1)!);
+		const columns = delimitedCells(m[2], ",").map((c) => unquote(c.text));
+		if (wants && !wants(table, columns)) continue;
+		let at = m.index + m[0].length;
+		for (let row = 0; row < 10_000 && text[at] === "("; row++) {
+			const values = callArguments(text, at + 1);
+			const close = closingBracket(text, at + 1);
+			if (!values || close < 0) break;
+			for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], value };
+			BETWEEN_ROWS.lastIndex = close + 1;
+			at = close + 1 + BETWEEN_ROWS.exec(text)![0].length;
+		}
+	}
+}

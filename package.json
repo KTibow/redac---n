@@ -1,0 +1,56 @@
+{
+	"name": "redac---n",
+	"version": "0.0.1",
+	"description": "Redact secrets from text and agent transcripts before they reach an untrusted model provider",
+	"keywords": [
+		"secrets",
+		"redaction",
+		"redact",
+		"credentials",
+		"llm",
+		"agents",
+		"transcripts",
+		"dlp"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/KTibow/redac---n.git"
+	},
+	"homepage": "https://github.com/KTibow/redac---n#readme",
+	"bugs": {
+		"url": "https://github.com/KTibow/redac---n/issues"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"docs",
+		"THIRD_PARTY_NOTICES.md"
+	],
+	"sideEffects": false,
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+		"prepack": "pnpm run build",
+		"typecheck": "tsc -p . && tsc -p tsconfig.build.json --noEmit",
+		"test": "node --test test/*.test.ts",
+		"eval": "node eval/all.ts",
+		"check": "node eval/check.ts",
+		"format": "prettier --write .",
+		"lint": "prettier --check . && knip"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.4",
+		"knip": "^6.41.0",
+		"prettier": "^3.9.10",
+		"typescript": "^7.0.2"
+	}
+}
