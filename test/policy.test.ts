@@ -10,7 +10,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
-import { b62, hidden, kept, r } from "./helpers.ts";
+import { keepReason } from "../src/policy.ts";
+import type { Finding } from "../src/types.ts";
+import { b62, hidden, kept, privateKeyLines, r } from "./helpers.ts";
 
 test("a signing secret is hidden and a long public signature is kept", () => {
 	const sec = b62(40);
@@ -136,6 +138,107 @@ test("a public key stays public whichever layer proposes it and however it is wr
 		jwk: { kty: "OKP", crv: "Ed25519", x: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo" },
 	}).value;
 	assert.ok(JSON.stringify(v).includes(aiza) && JSON.stringify(v).includes("11qYAYKxCrfVS"));
+});
+
+test("a private key under a public key's name is still a private key", () => {
+	const pem = privateKeyLines().join("\n");
+	hidden(`{"publicKey": ${JSON.stringify(pem)}}`, privateKeyLines()[1]);
+	hidden(`PUBLIC_KEY="${pem}"`, privateKeyLines()[1]);
+});
+
+test("a context's public signs keep only what they describe", () => {
+	// (A Sealed Secret's ciphertext only in a SealedSecret: a random base64 key starts with `Ag` too.)
+	const ag = `Ag${b62(126)}`;
+	hidden(`PRIVATE_KEY_B64=${ag}`, ag);
+	// (A DocSearch key only beside a DocSearch config's app ID.)
+	hidden('{"indexName": "products", "apiKey": "7f3c9a1e8b2d4f6a0c5e9b7d3a1f8e2c"}', "7f3c9a1e8b2d4f6a0c5e9b7d3a1f8e2c");
+	// (A client SDK's public key by its parameter's name, not a name that says server: `"server key"`.)
+	hidden(
+		'new Pusher({ appId: "1234567", "server key": "7f3c9a1e8b2d4f6a0c5e9b7d3a1f8e2c" });',
+		"7f3c9a1e8b2d4f6a0c5e9b7d3a1f8e2c",
+	);
+});
+
+test("a number a rule read as a password is one, wherever it was read", () => {
+	for (const text of [
+		"mysql -u root -p4821-7730",
+		"sshpass -p 4821-7730 ssh deploy@host",
+		"curl -u admin:4821-7730 https://api.example.com",
+		"psql postgres://admin:4821-7730@db/app",
+	])
+		hidden(text, "4821-7730");
+	kept("single-pass: 3.52x", "3.52x");
+	kept("mysql -u root -p2024-05-01", "2024-05-01");
+});
+
+test("a word named in prose or SQL is a value, whatever it ends in, unless code marks it", () => {
+	hidden("The password is: HarborConfig", "HarborConfig");
+	hidden("UPDATE users SET password = Hunter2x WHERE id = 1", "Hunter2x");
+	// (The name the layer read, `key`, not another word the line has before it: `user:` names no key.)
+	hidden("user: api key=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b");
+});
+
+test("the decision reads a proposal's code shapes from the proposal itself, whatever a layer took in", () => {
+	const sig = `cache.example.org-1:${"Q7mT2vX9pL4wR8nK3cJ6hF1bY5gZ0dS2aE7uV4iO9tN3kM8xW1qP6rL5jH2gD0fBQ7mT2vX9pL4wR8nK3cJ6hF"}==`;
+	// [text, the span (its last occurrence), how the decision reads it]
+	const cases: [string, string, string | undefined, Partial<Finding>?][] = [
+		// A span that took its literal's quotes is that literal, never a type, an identifier or a bind parameter.
+		['password: "SunnyData?",', '"SunnyData?"', undefined],
+		['token: "Uint8Array";', '"Uint8Array"', undefined],
+		['password: "String!"', '"String!"', undefined],
+		['  Password: "rotateKeyNow",', '"rotateKeyNow"', undefined],
+		["UPDATE users SET password = ':Hunter2x' WHERE id = 1", "':Hunter2x'", undefined],
+		['"passwd": "account.password",', "account.password", undefined],
+		// A type needs its mark and a declaration's end: one word before `?`, or words after it, are a password.
+		["The password is: Tiger?", "Tiger", undefined, { rule: "named:prose" }],
+		["password: SunnyData? is what I use", "SunnyData", undefined],
+		["password: SunnyData?,", "SunnyData", "a type"],
+		["password: Uint8Array", "Uint8Array", undefined, { literal: true }],
+		// An identifier ending a struct's line has an identifier's letters, lower case and an upper-case hump or `_`.
+		["  password: Sunny-Day77,\n", "Sunny-Day77", undefined],
+		["  password: SUNNY_DAY,\n", "SUNNY_DAY", undefined],
+		["  password: sunshine,\n", "sunshine", undefined],
+		["  password: sunshineMain,\n", "sunshineMain", "identifier"],
+		// A call or subscript cut at its argument is one by its name: `md5(`, not a password's own bracket.
+		['password=md5("x")', "md5(", "call or subscript"],
+		["pwd: Rq8zTn3w[0]", "Rq8zTn3w[0", undefined],
+		// A vendor's token at a token's start is that token, whatever runs on after it.
+		[
+			"token: AKIAIOSFODNN7EXAMPLEabcdefghijklmnop",
+			"AKIAIOSFODNN7EXAMPLE",
+			undefined,
+			{ rule: "format:AWS access key ID" },
+		],
+		// A public name of key-like words, not a sentence that has "public" in it; the name, not a type read for it.
+		[
+			"Token for the public API: Kx9mQv2Lp7RtWz4nKx9mQv2Lp7RtWz4n",
+			"Kx9mQv2Lp7RtWz4nKx9mQv2Lp7RtWz4n",
+			undefined,
+			{ rule: "unnamed", name: undefined },
+		],
+		[
+			'const NEXT_PUBLIC_RC_KEY: string = "Kx9mQv2Lp7RtWz4nKx9mQv2Lp7RtWz4n";',
+			"Kx9mQv2Lp7RtWz4nKx9mQv2Lp7RtWz4n",
+			"public by its name",
+			{ rule: "unnamed", name: "string" },
+		],
+		// A narinfo's `Sig:` is a signature; a Nix secret key named so inside a signatures list isn't.
+		[`StorePath: /nix/store/abc-hello\nSig: ${sig}`, sig, "signature", { rule: "unnamed", name: "Sig" }],
+		[`{"signatures": [{"secretKey": "${sig}"`, sig, undefined, { name: "secretKey" }],
+	];
+	for (const [text, span, reason, o] of cases) {
+		const start = text.lastIndexOf(span);
+		const f: Finding = {
+			start,
+			end: start + span.length,
+			kind: "password",
+			rule: "named:assign",
+			name: "password",
+			confidence: 0.9,
+			...o,
+		};
+		assert.equal(keepReason(text, f), reason, text);
+	}
 });
 
 test("a service_role JWT is hidden under any name", () => {

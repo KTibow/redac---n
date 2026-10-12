@@ -81,7 +81,7 @@ function isClientSdkKey(sdk: string, name: string, before: string): boolean {
 	if (/secret|passw|private|admin|master|server|write/i.test(name)) return false;
 	// (The unnamed layer names a positional argument by its call: `algoliasearch`.)
 	const callee = sdk.replace(/^new\s+/, "").replace(/\s*[({[:=].*$/s, "");
-	const positional = !name || callee === name || callee.endsWith(`.${name}`);
+	const positional = !name || callee === name;
 	if (!positional) return PUBLIC_SDK_PARAM.test(name.replace(/^.*[.\s]/, ""));
 	return (
 		!/^(?:algoliasearch|instantsearch)/.test(sdk) || /search[-_ ]?(?:only|key)|public|read[-_ ]?only/i.test(before)
@@ -205,13 +205,15 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// Never secrets, whatever names them (counts, versions, algorithm names, key chords…), for the rules that
 	// read a value by its name or its place; formats and private-key armour say what a value is themselves.
 	if (readsByPlace(f.rule)) {
-		// (A number under a password's or a PIN's name is one: `PIN=4821-7730`, `DB_PASSWORD=21.05.1987`; an ISO date, `2024-05-01`, is a date.)
+		// (A number under a password's or a PIN's name is one, and so is one a rule read as a password by its place:
+		// `PIN=4821-7730`, `DB_PASSWORD=21.05.1987`, `mysql -p21.05.1987`, `postgres://admin:4821-7730@db`; an ISO date,
+		// `2024-05-01`, is a date.)
 		// (A bare `pass` is as often the word: `single-pass: 3.52x`.)
 		if (
 			isBenignValue(value) &&
 			!(
 				(isGroupedDigits(value) || (QUANTITY.test(value.trim()) && !/(?:^|[^a-z])pass$/i.test(name))) &&
-				namesPasswordOrPin(name)
+				(namesPasswordOrPin(name) || f.kind === "password")
 			)
 		)
 			return "never a secret";
@@ -252,10 +254,9 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// Square app IDs, SonarQube badge tokens.
 	// (Also after a label the span took in: `auth=key_id:rzp_live_…`.)
 	if (
-		(PUBLIC_FORMAT.test(value) ||
-			PUBLIC_FORMAT.test(word) ||
-			PUBLIC_FORMAT.test(value.replace(/^[A-Za-z][\w.-]{0,40}:/, ""))) &&
-		!/^AIza/.test(value)
+		PUBLIC_FORMAT.test(value) ||
+		PUBLIC_FORMAT.test(word) ||
+		PUBLIC_FORMAT.test(value.replace(/^[A-Za-z][\w.-]{0,40}:/, ""))
 	)
 		return "publishable key";
 	// A Basic credential that decodes to a docs placeholder (`user:pass`), whichever layer read it.
@@ -276,7 +277,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 		return "public by its name";
 	// A random token the unnamed layer guessed at, under a name that says ID or hash (`bridgeSessionId`, `sha`): what the
 	// unnamed layer's own name vetoes say, for a finding whose name only this stage sees (a transcript leaf's key).
-	if (isGuess(f.rule) && name && ["identifier", "hash"].includes(nameClass(name.replace(/\s+/g, "_"))))
+	if (isGuess(f.rule) && ["identifier", "hash"].includes(nameClass(name.replace(/\s+/g, "_"))))
 		return "an ID by its name";
 	// JWTs meant to be public (anon and publishable roles, published samples). Under a credential's name, only
 	// a published sample is, unless the name itself says anon or public: an anon key assigned to `SUPABASE_KEY`
@@ -331,12 +332,14 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	const nix = nixName.test(value) ? value : (/(?:^|[^\w.-])([\w-]+(?:\.[\w-]+)*-\d+:)$/.exec(left)?.[1] ?? "") + value;
 	if (/^[\w-]+(?:\.[\w-]+)*-\d+:[A-Za-z0-9+/]{43}=$/.test(nix)) return "public key";
 	// A Nix signature has the shape of a Nix secret key (a key name and 64 bytes): kept where signatures are listed.
+	// (Not one under a credential's name there, `"signatures": [{"secretKey": …`; a narinfo's `Sig:` label names a
+	// signature, though `sig` alone reads as a credential's word.)
 	if (
 		/^[\w-]+(?:\.[\w-]+)*-\d+:[A-Za-z0-9+/]{86}==$/.test(nix) &&
 		/"signatures"\s*:\s*\[[^\]]*$|(?:^|\n)[ \t]*Sig:[ \t]*[\w.-]*:?$/.test(
 			text.slice(Math.max(0, f.start - 2000), f.start),
 		) &&
-		nameClass(name) !== "credential"
+		(name === "Sig" || nameClass(name) !== "credential")
 	)
 		return "signature";
 	if (/^(?:x|y|n|e|crv|kid|x5t)$/.test(name) && inJwk(text, f.start, f.end)) return "public key";
@@ -419,8 +422,9 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 	// (Without contractions: an apostrophe in prose before it, `Here's the fix: export TOKEN='…'`, is no quote.)
 	const line = left.slice(left.lastIndexOf("\n") + 1).replace(CONTRACTION, "");
 	// A declaration's type, with no value given: `val passwordData: PasswordData?,`, `privateKey: Uint8Array;`.
-	// (A type's mark says so, nullable, generic or an array, or a word only types end in, `…Array`, `…Json`, `…Dto`:
-	// `SunnyDay`, `BlueKey` are passwords. A generic's arguments may follow the name read: `Branded<string, "Password">;`; Rust's `let password: Secret<String> = …`.)
+	// (A type's mark says so, nullable, generic or an array: `SunnyDay`, `BlueKey`, `HarborConfig` alone are passwords,
+	// as after "The password is:"; a declaration's unmarked type is code the readers pass over. A generic's arguments
+	// may follow the name read: `Branded<string, "Password">;`; Rust's `let password: Secret<String> = …`.)
 	if (
 		/:[ \t]*$/.test(line) &&
 		!f.literal &&
@@ -428,10 +432,7 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 		(/^[A-Z][a-z0-9]*(?:[A-Z][a-z0-9]*)+(?:<[\w, ]*>)?(?:\[\])?\??$/.test(v) ||
 			(/^[A-Z][a-z0-9]+$/.test(v) && text[f.end] === "<") ||
 			/^[A-Z][a-z0-9]+<[\w, :<>]*>$/.test(v)) &&
-		(/[?<[]/.test(v + text[f.end]) ||
-			/(?:Json|Dto|Type|Model|Array|Map|Info|Config|Options|Spec|Request|Response|Result|String|Buffer|Bytes|Holder|Provider)$/.test(
-				v,
-			)) &&
+		/[?<[]/.test(v + text[f.end]) &&
 		readsAsWords(v.replace(/[<?[].*$/, "")) &&
 		/^[?;,)]?[ \t]*(?:[;,)=]|\r?$|\n)/.test(
 			text
@@ -537,11 +538,11 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 	// A SQL bind parameter: `WHERE password=@CONTRASEÑA`, `:password`. (A bare `?` is no value to begin with.)
 	// (A SQL token in a SQL statement: after a comparison or in `VALUES (…)`, in a statement its keywords say is one, in
 	// capitals or starting the line; not cmd's `set NAME=@…` nor a sentence's "update the password to @…".)
+	// (Right after the operator, so not a quoted literal's text, `= ':Hunter2x'`.)
 	if (
 		!/^structure:cli/.test(f.rule) &&
 		/^[@:?][\p{L}_][\p{L}\d_]*$/u.test(v) &&
 		v === value &&
-		!/["'`]/.test(before) &&
 		/(?:[=<>]|\(|,)[ \t]*$/.test(line) &&
 		!/^[ \t]*set[ \t]+[\w.-]+=$/i.test(line) &&
 		(/\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE|VALUES|SET)\b/.test(line) ||

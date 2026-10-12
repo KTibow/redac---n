@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
 import { bip39 } from "../src/named.ts";
-import { isPinName, isSettingName, isVendorClient, nameClass, phraseBefore } from "../src/names.ts";
+import { isPinName, isSettingName, isVendorClient, nameClass, phraseBefore, readPhrase } from "../src/names.ts";
 import { insertCells } from "../src/sql.ts";
 import {
 	attributes,
@@ -639,6 +639,8 @@ test("a device's published default PIN is kept, anywhere else a PIN is hidden", 
 	kept("The default Bluetooth PIN is 0000 (some use 1234).", "0000");
 	hidden("pin_value=0000", "0000");
 	hidden("My PIN is 4821.", "4821");
+	// (One called a default but not a published one: a bank's or a router's label's own PIN.)
+	hidden("Your default PIN is 4821.", "4821");
 });
 
 test("a lock, alarm or door code is a PIN name, a block or clock code is not", () => {
@@ -1041,4 +1043,117 @@ test("an operator glued to its value, a quoted name and a code entry are read by
 	assert.ok(!r().redact("user:\n  password: Kx9(mQ2]vL8),\n").text.includes("),"));
 	assert.ok(r().redact("login({\n  password: Hx7mQ2-pL9vRt,\n})").text.endsWith("],\n})"));
 	kept("  password: Secret<String>;", "Secret<String>");
+});
+
+test("a public word, a browser prefix or an SDK's public key's name makes a key's name public; a secret's word decides", () => {
+	for (const name of [
+		"MIXPANEL_TOKEN_PROD",
+		"applicationServerKey",
+		"SHOPIFY_PUBLISHABLE_TOKEN",
+		"MEDUSA_PUBLISHABLE_API_KEY",
+		"SSH_PUBKEY",
+		"peer_publickey",
+		"VAPID_KEY",
+		"PUB_KEY",
+		"pubKey",
+	])
+		assert.equal(nameClass(name), "public", name);
+	// (Not a name with a secret's, a private half's or another credential's word than a key's, a token only a browser
+	// prefix calls public, nor a public word before another word: `SITE_COOKIE` is a site's cookie, `PUB_SUB_KEY` a
+	// Pub/Sub key.)
+	for (const name of [
+		"TLS_CLIENT_KEY",
+		"VITE_MNEMONIC",
+		"VITE_SENTRY_AUTH",
+		"NEXT_PUBLIC_SANITY_TOKEN",
+		"SITE_COOKIE",
+		"SITE_DB_KEY",
+		"PUB_SUB_KEY",
+	])
+		assert.equal(nameClass(name), "credential", name);
+	assert.equal(nameClass("SITE_URL"), "identifier");
+	const key = b62(32);
+	kept(`MEDUSA_PUBLISHABLE_API_KEY=${key}`, key);
+	kept(`VAPID_KEY=${key}`, key);
+	hidden(`TLS_CLIENT_KEY=${key}`, key);
+	hidden(`SITE_COOKIE=${key}`, key);
+	hidden(`VITE_SENTRY_AUTH=${key}`, key);
+	hidden(
+		"VITE_MNEMONIC=abandon ability able about above absent absorb abstract absurd abuse access accident",
+		"absorb abstract",
+	);
+});
+
+test("a name's own words say hash, ID, flag, pattern or setting before its credential's word does", () => {
+	for (const [name, cls] of [
+		["isPrivate", "neutral"],
+		["private", "neutral"],
+		["file_md5", "hash"],
+		["blake3", "hash"],
+		["COMMIT_ID", "hash"],
+		["TRACE_ID", "hash"],
+		["TOKEN_AUDIENCE", "neutral"],
+		["NOPASSWORD", "neutral"],
+		["INVALID_API_KEY", "neutral"],
+		["DATE_PAT", "neutral"],
+		["GITHUB_PAT", "credential"],
+		["PD_ROUTING_KEY", "credential"],
+	])
+		assert.equal(nameClass(name), cls, name);
+	// (An audience is a client's ID; PagerDuty's routing key is its Events API credential; `PAT` after a forge is a token.)
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	assert.ok(off.redact("TOKEN_AUDIENCE=0oa4kq1x2bZ9Q7mT5d7").text.includes("0oa4kq1x2bZ9Q7mT5d7"));
+	assert.ok(!off.redact("PD_ROUTING_KEY=R03e8f1c2b7d4a9e6f0c5b8d2a7e4f1c").text.includes("R03e8f1c2b7d"));
+	assert.ok(!off.redact("ADO_PAT=q7mt2vx9pl4wr8nk3cj6hf1by5gz0ds2ae7uv4io9tn3km8xw1qp").text.includes("q7mt2vx9pl4w"));
+	kept('DATE_PAT = r"\\d{4}-\\d{2}-\\d{2}"', "\\d{4}-\\d{2}-\\d{2}");
+});
+
+test("a route or screen word marks a lookup key or UI text, not a secret or a full credential phrase", () => {
+	for (const [name, cls] of [
+		["ROUTE_KEY", "neutral"],
+		["LOGIN_PAGE_PASSWORD", "neutral"],
+		["LOGIN_PAGE_APP_PASSWORD", "neutral"],
+		["PAGE_ACCESS_TOKEN", "credential"],
+		["EVENT_SECRET", "credential"],
+		["WEBHOOK_EVENT_SECRET", "credential"],
+	])
+		assert.equal(nameClass(name), cls, name);
+	kept('const EVENT_KEY = "evt_1Nq9xY2eZvKYlo2C";', "evt_1Nq9xY2eZvKYlo2C");
+	hidden("EVENT_SECRET=hunter22", "hunter22");
+});
+
+test("a file's name in a checksum manifest names the file, whatever words it holds", () => {
+	kept(
+		'{"files": {"token.go": "5f4dcc3b5aa765d61d8327deb882cf99", "secret.yml": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"}}',
+		"5f4dcc3b5aa765d61d8327deb882cf99",
+	);
+	kept('{"data.csv": "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU="}', "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
+});
+
+test("the words before a bare key say whose key it is, what else it is, or that it is no credential's", () => {
+	kept(
+		"2025/08/13 21:17:57 INFO  cache warm key=7d1e93a0c4b25f68e1a7d3c9b04f2e86a5c1d7b3e9f0a2c4b6d8e1f3a5c7b9d2",
+		"7d1e93a0c4b25f68e1a7d3c9b04f2e86a5c1d7b3e9f0a2c4b6d8e1f3a5c7b9d2",
+	);
+	const body =
+		"The admin key `c4e8a1f7b2d9e3c6a0f5b8d1e4a7c2f9` leaked. App id `KQ7ZR2XWPL`, search-only key `9b2e7d4a1c8f3e6b0a5d9c2f7e1b4a8d` is fine in the frontend.";
+	hidden(body, "c4e8a1f7b2d9e3c6a0f5b8d1e4a7c2f9");
+	kept(body, "9b2e7d4a1c8f3e6b0a5d9c2f7e1b4a8d");
+	// (A word that qualifies no credential leaves an ID an ID; a vendor's name before `key` makes it that vendor's key.)
+	assert.equal(readPhrase(["order"], "id").class, "identifier");
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	assert.ok(!off.redact("your mailgun key: Kx9mQv2Lp7Rt").text.includes("Kx9mQv2Lp7Rt"));
+});
+
+test("a key named for a host or a store is judged by its value, and long hex there is a key", () => {
+	for (const text of [
+		"SERVER_KEY=a3f1c9e27b4d8f6012e5a7c3b9d4f8e1a6c2b7d3e9f4a8c1b5d2e6f3a7c9b4d8",
+		"REDIS_KEY: a3f1c9e27b4d8f6012e5a7c3b9d4f8e1",
+		'"primaryKey": "a3f1c9e27b4d8f6012e5a7c3b9d4f8e1a6c2b7d3"',
+	])
+		hidden(text, "a3f1c9e27b4d8f6012e5a7c3b9d4f8e1");
+});
+
+test("a password's word glued to a vendor's name is that vendor's password", () => {
+	for (const text of ["couchbasepass=sunshine", 'mailgunpass = "sunshine"']) hidden(text, "sunshine");
 });

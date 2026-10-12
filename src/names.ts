@@ -681,15 +681,20 @@ const isFileName = (name: string) => FILE_EXTENSION.test(name) && /^[\w./-]+$/.t
 
 /**
  * A name that says its value is public: an SDK's public key by name (`MIXPANEL_TOKEN`, `client_key`), a browser
- * prefix or a public word (`NEXT_PUBLIC_MAPS_KEY`, `STRIPE_PUBLISHABLE_KEY`, `SITE_KEY`, `VAPID_KEY`). A secret
- * word says what the value is and wins (`EXPO_PUBLIC_STRIPE_SECRET_KEY`, `NEXT_PUBLIC_DB_PASSWORD`,
- * `PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, `VAPID_SECRET`); a prefix or a public word before a token's name keeps
- * it a token (`PUBLIC_API_TOKEN`): only keys and IDs are shipped to browsers by design.
+ * prefix or a public word (`NEXT_PUBLIC_MAPS_KEY`, `STRIPE_PUBLISHABLE_KEY`, `SITE_KEY`, `VAPID_KEY`). A secret's
+ * word, or any credential's but a key's or a token's, says what the value is and wins (`EXPO_PUBLIC_STRIPE_SECRET_KEY`,
+ * `NEXT_PUBLIC_DB_PASSWORD`, `PUBLIC_SUPABASE_SERVICE_ROLE_KEY`, `VAPID_SECRET`, `VITE_MNEMONIC`, `VITE_SENTRY_AUTH`);
+ * a prefix or a public word before a token's name keeps it a token (`PUBLIC_API_TOKEN`): only keys and IDs are
+ * shipped to browsers by design.
  */
 function isPublicName(name: string, w: string[]): boolean {
 	// (Before the SDK names: `PRIVATE_CLIENT_KEY`, `SECRET_SITE_KEY`; and an mTLS pair's private half, `tls_client_key`.)
 	if (
-		w.some((x) => /^(?:SECRETS?|PASSWORDS?|PASSWD|PWD|PASSPHRASE|PRIVATE|SERVICE|ADMIN|MASTER|TLS|SSL|MTLS)$/.test(x))
+		w.some(
+			(x) =>
+				/^(?:PRIVATE|SERVICE|ADMIN|MASTER|TLS|SSL|MTLS)$/.test(x) ||
+				(isCredentialWord(x) && !/^(?:KEY|APIKEY|TOKEN)S?$/.test(x)),
+		)
 	)
 		return false;
 	// (By the name and without its qualifiers: `MIXPANEL_TOKEN_PROD` is `MIXPANEL_TOKEN`'s. Not without a wrapper word:
@@ -853,7 +858,7 @@ const PASSWORD_WORDS = new Set([
 function isPasswordWord(word: string): boolean {
 	if (PASSWORD_WORDS.has(word)) return true;
 	const glued = /(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|PASS|PWD|AUTH)$/.exec(word);
-	if (!glued || glued.index === 0) return false;
+	if (!glued) return false;
 	const head = word.slice(0, glued.index);
 	return /^PASS(?:WORD|WD|PHRASE|CODE)$/.test(glued[1]) || PASSWORD_OWNERS.has(head) || isVendorName(head);
 }
@@ -1238,8 +1243,6 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	if (name.includes("/") && isFileName(name)) return "neutral";
 	// A vendor's name holds that vendor's key.
 	if (isVendorName(name)) return "credential";
-	// A bare `private` is a flag or provider state (`"private": true`, a tfstate's `"private"` blob), not a key.
-	if (/^private$/i.test(name)) return "neutral";
 	// Unity's serialized localization keys and names; a list item's key (Sanity's and React's `_key`); a generated
 	// fixture's, numbered with zeros (`tagKey000003`); Postman's per-request UUID.
 	if (/^m_(?:Key|KeyId|Name|Id)$|[a-z](?:Key|Token|Secret)0\d{4,}$/.test(name) || /^_+key$|^postman-token$/i.test(name))
@@ -1326,12 +1329,14 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// Shell variables (`PWD`, `OLDPWD`), loop keys and auth modes (`KEY`, `AUTH`), test output (`PASS:`).
 	if (core.length === 1 && NOT_CREDENTIAL_NAMES.has(name)) return "neutral";
 	// Route and screen words name what a credential is for when it ends in a full credential phrase
-	// (`PAGE_ACCESS_TOKEN`, `EVENT_API_KEY`); elsewhere they, and other words about a credential, mark UI text,
-	// errors, flags and settings (`PASSWORD_PAGE_TITLE`, `ERROR_WRONG_PASSWORD`, `HAS_PASSWORD`, `NOPASS`).
+	// (`PAGE_ACCESS_TOKEN`, `EVENT_API_KEY`) or in `SECRET`, a word no lookup key ends in (`EVENT_SECRET`); elsewhere they,
+	// and other words about a credential, mark UI text, lookup keys, errors, flags and settings (`PASSWORD_PAGE_TITLE`,
+	// `LOGIN_PAGE_PASSWORD`, `ROUTE_KEY`, `ERROR_WRONG_PASSWORD`, `HAS_PASSWORD`, `NOPASS`).
 	const fullPhrase =
-		core.length >= 2 &&
-		/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(core.at(-2)!) &&
-		/^(TOKEN|KEY|SECRET)$/.test(last);
+		last === "SECRET" ||
+		(core.length >= 2 &&
+			/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(core.at(-2)!) &&
+			/^(TOKEN|KEY)$/.test(last));
 	const about =
 		core.some((x) => ABOUT_WORDS.has(x) && !(fullPhrase && ROUTE_WORDS.has(x))) ||
 		/^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
@@ -1342,7 +1347,6 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// (The credential's word leads the name, and none after it makes the name a thing about credentials.)
 	const owned =
 		OWNED_CREDENTIAL.has(core[0]) &&
-		core.length >= 2 &&
 		core.slice(1).every((x) => !ABOUT_CREDENTIAL.has(x) && !HASH_WORDS.has(x) && !IDENTIFIER_WORDS.has(x));
 	if (!about && owned && !isSettingName(name)) return "credential";
 	if (
