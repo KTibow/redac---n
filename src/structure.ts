@@ -1074,17 +1074,18 @@ function cliPasswords(text: string, out: Finding[]) {
 		// Otherwise a path or a call is no password (`-p /tmp/pwlist`, `password hash(pw1)`), and a sentence's
 		// punctuation is none of one (`hydra -p Winter2024.`); after a `password` word on any other command, only a
 		// password's shape is one: letters with a digit, or of both cases with a symbol, `Zebra-Lamp-Cloud`; not prose,
-		// `authentication`, `re-use`.
+		// `authentication`, `re-use`, nor code that holds one, `os.environ.PW1`.
 		const own = !word || /^(?:nmcli|mysqladmin)$/.test(name);
 		const whole = own && !bare;
 		if (!whole && /[()/]/.test(pw)) continue;
 		const value = whole ? pw : pw.replace(/[.,;:]+$/, "");
 		if (
 			!own &&
-			!(
-				(/[A-Za-z]/.test(value) && /\d/.test(value)) ||
-				(/[a-z]/.test(value) && /[A-Z]/.test(value) && /[\W_]/.test(value))
-			)
+			(isCode(value, true) ||
+				!(
+					(/[A-Za-z]/.test(value) && /\d/.test(value)) ||
+					(/[a-z]/.test(value) && /[A-Z]/.test(value) && /[\W_]/.test(value))
+				))
 		)
 			continue;
 		add(at, value, "structure:cli-password");
