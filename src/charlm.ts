@@ -39,7 +39,8 @@ export function naturalness(token: string): number {
 	for (let i = 0; i < token.length; i++) {
 		const code = token.charCodeAt(i);
 		// camelCase: an upper-case letter after a lower-case one starts a new word.
-		if (code >= 65 && code <= 90 && i > 0) {
+		if (code >= 65 && code <= 90) {
+			// (Before the first, `charCodeAt(-1)` is NaN: no letter.)
 			const p = token.charCodeAt(i - 1);
 			if (p >= 97 && p <= 122) {
 				sum += uniform - t[a * A * A + b * A] / 16;

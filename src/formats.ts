@@ -455,8 +455,8 @@ export function findFormats(text: string): Finding[] {
 			if (f.rejects?.(value, text.slice(Math.max(0, start - 200), start))) continue;
 			// A whole connection string: the URL rule hides just its password and keeps the host.
 			if (leadingUrl(value)?.user) continue;
-			// Real tokens don't read as words: `sk-toggleable__label-arrow`, `NotificationsClient.Models.Response`.
-			if (naturalness(value) > 1.0 || /^(?:[A-Z][a-z]+){2,}(?:\.(?:[A-Z][a-z]+)+)+$/.test(value)) continue;
+			// Real tokens don't read as words: `sk-toggleable__label-arrow`, `sk-NotificationsClient.Models.Response`.
+			if (naturalness(value) > 1.0) continue;
 			// A vendor-word rule: the name the value is assigned to must not say it's an ID, a hash or public.
 			if (f.byVendorWord) {
 				const gap = text.slice(m.index, start);

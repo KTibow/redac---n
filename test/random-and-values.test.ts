@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
+import { naturalness } from "../src/charlm.ts";
 import { type Context, contextOf, Doc } from "../src/context.ts";
 import { redactValue } from "../src/transcript.ts";
 import { findUnnamed } from "../src/unnamed.ts";
@@ -150,6 +151,12 @@ test("an ID-shaped token is hidden in a key's place, and a hash after the word c
 	for (const label of ["for the git server", ", resolved from the vault", "for the parent account"])
 		hidden(`Here's your new API key ${label}:\n9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82`, "9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82");
 	kept("commit 9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82e1d0b9a8", "9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82");
+});
+
+test("a token's case changes its naturalness only at a camelCase break: after a lower-case letter, not a symbol or another script's", () => {
+	assert.equal(naturalness("${DbPassword}"), naturalness("${dbPassword}"));
+	assert.equal(naturalness("caféOrder"), naturalness("caféorder"));
+	assert.notEqual(naturalness("orderId"), naturalness("orderid"));
 });
 
 test("a random token longer than any key the model was trained on is judged as the longest", () => {

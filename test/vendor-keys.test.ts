@@ -6,7 +6,9 @@
  * (A fake key's vendor prefix is written with an escape, `"ghp\x5f…"`: written whole, the repository would hold text
  * that secret scanners, GitHub's push protection among them, take for a live key.)
  */
+import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { b62, hidden, kept } from "./helpers.ts";
 
 test("a vendor key is hidden by its own format, bare, named or inside a URL", () => {
@@ -149,4 +151,12 @@ test("a Slack webhook shown with its secret cut off is kept", () => {
 		"SLACK_WEBHOOK=https://hooks.slack\x2ecom/services/TP5A3FB2W/BG8EFGY9UV3/Xk9mQv2Lp7Rt4Wz8Bn3Cd6Fh",
 		"Xk9mQv2Lp7Rt4Wz8Bn3Cd6Fh",
 	);
+});
+
+test("a key found by its vendor's word is hidden after an assignment, and a hash or an ID under that word is kept", () => {
+	const off = new Redactor({ guessing: "off" });
+	const key = `G${b62(31)}`;
+	for (const t of [`algolia: ${key}`, `ALGOLIA = "${key}"`]) assert.ok(!off.redact(t).text.includes(key), t);
+	kept("datadog_api_key_hash: 9f86d081884c7d659a2feaa0c55ad015", "9f86d081884c7d659a2feaa0c55ad015");
+	kept("heroku_dyno: 2b0c6a4e-8f1d-4c3b-9a7e-5d2f1e0c9b8a", "2b0c6a4e-8f1d-4c3b-9a7e-5d2f1e0c9b8a");
 });
