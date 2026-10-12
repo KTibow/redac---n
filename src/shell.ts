@@ -261,8 +261,9 @@ function closing(lx: Lexing, from: number, close: ")" | "}" | "`", depth = 0): n
 		if (ch === "\\" && lx.backslash) j++;
 		else if (close === "`") {
 			if (ch === "`") return j;
-		} else if (close === ")" && ch === "<" && text[j + 1] === "<" && text[j + 2] !== "<" && text[j - 1] !== "<") {
-			// (Not a here-string, `<<<`, at its second `<`; a delimiter quoted, `<<'EOF'`, `<<"EOF"`, or escaped, `<<\EOF`.)
+		} else if (close === ")" && ch === "<" && text[j - 1] !== "<") {
+			// (Not a here-string, `<<<`, at its second `<`; at its first, no delimiter follows the `<<`. A delimiter quoted,
+			// `<<'EOF'`, `<<"EOF"`, or escaped, `<<\EOF`.)
 			const h = /^<<(-?)[ \t]*(?:\\|(["']?))([\w.-]{1,80})\2/.exec(text.slice(j, j + 100));
 			if (h) {
 				heredocs.push({ delimiter: h[3], strip: h[1] === "-" });
@@ -275,7 +276,7 @@ function closing(lx: Lexing, from: number, close: ")" | "}" | "`", depth = 0): n
 				for (;;) {
 					if (line >= limit) return -1;
 					const nl = text.indexOf("\n", line);
-					const body = text.slice(line, nl < 0 || nl > limit ? limit : nl).replace(/\r$/, "");
+					const body = text.slice(line, nl < 0 ? limit : nl).replace(/\r$/, "");
 					line = nl < 0 ? limit : nl + 1;
 					if ((h.strip ? body.replace(/^\t+/, "") : body) === h.delimiter) break;
 				}
@@ -624,13 +625,14 @@ export function allRedirects(c: ShellCommand): ShellRedirect[] {
 }
 
 /**
- * Whether a redirection sends the command's standard output to a file: `>`, `>>`, `>|` (not another descriptor's, `2>`),
- * `&>`, `&>>`, and `>&` onto a file (`>& out`; `>&2` and `2>&1` copy a descriptor).
+ * Whether a redirection sends the command's standard output to a file: `>`, `>>`, `>|`, `&>`, `&>>`, and `>&` onto a
+ * file (`>& out`; `>&2` and `2>&1` copy a descriptor), with no descriptor written before it or standard output's
+ * (`1> out`, `1>& out`; `2> out` sends another's).
  */
 export function redirectsStdout(r: ShellRedirect): boolean {
 	const sends = REDIRECT_OPERATORS[r.op];
-	if (sends === "stdout") return r.fd === undefined || r.fd === 1;
-	return sends === "both" && r.fd === undefined && !/^(?:\d+|-)$/.test(r.target?.text ?? "");
+	if (sends === "none" || (r.fd !== undefined && r.fd !== 1)) return false;
+	return sends === "stdout" || !/^(?:\d+|-)$/.test(r.target?.text ?? "");
 }
 
 /**
@@ -724,8 +726,6 @@ export function simpleCommand(words: ShellWord[]): ShellWord[] {
 		const at = k++;
 		for (; k < words.length && words[k].text.startsWith("-"); k++) {
 			const w = words[k].text;
-			// (`env -`: an empty environment.)
-			if (w === "-") continue;
 			if (w === "--") {
 				k++;
 				break;

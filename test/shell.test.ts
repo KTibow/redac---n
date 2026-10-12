@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { printsSecret, printsSecretFile } from "../src/commands.ts";
 import { Redactor } from "../src/index.ts";
-import { shellCommands, wordSpan } from "../src/shell.ts";
+import { shellCommands, simpleCommand, wordSpan } from "../src/shell.ts";
 
 const read = (line: string) =>
 	shellCommands(line).map((c) => [
@@ -32,6 +32,99 @@ test("operators, redirections, comments, expansions and continuations", () => {
 	assert.deepEqual(read("cat $'.e\\x6ev' \"a\\\"b\" 'c\\d'"), [[["cat", ".env", 'a"b', "c\\d"], [], ""]]);
 });
 
+test("quotes, expansions and escapes are read the way bash reads them", () => {
+	// Quotes inside an expansion inside quotes; an expansion inside one, unquoted, with a blank in it.
+	assert.deepEqual(read('cd "$(dirname "$0")" && cat .env'), [
+		[["cd", '$(dirname "$0")'], [], "&&"],
+		[["cat", ".env"], [], ""],
+	]);
+	assert.deepEqual(read('echo "${X:-"a b"}" ${GREETING:-${USER} was here}'), [
+		[["echo", '${X:-"a b"}', "${GREETING:-${USER} was here}"], [], ""],
+	]);
+	assert.deepEqual(read('echo "today: `date`" | head'), [
+		[["echo", "today: `date`"], [], "|"],
+		[["head"], [], ""],
+	]);
+	assert.deepEqual(read("echo `dirname \\`which node\\`` x"), [[["echo", "`dirname \\`which node\\``", "x"], [], ""]]);
+	// A backslash in single quotes is a character; in double quotes it escapes `"`, `\`, `$` and a backtick only.
+	assert.deepEqual(read("tr '\\' '/' < in"), [[["tr", "\\", "/"], ["<in"], ""]]);
+	assert.deepEqual(read('printf "%s\\n" "$TOKEN"'), [[["printf", "%s\\n", "$TOKEN"], [], ""]]);
+	assert.deepEqual(read('echo $"Hello"'), [[["echo", "Hello"], [], ""]]);
+	assert.deepEqual(read("find . -name \\*.env"), [[["find", ".", "-name", "*.env"], [], ""]]);
+	// An expansion that doesn't close inside a quote runs to the end, as the quote does.
+	assert.deepEqual(read('echo "a ${b c" d'), [[["echo", 'a ${b c" d'], [], ""]]);
+	// What a substitution holds doesn't end it: a quoted `<`, a `#` inside a word, a `$`, a subshell in a `case` arm.
+	for (const line of [
+		"t=$(grep '<title>' a.html); cat .env",
+		"n=$(grep -c ^#include main.c); cat .env",
+		"x=$(echo $HOME); cat .env",
+		"x=$(case $1 in a) (cd /tmp && ls);; esac); cat .env",
+	])
+		assert.equal(read(line).length, 2, line);
+	// Blanks are spaces, tabs and a CRLF's carriage return; a comment ends at its line's end.
+	assert.deepEqual(read("cat .env\r\necho\tx # note\ncat a"), [
+		[["cat", ".env"], [], "\n"],
+		[["echo", "x"], [], "\n"],
+		[["cat", "a"], [], ""],
+	]);
+	// A redirection needs no blank before it; `>(…)` and `<(…)` are words, process substitutions.
+	assert.deepEqual(read("cmd | tee >(sha256sum) 2>err>out"), [
+		[["cmd"], [], "|"],
+		[["tee", ">(sha256sum)"], [">err", ">out"], ""],
+	]);
+	assert.ok(printsSecretFile("sort < <(cat .env)"));
+	// A command of redirections alone (`> app.log` empties the file) is a command.
+	assert.deepEqual(read("> app.log"), [[[], [">app.log"], ""]]);
+});
+
+test("with backslashes off (Windows), a backslash is a character in quotes and substitutions too", () => {
+	const win = (line: string) => shellCommands(line, 0, { backslash: false }).map((c) => c.words.map((w) => w.text));
+	assert.deepEqual(win('cd "C:\\Program Files\\" && type .env'), [
+		["cd", "C:\\Program Files\\"],
+		["type", ".env"],
+	]);
+	assert.deepEqual(win("cd \\\ntype .env"), [
+		["cd", "\\"],
+		["type", ".env"],
+	]);
+	assert.deepEqual(win("echo $(dir C:\\) & type .env"), [
+		["echo", "$(dir C:\\)"],
+		["type", ".env"],
+	]);
+	assert.deepEqual(win('echo "C:\\logs\\\nb"'), [["echo", "C:\\logs\\\nb"]]);
+	// (`$'…'` is bash's, and its escapes are read in either dialect.)
+	assert.deepEqual(win("echo $'it\\'s' C:\\x"), [["echo", "it's", "C:\\x"]]);
+});
+
+test("one line read out of other text: a quote on it runs on for four more lines at most", () => {
+	const line = (text: string) => shellCommands(text, 0, { oneLine: true }).map((c) => c.words.map((w) => w.text));
+	assert.deepEqual(line("echo a\necho b"), [["echo", "a"]]);
+	assert.deepEqual(line("echo a\nb\nc\nd\ne"), [["echo", "a"]]);
+	assert.deepEqual(line("echo don't\na\nb\nc\nd\ne\nf'g"), [["echo", "dont\na\nb\nc\nd"]]);
+});
+
+test("groups: case arms, a function's body, closers, and reserved words only unquoted and first", () => {
+	// A pattern's `|` is no pipe, in the first arm and after `;;`; an arm's own pipes are.
+	assert.deepEqual(read("case $1 in start|stop) systemctl $1 app;; esac"), [[["systemctl", "$1", "app"], [], ""]]);
+	assert.deepEqual(read("case $1 in start) run;; stop|kill) halt;; esac"), [
+		[["run"], [], ";"],
+		[["halt"], [], ""],
+	]);
+	for (const arm of ["cd /tmp; ls | wc -l", "echo logged in | wc -l", "echo case x 'in' | wc -l"])
+		assert.equal(read(`case $1 in a) ${arm};; esac`).at(-2)?.[2], "|", arm);
+	assert.equal(read("echo case x in | wc -l")[0][2], "|");
+	// A group's redirection is its commands', `fi`'s too; a function's body is read.
+	const [, inIf] = shellCommands("if a; then b; fi > out");
+	assert.equal(inIf.groups[0].redirects[0].target?.text, "out");
+	assert.deepEqual(read("deploy() { cat .env; }")[1][0], ["cat", ".env"]);
+	// Quoted, or after a redirection, a reserved word is a command's word.
+	for (const line of ["'{' a; '}'", "'!' { a; }", ">x { a; }"]) assert.equal(read(line).length, 2, line);
+	assert.deepEqual(
+		simpleCommand(shellCommands("'do' cat .env")[0].words).map((w) => w.text),
+		["do", "cat", ".env"],
+	);
+});
+
 test("heredocs: quoted delimiters, exact terminators, `<<-` tabs", () => {
 	const [c] = shellCommands("cat > .env <<\\EOF\nA=1\n  EOF\nEOF\necho done");
 	assert.equal(c.heredocs[0].quoted, true);
@@ -41,6 +134,8 @@ test("heredocs: quoted delimiters, exact terminators, `<<-` tabs", () => {
 	);
 	const [d] = shellCommands("tee .env <<-END\n\tA=1\n\tEND\nls");
 	assert.equal(d.heredocs[0].terminated, true);
+	// A second heredoc with the same delimiter ends at its own terminator.
+	assert.deepEqual(read("cat <<EOF\na\nEOF\ncat <<EOF\nb\nEOF\necho x").at(-1), [["echo", "x"], [], ""]);
 });
 
 test("a password's span when quotes or escapes sit inside it", () => {
@@ -59,11 +154,15 @@ test("a password's span when quotes or escapes sit inside it", () => {
 	);
 	const [w] = shellCommands("--password='pw9xQ2'")[0].words;
 	assert.deepEqual(wordSpan(w, 11), { start: 12, end: 18 });
+	// Not the `\`-newline after the quotes; and, for an empty value, nothing at the word's end.
+	assert.deepEqual(wordSpan(shellCommands("a 'Xk9'\"mQ2\"\\\n b")[0].words[1]), { start: 2, end: 12 });
+	assert.deepEqual(wordSpan(shellCommands("a --password=")[0].words[1], 11), { start: 13, end: 13 });
 });
 
 test("commands are read through wrappers, reserved words and revisions", () => {
 	for (const c of [
 		"sudo -u app cat .vault_pass",
+		"sudo --user app cat .vault_pass",
 		"timeout 5 cat .vault_pass",
 		"{ cat .vault_pass; }",
 		"if [ -f .env ]; then cat .env; fi",
@@ -111,6 +210,7 @@ test("what a command line writes into a secret file is read as that file", () =>
 		"cat <<EOF | tee .env\nSTRIPE=Harbor#2291x\nEOF",
 		"cat > .env <<\\EOF\nSTRIPE=Harbor#2291x\nEOF",
 		"cat > .vault_pass <<EOF\n  EOF\nHarbor#2291x\nEOF",
+		"if true; then echo 'Harbor#2291x'; fi > ~/.vault_pass",
 	]) {
 		assert.ok(!r.redact(line).text.includes("Harbor#2291x"), line);
 	}

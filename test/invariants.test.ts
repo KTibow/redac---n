@@ -103,6 +103,13 @@ test("a found value gets one tag in JSON, an env line and a URL", () => {
 	assert.equal(new Set(unknown).size, 1, `tags ${unknown.join(" ")}`);
 });
 
+test("a backslash in a value is read as its quoting reads it: an escape in JSON's, a character in single quotes", () => {
+	const tag = (text: string) => /#([0-9a-f]{6})\]/.exec(r().redact(text).text)?.[1];
+	assert.equal(tag("DB_PASSWORD='Kx9\\!mQ2pLw7v'"), tag('{"password": "Kx9\\\\!mQ2pLw7v"}'));
+	// Unquoted, `\t` is no escape: the value as written is found again.
+	hidden("PASSWORD=Kx9\\tmQ2pLw7v\nlater: Kx9\\tmQ2pLw7v\n", "Kx9\\tmQ2pLw7v");
+});
+
 test("redacting redacted text changes nothing, also for a secret file's placeholders", () => {
 	const R = r();
 	for (const s of [

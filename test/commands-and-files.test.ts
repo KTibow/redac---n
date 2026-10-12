@@ -108,6 +108,17 @@ test("a file that holds only secrets hides a generated token under any name", ()
 	assert.ok(!hides(""));
 });
 
+test("a one-line password file's quotes are the password's unless they are a pair around it", () => {
+	for (const pass of ['"Kx9mQ2pLw7v', "'Kx9'mQ2pLw7v'"])
+		assert.equal(
+			r()
+				.redact(`${pass}\n`, { hint: { command: "cat ~/.vault_pass" } })
+				.text.replace(/#\w+/, "#"),
+			"[REDACTED secret #]\n",
+			pass,
+		);
+});
+
 test("a password file a command names by convention is a secret file", () => {
 	hidden("remote vpn.example\nj.doe\nOvpn-Usr-pw-8Qx3\n", "Ovpn-Usr-pw-8Qx3", {
 		command: "cat vpn/office.ovpn vpn/auth.txt",

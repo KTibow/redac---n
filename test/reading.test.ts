@@ -13,7 +13,7 @@ import { Redactor } from "../src/index.ts";
 import { normalize } from "../src/normalize.ts";
 import { occurrences } from "../src/repeats.ts";
 import { shellCommands, wordSpan } from "../src/shell.ts";
-import { wrapped } from "../src/spans.ts";
+import { covered, merge, toWordEnd, wrapped } from "../src/spans.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 import { assertLinear } from "./timing.ts";
 
@@ -52,7 +52,13 @@ test("parser gaps: $(( subshell, case patterns, reserved words after then/else/!
 });
 
 test(">& and &> send output to a file", () => {
-	for (const c of ["echo $GITHUB_TOKEN >& out.txt", "echo $GITHUB_TOKEN &> out.txt", "echo $GITHUB_TOKEN &>> out.txt"])
+	for (const c of [
+		"echo $GITHUB_TOKEN >& out.txt",
+		"echo $GITHUB_TOKEN &> out.txt",
+		"echo $GITHUB_TOKEN &>> out.txt",
+		"echo $GITHUB_TOKEN 1> out.txt",
+		"echo $GITHUB_TOKEN 1>& out.txt",
+	])
 		assert.ok(!printsSecret(c), c);
 	for (const c of ["echo $GITHUB_TOKEN 2>&1", "echo $GITHUB_TOKEN >&2", "echo $GITHUB_TOKEN 2>/dev/null"])
 		assert.ok(printsSecret(c), c);
@@ -211,6 +217,52 @@ test("wrapped() does not change its input", () => {
 	const copy = { ...f };
 	wrapped(text, [f]);
 	assert.deepEqual(f, copy);
+});
+
+test("a token wraps on to the next line only at a terminal's width, CRLF too, and only a token's rule", () => {
+	const token = `${"Ab1".repeat(19)}a`;
+	const next = `${"Xk9mQ2vLp8".repeat(2)}1`;
+	const f = { start: 22, end: 80, kind: "bearer credential", rule: "structure:authorization", confidence: 0.97 };
+	assert.equal(wrapped(`Authorization: Bearer ${token}\r\n${next}\r\n`, [f])[0].end, 103);
+	assert.equal(wrapped(`Authorization: Bearer ${token}\n${next}\n`, [{ ...f, rule: "named:assign" }])[0].end, 80);
+	// (A token that ends a 40-character line: the line after it is no part of it.)
+	assert.equal(wrapped(`${token.slice(0, 40)}\n${next}\n`, [{ ...f, start: 0, end: 40 }])[0].end, 40);
+});
+
+test("merged findings: a whole line gives way to a sure finding inside it; a value keeps to its span", () => {
+	const at = (start: number, end: number, rule: string, confidence = 0.95, value?: string) => ({
+		start,
+		end,
+		kind: "secret",
+		rule,
+		confidence,
+		...(value === undefined ? {} : { value }),
+	});
+	const spans = (fs: { start: number; end: number }[]) => fs.map((f) => [f.start, f.end]);
+	const line = at(0, 30, "file:whole");
+	// Not to a guess, a repeat or an unsure finding: the line stays whole.
+	for (const inner of [at(8, 30, "unnamed:token"), at(8, 30, "repeat", 0.9), at(8, 30, "named:assign", 0.8)])
+		assert.deepEqual(spans(merge([line, inner])), [[0, 30]], inner.rule);
+	assert.deepEqual(spans(merge([line, at(8, 30, "named:assign")])), [[8, 30]]);
+	// One the same as the line names it; a finding that isn't a whole line keeps its span around a narrower one.
+	assert.equal(merge([line, at(0, 30, "format:GitHub token", 0.9)])[0].rule, "format:GitHub token");
+	assert.deepEqual(spans(merge([at(0, 30, "named:assign"), at(10, 20, "format:x", 0.99)])), [[0, 30]]);
+	// A value is kept only by the span it was read from: on a tie the longer finding's fields win.
+	assert.equal(merge([at(0, 10, "a", 0.95, "Kx9mQ2pLw7"), at(5, 15, "b", 0.5)])[0].value, undefined);
+	assert.equal(merge([at(0, 5, "a", 0.9), at(0, 10, "b", 0.9, "Kx9mQ2pLw7")])[0].value, "Kx9mQ2pLw7");
+	// In text encoded twice, a span right after an escaped backslash takes the pair in (`C:\\nKx82…`).
+	const text = '{"cmd": "C:\\\\nKx82mQ2pLw7vZr9Tq"}';
+	assert.equal(merge([at(13, 31, "named:assign")], text)[0].start, 11);
+	assert.ok(covered(merge([at(0, 10, "a")]), 2, 8));
+	assert.ok(!covered(merge([at(0, 10, "a")]), 5, 15));
+});
+
+test("a long finding a read bound may have cut runs on to its word's end, through PHP's `\\/`", () => {
+	const token = b62(3000);
+	const f = { start: 0, end: 2500, kind: "token", rule: "named:assign", confidence: 0.95 };
+	assert.equal(toWordEnd(`${token}\\/${"Ab1".repeat(4)} next`, f).end, 3014);
+	// One that ends at its closing quote isn't inside a word.
+	assert.equal(toWordEnd(`"${token}"x y`, { ...f, end: 3002 }).end, 3002);
 });
 
 test("a long finding ends at an escape, so escaped JSON around it still parses", () => {

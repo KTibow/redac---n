@@ -201,6 +201,13 @@ test("a DSN password is hidden and an empty one leaves the URL alone", () => {
 	hidden('dsn := "root:Harbor2291x@tcp(127.0.0.1:3306)/db"', "Harbor2291x");
 });
 
+test("a key=value connection string's password ends at the blank before the next key", () => {
+	assert.equal(
+		r().redact('psql "host=db password=Kx9mQ2pLw7v user=app dbname=x"').text.replace(/#\w+/, "#"),
+		'psql "host=db password=[REDACTED password #] user=app dbname=x"',
+	);
+});
+
 test("a ' in a URL's password is the password's, and a quoted URL keeps its closing quote", () => {
 	const line = "postgres://app:Kx9m'Qv2Lp7Rt9@db/app";
 	hidden(line, "Qv2Lp7Rt");

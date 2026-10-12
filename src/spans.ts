@@ -110,7 +110,7 @@ function onEscapes(text: string, f: Finding): Finding {
 	)
 		start -= 2;
 	const e = escapeAt(text, end);
-	if (e && e[0] < end) end = Math.max(start, e[0]);
+	if (e) end = Math.max(start, e[0]);
 	// A token goes on through an escape that spells one of its characters (`…zdp7d\x63` in a shell's `$'…'`).
 	for (let n = 0; n < MAX_SPELLED && end > start && /[\w-]/.test(text[end - 1]); n++) {
 		SPELLED_CHAR.lastIndex = end;
@@ -122,7 +122,7 @@ function onEscapes(text: string, f: Finding): Finding {
 
 /**
  * A whole line taken as a secret (a one-line secret file, a command's printed line) that holds a confident
- * narrower finding (`export TOKEN="ghp_…"`, a URL with a token) gives way to it: the name and URL stay, and the
+ * finding of another rule (`export TOKEN="ghp_…"`, a URL with a token) gives way to it: the name and URL stay, and the
  * placeholder's tag is the secret's own, the same as wherever else it appears.
  */
 function preferNarrower(findings: Finding[]): Finding[] {
@@ -133,9 +133,10 @@ function preferNarrower(findings: Finding[]): Finding[] {
 	const starts = narrow.map((f) => f.start);
 	return findings.filter((w) => {
 		if (!isWholeLine(w.rule)) return true;
-		// (The narrow findings starting inside the line, by binary search; one that ends inside it too and is shorter.)
+		// (The narrow findings starting inside the line, by binary search; one that ends inside it too. One that is the
+		// whole line names it better: `cat .vault_pass` printing a GitHub token.)
 		for (let i = lowerBound(starts, w.start); i < narrow.length && narrow[i].start < w.end; i++) {
-			if (narrow[i].end <= w.end && narrow[i].end - narrow[i].start < w.end - w.start) return false;
+			if (narrow[i].end <= w.end) return false;
 		}
 		return true;
 	});
@@ -176,15 +177,9 @@ const MAY_BE_CUT = UNQUOTED_READ / 2;
  * password at its `@`). (A finding whose recorded value differs from its span, decoded or joined, is left as it is.)
  */
 export function toWordEnd(text: string, f: Finding): Finding {
-	if (
-		f.end - f.start < MAY_BE_CUT ||
-		f.value !== undefined ||
-		f.end >= text.length ||
-		!VALUE_CHAR.test(text[f.end]) ||
-		!VALUE_CHAR.test(text[f.end - 1])
-	)
-		return f;
-	return { ...f, end: wordEnds(text)[f.end] };
+	if (f.end - f.start < MAY_BE_CUT || f.value !== undefined || !VALUE_CHAR.test(text[f.end - 1])) return f;
+	const end = wordEnds(text)[f.end];
+	return end === f.end ? f : { ...f, end };
 }
 
 /**
