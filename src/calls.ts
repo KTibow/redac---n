@@ -166,24 +166,53 @@ function dialect(text: string, quoteAt: number): { escapes: Escapes; multiline: 
 const AFTER_LITERAL =
 	/^[ \t]*(?:[,;)\]}|+&]|#|\/\/|--|\r?\n|$|(?:WHERE|AND|OR|LIMIT|ORDER|GROUP|ON|FROM|SET|VALUES|RETURNING|IS|NOT|ELSE|THEN|END)\b)/i;
 
+/** What ends a shell word's bare characters: a blank, an operator, a bracket that closes what's around the word, a list's comma. */
+const SHELL_WORD_END = /[\s;&|<>()`}\],#]/;
+
+/**
+ * Where the value of the shell word whose single-quoted first piece opens at `at` ends, its pieces run together the
+ * way a shell joins them (`'it'\''s'`, `'Kx9''Qv2'`, `'Kx9'"Qv2"`, a `\` line continuation between two): at its last
+ * piece's closing quote, or after its last bare character. -1 if a single quote is left open on its line, which makes
+ * the line no shell's: `'Kx9\'Qv2 Lp7'` is another language's escape (a single quote escapes nothing in a shell).
+ */
+function shellWordEnd(text: string, at: number, max: number): number {
+	let end = -1;
+	let i = at;
+	while (i < text.length && i - at <= max) {
+		const c = text[i];
+		if (c === "'" || c === '"') {
+			const close = stringEnd(text, i, { escapes: c === "'" ? "none" : "backslash", max: max - (i - at) });
+			if (close < 0) break;
+			end = close;
+			i = close + 1;
+		} else if (c === "\\" && i + 1 < text.length) {
+			// (An escaped character is the word's, `'Kx9'\!`, and an escaped line break joins the next line's pieces on.)
+			end = i += 2;
+		} else if (SHELL_WORD_END.test(c)) break;
+		else end = ++i;
+	}
+	return (text.slice(i, lineEnd(text, i)).match(/'/g)?.length ?? 0) % 2 ? -1 : end;
+}
+
 /**
  * Where the string literal whose opening quote is at `at` closes, read with its syntax's escapes: C#'s `@"…"` doubles
- * a quote, Rust's `r#"…"#` and a shell's single quotes have none, and a single-quoted literal is read both ways a
- * language writes one, a backslash (`'Kx9\'Qv2'`: Python, JS, Ruby, PHP) and a doubled quote (`'Kx9''Qv2'`: YAML,
- * SQL, PowerShell), whichever leaves the line well-formed after it (the longer when both do); otherwise a backslash.
+ * a quote, Rust's `r#"…"#` has none, a shell's single quotes have none and run on into the rest of their word
+ * (shellWordEnd), a template literal has a backslash, and any other is read both ways a language writes one, a
+ * backslash (`'Kx9\'Qv2'`, `"Kx9\"Qv2"`: Python, JS, Ruby, PHP) and a doubled quote (`'Kx9''Qv2'`: YAML, SQL,
+ * PowerShell; `"Kx9""Qv2"`: PowerShell, VB, CSV), whichever leaves the line well-formed after it (the longer when both
+ * do); otherwise a backslash. (A raw string closes at its first quote, as the doubled reading reads it: Rust's
+ * `r"C:\keys\"`. Python's `r"\""`, which keeps its escape, leaves the line well-formed only read with a backslash.)
  */
 export function literalEnd(text: string, at: number, { max = MAX_VALUE, shell = false } = {}): number {
 	const special = dialect(text, at);
 	if (special) return stringEnd(text, at, { ...special, max });
 	const quote = text[at];
-	// (Rust's `r"C:\"` has no escapes, Python's `r"\""` keeps one: the reading that leaves the line well-formed.)
-	if (quote === '"' && /(?<![\w$])r$/.test(text.slice(Math.max(0, at - 2), at))) {
-		const raw = stringEnd(text, at, { escapes: "none", max });
-		if (raw >= 0 && AFTER_LITERAL.test(text.slice(raw + 1, raw + 41))) return raw;
+	if (quote === "'" && shell) {
+		const word = shellWordEnd(text, at, max);
+		if (word >= 0) return word;
 	}
-	if (quote === "'" && shell) return stringEnd(text, at, { escapes: "none", max });
 	const backslash = stringEnd(text, at, { escapes: "backslash", multiline: quote === "`", max });
-	if (quote !== "'") return backslash;
+	if (quote === "`") return backslash;
 	const doubled = stringEnd(text, at, { escapes: "doubled", max });
 	const fits = (close: number) => close >= 0 && AFTER_LITERAL.test(text.slice(close + 1, close + 41));
 	if (fits(backslash) && fits(doubled)) return Math.max(backslash, doubled);
@@ -198,8 +227,11 @@ export function literalEnd(text: string, at: number, { max = MAX_VALUE, shell = 
 const LITERAL_HEAD = new RegExp(
 	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
 );
-/** What may follow a literal and leave it the value: the wrapper's `)`, a conversion (`.to_string()`, `.encode()`). */
-const LITERAL_TAIL = /^(?:[ \t]*\))?(?:\.(?:to_string|into|to_owned|encode|strip)\(\))?[ \t]*$/;
+/**
+ * What may follow a literal and leave it the value: a Rust raw string's closing `#`s, the wrapper's `)`, a conversion
+ * (`.to_string()`, `.encode()`).
+ */
+const LITERAL_TAIL = /^#*(?:[ \t]*\))?(?:\.(?:to_string|into|to_owned|encode|strip)\(\))?[ \t]*$/;
 const KEYWORD = /^([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))/;
 
 export interface LiteralHead {
@@ -232,7 +264,7 @@ function argument(text: string, start: number, end: number): Argument {
 	if (keyword) arg.keyword = keyword[1];
 	const head = literalHead(text, start, { keyword: true });
 	const lit = head && literalOf(text, head);
-	if (lit && lit.end < end && LITERAL_TAIL.test(text.slice(lit.end + 1, end))) arg.literal = lit;
+	if (lit && LITERAL_TAIL.test(text.slice(lit.end + 1, end))) arg.literal = lit;
 	return arg;
 }
 

@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { callArguments } from "../src/calls.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("adjacent string literals are one value in code, but a log's quoted fields stay apart", () => {
@@ -51,9 +52,64 @@ test("a literal with a prefix, triple quotes, a doubled quote or an escape is re
 		"$Password = 'Kx9m''Qv2Lp7Rt'",
 		"INSERT INTO users (email, password) VALUES ('ann@x.io', 'Kx9m''Qv2Lp7Rt');",
 		"password = 'Kx9m\\'Qv2Lp7Rt'",
+		'$Password = "Kx9m""Qv2Lp7Rt"',
+		'Dim password As String = "Kx9m""Qv2Lp7Rt"',
 	])
 		hidden(line, "Qv2Lp7Rt");
 	hidden("UPDATE users SET password='Kx9m''Qv2Lp7Rt' WHERE id=1;", "Qv2Lp7Rt");
+});
+
+test("a shell's quoted pieces of one word are one value", () => {
+	for (const line of [
+		"export PGPASSWORD='Kx9m'\\''Qv2Lp7Rt'",
+		"PGPASSWORD='Kx9m''Qv2Lp7Rt' psql -h db",
+		"PGPASSWORD='Kx9m'\"Qv2;Lp7Rt\" psql -h db",
+		"API_KEY='9b1d290ea99f6789'\\\n'Qv2Lp7Rt33426eb2'",
+		"PASSWORD='Kx9m\\'Qv2 Lp7Rt'",
+		"PGPASSWORD='Kx9m'Qv2Lp7Rt psql -h db",
+	])
+		hidden(line, "Lp7Rt");
+	kept("PGPASSWORD='Kx9m'Qv2Lp7Rt;psql -h db", ";psql");
+	hidden("export PGPASSWORD='Kx9mQv2Lp7'\\!", "\\!");
+	// (A line continuation after the word is the command's, not the value's.)
+	kept("PGPASSWORD='Kx9mQv2Lp7Rt'\\\n  psql -h db", "'\\\n  psql");
+});
+
+test("a call's arguments are split at its commas, past the strings, comments and brackets inside them", () => {
+	const args = (call: string) => callArguments(call, call.indexOf("(") + 1)?.map((a) => a.literal?.value ?? a.text);
+	assert.deepEqual(
+		args(
+			'psycopg2.connect(\n    host="db.internal",  # the replicas\' primary, for now\n    timeout=total / (2 * retries),\n    password="Kx9mQv2Lp7Rt",\n)',
+		),
+		["db.internal", "timeout=total / (2 * retries)", "Kx9mQv2Lp7Rt"],
+	);
+	assert.deepEqual(args("db.connect(this.#password, opts)"), ["this.#password", "opts"]);
+	// (Python's floor division, read as a `//` comment, leaves the call unclosed.)
+	assert.deepEqual(args("connect(host, port=total // 2)"), ["host", "port=total // 2"]);
+	assert.deepEqual(args("connect(host, total / 2) /* see INC-42 */"), ["host", "total / 2"]);
+	assert.deepEqual(args("mysql_real_connect(conn, host, /* 1) the replica, or */ user, port / 2, /* the port */ 0)"), [
+		"conn",
+		"host",
+		"user",
+		"port / 2",
+		"0",
+	]);
+	assert.deepEqual(args("fetch(`${base}/login, then`, [1, 2], {c: 3, d: 4})"), [
+		"${base}/login, then",
+		"[1, 2]",
+		"{c: 3, d: 4}",
+	]);
+	assert.deepEqual(args('client := New(\n\t"Kx9mQv2Lp7Rt",\r\n\tport,\n)'), ["Kx9mQv2Lp7Rt", "port"]);
+	assert.deepEqual(args('new SqlConnection(@"Server=db;\n    Password=Kx9""mQv2;", opts)'), [
+		'Server=db;\n    Password=Kx9""mQv2;',
+		"opts",
+	]);
+	assert.deepEqual(args('conn.query(r#"\n  SELECT 1\n"#, pw)'), ["\n  SELECT 1\n", "pw"]);
+	assert.deepEqual(args('Path::new(r"C:\\keys\\", mode)'), ["C:\\keys\\", "mode"]);
+	assert.deepEqual(args('items.join("\\", \\"", sep)'), ['\\", \\"', "sep"]);
+	assert.deepEqual(args("s.replace('\\'', '\"')"), ["\\'", '"']);
+	// A string that doesn't close, or a bracket that closes what didn't open, leaves no call.
+	for (const call of ['connect("db.internal, password)', "connect(host, port]"]) assert.equal(args(call), undefined);
 });
 
 test("SQL that sets a password hides the literal and keeps a password hash", () => {
