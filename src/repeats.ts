@@ -41,9 +41,12 @@ export function repeatable(text: string, found: Finding[]): Map<string, Remember
 		if (isBenignValue(v)) continue;
 		const remembered = { kind: f.kind, value: v, ...(isGuess(f.rule) ? { guess: true } : {}) };
 		values.set(v, remembered);
-		// (As it is written here too, when that's another form of it: `Delta2018%26` in a URL, `Delta2018&` in prose.)
-		const raw = text.slice(f.start, f.end);
-		if (raw !== v && /^[!-~]{8,}$/.test(v)) values.set(raw, remembered);
+		// (As it is written here too, when that's another form of it, and as a URL writes it: `Delta2018%26` in a URL,
+		// `Delta2018&` in prose, and the other way round. Only for 8 or more printable characters and no blank: half a
+		// surrogate pair has no URL form.)
+		if (/^[!-~]{8,}$/.test(v))
+			for (const form of [text.slice(f.start, f.end), encodeURIComponent(v)])
+				if (form !== v) values.set(form, remembered);
 	}
 	return values;
 }

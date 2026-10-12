@@ -218,6 +218,14 @@ test("known-value scan finds overlapping occurrences like the automaton", () => 
 	);
 });
 
+test("a known value is found as a whole token outside the findings, not as the start or end of a longer one", () => {
+	const v = "Kx9mQv2Lp7Rt";
+	const text = `${v} x${v} ${v}9 (${v}) ${v}`;
+	const found = [{ start: text.length - v.length, end: text.length, kind: "secret", rule: "known", confidence: 1 }];
+	const scan = occurrences(text, new Map([[v, { kind: "secret", value: v }]]), found).map((f) => f.start);
+	assert.deepEqual(scan, [0, text.indexOf(`(${v}`) + 1]);
+});
+
 test("a secret in a placeholder's kind slot is not trusted", () => {
 	hidden("export KEY=[REDACTED sk\x5flive_4eC39HqLyjWDarjtT1zdp7dc #abcdef]", "4eC39HqLyjWDarjtT1zdp7dc");
 	const once = r().redact('password = "xK9mQ2vLp8ZrT4wYc7NbE3sD"').text;
@@ -340,6 +348,25 @@ test("every repeat of 100 passwords in a long text is found", () => {
 		values.map((v) => `connected using ${v} ok`).join("\n");
 	const out = r().redact(long).text;
 	assert.equal(values.filter((v) => out.includes(v)).length, 0);
+});
+
+test("a value found once is hidden where it's written again, percent-encoded too; a guessed hash or a date isn't", () => {
+	// A secret file's token shaped like a commit, echoed by a script; a password in a form body and a URL path.
+	const token = "3f9a2c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39";
+	hidden(`$ cat .env\nDEPLOY_TOKEN=${token}\n$ ./deploy.sh\nauthenticating deploy-bot (${token})`, token);
+	for (const use of [
+		'curl -s -d "u=app&p=Wq8%23zLp2%2FvRk" http://localhost:8080/session',
+		"sent: /connect/app/Wq8%23zLp2%2FvRk/db",
+	])
+		hidden(`export DB_PASSWORD='Wq8#zLp2/vRk'\n${use}`, "Wq8%23zLp2%2FvRk");
+	// (One holding half a surrogate pair, as a transcript cut mid-character has, has no URL form: only it is hidden.)
+	const cut = "Kx9mQ\uD83Dv2Lp7Rt";
+	kept(`DB_PASSWORD=${cut}\nagain ${cut}`, "again");
+	hidden(`DB_PASSWORD=${cut}\nagain ${cut}`, cut);
+	// A guess at a value shaped like a commit spreads to no commit line; a password that is a date, to no other date.
+	const sha = "9fceb02d0ae598e95dc970b74767f19372d61af8";
+	kept(`KEY=${sha}\ncommit ${sha}`, `commit ${sha}`);
+	kept("DB_PASSWORD=21.05.1987\nmigrations applied on 21.05.1987", "on 21.05.1987");
 });
 
 test("a multi-line known value makes only its random lines known", () => {
