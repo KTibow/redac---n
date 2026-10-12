@@ -157,3 +157,34 @@ test("a numbered diff's hunk markers are read past the numbers", () => {
 		"Maple2021*",
 	);
 });
+
+test("a Markdown table's cell is read under its column or a name before it, not under a description", () => {
+	hidden("| Password |\n|----------|\n| Kq8wZ3nB5vXcT |", "Kq8wZ3nB5vXcT");
+	hidden("| Postgres | DB_PASSWORD | correct horse battery staple |", "battery staple");
+	hidden(
+		"| Name | Value | Env |\n|---|---|---|\n| `DB_PASSWORD` | correct horse battery staple | prod |",
+		"battery staple",
+	);
+	kept(
+		'| Parameter | Description | Default |\n|---|---|---|\n| `auth.password` | Redis password, 16+ chars | `""` |',
+		"Redis password, 16+ chars",
+	);
+	// A line with bars in it is no row without a bar to start it or a header above.
+	kept("const FIELDS = 'username|password|otp_code_v2';", "otp_code_v2");
+});
+
+test("mysql's tables printed one after another are each read under their own header", () => {
+	const t = [
+		"+----+",
+		"| id |",
+		"+----+",
+		"|  1 |",
+		"+----+",
+		"+------+-------------------+",
+		"| user | password          |",
+		"+------+-------------------+",
+		"| bob  | violet.indigo9079 |",
+		"+------+-------------------+",
+	].join("\n");
+	hidden(t, "violet.indigo9079");
+});

@@ -1232,7 +1232,7 @@ function isForeignPassword(v: string): boolean {
  * `密码错误，还剩%d次机会`, `は変更して下さい。`), unless it is a password in that script. Mostly in that script, or
  * mixed with Latin words and no digit (`パスワード/Password`, `【tomcat-users.xmlで設定したパスワード】`).
  */
-export function isForeignText(v: string): boolean {
+function isForeignText(v: string): boolean {
 	const foreign = v.match(/(?!\p{Script=Latin})\p{L}/gu)?.length ?? 0;
 	// (Mixed with Latin: no digit, and each long Latin run a word, not random letters among the foreign ones.)
 	const latinWords = !/\d/.test(v) && (v.match(/\p{Script=Latin}{5,}/gu) ?? []).every((run) => naturalness(run) > 0.3);

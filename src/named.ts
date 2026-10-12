@@ -69,7 +69,6 @@ import {
 	ALGORITHM,
 	CJK_COUNT,
 	isBenignValue,
-	isForeignText,
 	characterClasses,
 	isRandomToken,
 	COMMON_WORDS,
@@ -1497,6 +1496,12 @@ function diffArrows(text: string, out: Finding[]) {
 		namedValue(out, m[1], group(m, 4), "named:diff-arrow");
 }
 
+/**
+ * The fields a mark reaches into: a sensitive value's own, a Terraform state's resources and a plan's changes (`before`,
+ * `after`). Not a state's `sensitive_attributes`, the paths of its secrets: `{"type": "get_attr", "value": "result"}`.
+ */
+const MARKED_FIELDS = /^(?:value|outputs|resources|instances|attributes|values|change|before|after)$/;
+
 /** A value key in JSON, quoted: what jsonValues needs in a text to have anything to read. */
 const PAIR_VALUE_KEY = new RegExp(`"${PAIR_VALUE.source.slice(1, -1)}"`, "i");
 
@@ -1531,7 +1536,7 @@ function jsonValues(text: string, out: Finding[]) {
 						(marked && looksSecret(quoted, true))
 					)
 						namedFinding(out, x.start, x.end, sibling?.value ?? "secret", "named:json-sibling", 0.95);
-				} else walk(x, marked && /^(value|outputs|resources|instances|attributes|values)$/.test(k));
+				} else walk(x, marked && MARKED_FIELDS.test(k));
 			}
 		};
 		walk(doc, false);
@@ -1567,14 +1572,13 @@ function setterCalls(text: string, out: Finding[]) {
 		// (`pass` alone is the verb: picobox's `@box.pass_("database_session")`. A hasher's name says what it's given, though
 		// it reads as a hash's: `password_hash`.)
 		if (!hasher && (!isCredentialName(callee) || /^pass_*$/i.test(callee))) continue;
-		// (With keyword arguments the call names its slots: only one named for a credential, `password="…"`, is read; and a
-		// hasher's first argument, whatever follows it, `generate_password_hash("…", method="scrypt")`.)
-		if (args.some((a) => a.keyword)) {
-			for (const a of args)
-				if (a.keyword && a.literal && isCredentialName(a.keyword))
-					namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
-			if (!hasher?.[1]) continue;
-		}
+		// (A keyword argument named for a credential, `password="…"`, or for the value the call sets, prefect's
+		// `Secret(value="…")`, is the secret's slot, and the positional arguments are then a service's and a user's; a
+		// hasher's first argument is read all the same, `make_password("…", salt="…")`. Other keywords are options:
+		// `set_password("…", commit=True)` is given its secret first.)
+		const slots = args.filter((a) => a.keyword && (isCredentialName(a.keyword) || a.keyword === "value"));
+		for (const a of slots) if (a.literal) namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
+		if (slots.length && !hasher?.[1]) continue;
 		// The secret is the last argument, after a service and a user (`keyring.set_password("pgcli", key, passwd)` passes
 		// a variable); flags after it don't count (`setPassword("…", true)`). A credentials call takes a user, then the
 		// secret: `setCredentials("admin", "…", "realm")`.
@@ -1667,12 +1671,14 @@ function pairCalls(text: string, out: Finding[]) {
 	for (const { match, args } of calls(text, PAIR_CALL)) {
 		const name = args[0]?.literal?.value ?? "";
 		const value = args[1]?.literal;
-		if (!value || !/^[A-Za-z_][\w.{}$-]{1,200}$/.test(name)) continue;
+		// (The name is a setting's, words joined by `.`, `_`, `-` or `:`, `nconf.set('database:password', …)`; not a route,
+		// `$router->get('/oauth/token', 'OAuth2Controller@token')`, nor a sentence.)
+		if (!value || !/^[A-Za-z_][\w.:{}$-]{1,200}$/.test(name)) continue;
 		// A cookie set by name, `res.append('Set-Cookie', 'theme=dark')`, holds a secret only as a session's cookie,
 		// which the structure layer reads as cookies are read.
 		if (/^(?:set-)?cookie$/i.test(name)) continue;
 		// WordPress's keys and salts: 64 generated characters, spaces among them (`define('AUTH_SALT', 'k%Y …')`).
-		if (/^define/.test(match[0]) && (isCredentialName(name) || /_SALT$/.test(name)) && isWordpressKey(value.value)) {
+		if (/^define/.test(match[0]) && isCredentialName(name) && isWordpressKey(value.value)) {
 			namedFinding(out, value.start, value.end, name, "named:define");
 			continue;
 		}
@@ -1682,13 +1688,12 @@ function pairCalls(text: string, out: Finding[]) {
 	}
 }
 
-/** A WordPress key or salt as its generator makes them: 32+ characters of three or more classes, not the sample text. */
+/**
+ * A WordPress key or salt as its generator makes them: 32+ characters of three or more classes. (Not the sample's `put
+ * your unique phrase here`, nor a cache's prefix, `WP_CACHE_KEY_SALT`'s `mysite_production_object_cache_v2`.)
+ */
 function isWordpressKey(value: string): boolean {
-	return (
-		value.length >= 32 &&
-		[/[a-z]/, /[A-Z]/, /\d/, /[^\w\s]/].filter((r) => r.test(value)).length >= 3 &&
-		!/put your unique phrase here/i.test(value)
-	);
+	return value.length >= 32 && [/[a-z]/, /[A-Z]/, /\d/, /[^\w\s]/].filter((r) => r.test(value)).length >= 3;
 }
 
 /**
@@ -1737,10 +1742,10 @@ function formFills(text: string, out: Finding[]) {
 	if (!/\.(?:fill|type|send_keys|sendKeys|setValue|pressSequentially)\(/.test(text)) return;
 	const fill = (selector: string | undefined, value: Literal | undefined) => {
 		const name = selector === undefined ? undefined : fieldName(selector);
+		if (!name || !value || !isCredentialName(name)) return;
 		// (Cypress's key sequences, `{selectall}{backspace}`, are keystrokes, not text.)
-		const typed = value?.value.replace(/\{[a-z]+\}/gi, "");
-		if (!name || !value || !typed || !isCredentialName(name) || !isNamedSecret(name, `"${typed}"`, true)) return;
-		namedFinding(out, value.start, value.end, name, "named:form-fill");
+		if (isNamedSecret(name, `"${value.value.replace(/\{[a-z]+\}/gi, "")}"`, true))
+			namedFinding(out, value.start, value.end, name, "named:form-fill");
 	};
 	for (const { args } of calls(text, /\.(?:fill|type)\(/g))
 		if (args.length === 2) fill(args[0].literal?.value, args[1].literal);
@@ -1807,7 +1812,6 @@ function pipeTables(text: string, out: Finding[]) {
 			continue;
 		}
 		let cells = pipeCells(line, starts[i]);
-		if (cells.length < 2) continue;
 		// A table starts at a row a rule follows: its header. Its rows run to a line without a bar, whatever their
 		// cell count (a value may hold a `|`). (In a table with a header, a rule with no row after it closes the table:
 		// mysql's last `+----+`.)
@@ -1853,8 +1857,9 @@ function alignedCells(line: string, offset: number, bars: number[]): Cell[] {
 	const edges = [-1, ...bars, line.length];
 	for (let k = 0; k + 1 < edges.length; k++) {
 		const raw = line.slice(edges[k] + 1, edges[k + 1]);
-		// (Outside the outer bars of a `+----+` table there is nothing.)
-		if ((k === 0 && edges[1] === 0) || (k === edges.length - 2 && edges[k] >= line.length - 1 && !raw.trim())) continue;
+		// (Before the outer bar of a `+----+` table there is nothing, and a cell there would shift every column; the empty
+		// one after the last bar shifts none.)
+		if (k === 0 && edges[1] === 0) continue;
 		const value = raw.trim();
 		const start = offset + edges[k] + 1 + raw.indexOf(value);
 		cells.push({ text: value, start, end: start + value.length });
@@ -1923,7 +1928,7 @@ const CJK_SCRIPTS = String.raw`[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Ha
 /** Credential labels in other languages: 密码, パスワード, 비밀번호, пароль, contraseña, mot de passe, Passwort, … */
 // Labels in alphabets written with spaces start a word (`enclave` isn't `clave`); CJK labels follow other characters directly.
 const FOREIGN = new RegExp(
-	String.raw`(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？）]`, 4, String.raw`[\s"'」，。、；！？）]|${CJK_SCRIPTS}|$`)}`,
+	String.raw`(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？（）]`, 4, String.raw`[\s"'」，。、；！？（）]|${CJK_SCRIPTS}|$`)}`,
 	"dgiu",
 );
 /**
@@ -1932,7 +1937,7 @@ const FOREIGN = new RegExp(
  * may stand between the name and the verb (`du service`, `für den Dienst`, `actuel`).
  */
 const FOREIGN_COPULA = new RegExp(
-	String.raw`(?:(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])(${COPULA_LABELS}|[A-Za-z][A-Za-z0-9]*[_-][\w.-]{1,60}|[A-Z][A-Z0-9]{2,60})((?:[ \t]+(?!(?:${COPULAS})[ \t])[\p{L}][\p{L}'-]{0,20}){0,3})(?:[ \t]+(?:${COPULAS}|—|–)|[ \t]*(?:${CJK_COPULAS}))|(密码|口令|密碼|密钥|令牌|パスワード|トークン|비밀번호|암호)()[ \t]*(?:是|为|為|は|는|은|이|가))[ \t]*[:：]?[ \t]*(["'「『*\x60]{0,2})${unquotedValue(String.raw`[^\s"'」』，。、；！？）*\x60]`, 4, String.raw`\5?(?:[\s"'」』，。、；！？）*\x60]|[.,;!?](?:\s|$)|${CJK_SCRIPTS}|$)`)}\5?`,
+	String.raw`(?:(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])(${COPULA_LABELS}|[A-Za-z][A-Za-z0-9]*[_-][\w.-]{1,60}|[A-Z][A-Z0-9]{2,60})((?:[ \t]+(?!(?:${COPULAS})[ \t])[\p{L}][\p{L}'-]{0,20}){0,3})(?:[ \t]+(?:${COPULAS}|—|–)|[ \t]*(?:${CJK_COPULAS}))|(密码|口令|密碼|密钥|令牌|パスワード|トークン|비밀번호|암호)()[ \t]*(?:是|为|為|は|는|은|이|가))[ \t]*[:：]?[ \t]*(["'「『*\x60]{0,2})${unquotedValue(String.raw`[^\s"'」』，。、；！？（）*\x60]`, 4, String.raw`\5?(?:[\s"'」』，。、；！？（）*\x60]|[.,;!?](?:\s|$)|${CJK_SCRIPTS}|$)`)}\5?`,
 	"dgu",
 );
 const FOREIGN_WORDS = new RegExp(
@@ -1944,21 +1949,30 @@ const FOREIGN_PREFILTER = new RegExp(
 	`${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS, "키", "秘钥", "キー", "clé", "schlüssel", "chave", CJK_COPULAS, "이", "가"].join("|")}|(?<!\\p{L})(?:${COPULAS})(?!\\p{L})|[—–]`,
 	"iu",
 );
+/**
+ * Whether the value at `text[start, end)` runs on into a counter's word, its digits the count, as a sentence's
+ * requirement does (`パスワード：英数字8文字以上`); not a count the sentence goes on to (`密码是 Xk9#mQ2p，共8位`).
+ * (`春天4698@です` is a password.)
+ */
+function runsIntoCount(text: string, start: number, end: number): boolean {
+	const count = CJK_COUNT.exec(text.slice(start, end + 4));
+	return count !== null && count.index < end - start;
+}
+
 function foreignLabels(text: string, out: Finding[]) {
 	// (The labels' words, or a copula after an English name: what FOREIGN and FOREIGN_COPULA need to match at all.)
 	if (!FOREIGN_PREFILTER.test(text)) return;
 	for (const m of text.matchAll(FOREIGN)) {
 		const value = withoutUnopenedClosers(m[2]);
-		// (A value running on into a counter's word is the sentence's: `パスワード：英数字8文字以上`; `春天4698@です` is a password.)
-		const end = m.indices![2]![0] + value.length;
+		const start = m.indices![2]![0];
 		if (
 			!isProseValue(value) ||
 			isCode(value, true) ||
 			/^\d+(?:-\d+)?$/.test(value) ||
-			CJK_COUNT.test(value + text.slice(end, end + 4))
+			runsIntoCount(text, start, start + value.length)
 		)
 			continue;
-		namedFinding(out, m.indices![2]![0], m.indices![2]![0] + value.length, "password", "named:foreign-label", 0.9);
+		namedFinding(out, start, start + value.length, "password", "named:foreign-label", 0.9);
 	}
 	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`.
 	for (const m of text.matchAll(
@@ -1977,14 +1991,14 @@ function foreignLabels(text: string, out: Finding[]) {
 	for (const m of text.matchAll(FOREIGN_COPULA)) {
 		const name = m[1] ?? m[3];
 		const value = withoutUnopenedClosers(m[6]);
-		// An English-looking name must be a credential's (`DATADOG_API_KEY`, `access_token`), and a sentence in English is prose's.
+		// An English-looking name must be a credential's (`DATADOG_API_KEY`, `access_token`).
 		const foreign = m[3] !== undefined || FOREIGN_WORDS.test(name);
 		const copula = m[0]
 			.slice((m[1] ?? m[3]).length + (m[2] ?? "").length)
 			.trim()
 			.split(/[ \t]/)[0];
-		if (!foreign && (!isCredentialName(name) || /^(?:is|on)$/i.test(copula))) continue;
-		// (Dutch `is` and Finnish `on` only after their own labels.)
+		if (!foreign && !isCredentialName(name)) continue;
+		// (Dutch `is` and Finnish `on` only after their own labels: a sentence in English is prose's.)
 		if (/^(?:is|on)$/i.test(copula) && !/^(?:wachtwoord|salasana)$/i.test(name)) continue;
 		// A dash after an English name documents the variable: `- SMTP_PASSWORD — app-specific password`.
 		if (
@@ -1997,16 +2011,15 @@ function foreignLabels(text: string, out: Finding[]) {
 		// Judged as a password (or, under a word that also means "key" in general, as a generated key), and
 		// not when a word for "public" stands beside the name (`la clave pública es …`, `публичный ключ — …`),
 		// nor a URL, a version, or a value in the sentence's own language (`8-stellig`, `2FA-geschützt`, `英数字8`); a
-		// password in another script is one (`さくら3594@`, isForeignText).
+		// password in another script is one (`さくら3594@`), text in it isn't (isForeignText, looksSecret's).
 		const start = m.indices![6]![0];
 		const end = start + value.length;
 		const around = text.slice(Math.max(0, m.index - 20), start);
-		const nonLatin = /(?!\p{Script=Latin})\p{L}/u.test(value);
 		if (
 			/p[uú]blic|öffentlich|публичн|открыт|公开|公開|공개|pubblic/i.test(around) ||
 			/^https?:\/\//.test(value) ||
-			(/[^\x00-\x7f]/.test(value) && (!nonLatin || isForeignText(value))) ||
-			CJK_COUNT.test(value + text.slice(end, end + 4)) ||
+			(/[^\x00-\x7f]/.test(value) && !/(?!\p{Script=Latin})\p{L}/u.test(value)) ||
+			runsIntoCount(text, start, end) ||
 			/^v?\d+(?:\.\d+)+$/.test(value)
 		)
 			continue;
@@ -2213,8 +2226,9 @@ function userPassProse(text: string, out: Finding[]) {
 		// (A module path's segment and its version, go.sum's `…/credentials v1.20.6/go.mod`, are no user and password.)
 		if (!isProseValue(pw) || /^\d+$/.test(pw) || /^(?:https?|www)\b/.test(pw) || /^v?\d+(?:\.\d+)+/.test(m[1]))
 			continue;
-		// `login page / dashboard`, `account settings/billing`: words, not a password.
-		if (/^\p{L}+$/u.test(pw) && naturalness(pw) > 0) continue;
+		// `login page / dashboard`, `account settings/billing`: words, not a password. (Read in one case: each break of
+		// `QwZxKvBnMp` would score as a camelCase word's start.)
+		if (/^\p{L}+$/u.test(pw) && naturalness(pw.toLowerCase()) > 0) continue;
 		namedFinding(out, m.indices![2]![0], m.indices![2]![1], "password", "named:prose-pair", 0.85);
 	}
 }

@@ -204,3 +204,27 @@ test("a note after 'password' in another language, and a sentence before an esca
 	hidden('"Zadejte heslo (Pivo2024!)"', "Pivo2024!");
 	hidden('"The password is Hx7mQ2pL9vRt4\\nNext line"', "Hx7mQ2pL9vRt4");
 });
+
+test("a password stated in Dutch, Finnish or Chinese is hidden, a count after it too; what a sentence says of one is kept", () => {
+	hidden("Het wachtwoord van de server is Tr0ub4dor-77", "Tr0ub4dor-77");
+	hidden("Palvelimen salasana on Tr0ub4dor-77", "Tr0ub4dor-77");
+	hidden("密码是 Xk9#mQ2p，共8位", "Xk9#mQ2p");
+	hidden("初始密码为 Abc12345（8位）", "Abc12345");
+	hidden("密码：Kx9mQ2pL，共8位", "Kx9mQ2pL");
+	hidden("初始密码：Abc12345（8位）", "Abc12345");
+	for (const t of [
+		"パスワード：英数字8文字以上",
+		"das Passwort ist Pflicht",
+		"der DB_PASSWORD ist 2FA-geschützt",
+		"- SMTP_PASSWORD – generated-by-ci",
+		"mot de passe: process.env.DB_PASSWORD",
+		"| API 키 | ${KAKAO_REST_KEY} |",
+		"| 密钥 | your-secret-key-here |",
+	])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("a user and a password after a slash in prose: random letters are a password, words a page's path", () => {
+	hidden("wifi: guest / QwZxKvBnMp", "QwZxKvBnMp");
+	kept("open the account settings/billing page", "settings/billing");
+});

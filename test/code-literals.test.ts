@@ -230,3 +230,74 @@ test("a plain string in a lookup fallback or a set command is kept", () => {
 		assert.equal(r().redact(t).text, t);
 	kept('set name to "hello world"', "hello world");
 });
+
+test("a setter's keyword argument named for the secret is read; other keywords leave its positional secret read", () => {
+	hidden('user.set_password("Kq8wZ3nB5vXcT", commit=True)', "Kq8wZ3nB5vXcT");
+	hidden('Secret(value="Kq8wZ3nB5vXcT").save("loader-password", overwrite=True)', "Kq8wZ3nB5vXcT");
+	// A credentials call given one argument is given the secret; with a user first, the second.
+	hidden('creds = Credentials("Kq8wZ3nB5vXcT")', "Kq8wZ3nB5vXcT");
+	hidden('client.setCredentials("admin", "Kq8wZ3nB5vXcT", "realm")', "Kq8wZ3nB5vXcT");
+	// The secret's slot named, the positional arguments are the service and the user.
+	kept('keyring.set_password("myapp", "deploy-bot-7", password=pw)', "deploy-bot-7");
+});
+
+test("a connect or login call's password is read at its place, not a page object's argument there", () => {
+	hidden('server.login("bob@example.com", "violet.indigo9079")', "violet.indigo9079");
+	kept('page.login("https://app.example.com/login", "qa_admin_02", pw)', "qa_admin_02");
+	kept('$link = mysqli_connect(hostname: "db.internal", username: "app", database: "shop_prod_eu");', "shop_prod_eu");
+});
+
+test("a setting set by name: a config path's colons are a name's, a route's slashes are not", () => {
+	hidden("nconf.set('database:password', 'violet.indigo9079');", "violet.indigo9079");
+	kept("$router->get('/oauth/token', 'OAuth2Controller@token');", "OAuth2Controller@token");
+});
+
+test("WordPress's generated keys and salts are hidden; the sample phrase and a cache's prefix are kept", () => {
+	const key = "L|Dq8~z;(3fT]j?-Kf%Gz*w9 nN,%2hP)A>e4X~!b+H{qo-Y 7vR#mTl^sW&:Z1";
+	hidden(`define('AUTH_SALT',        '${key}');`, key);
+	kept("define( 'AUTH_KEY', 'put your unique phrase here' );", "put your unique phrase here");
+	kept("define('WP_CACHE_KEY_SALT', 'mysite_production_object_cache_v2');", "mysite_production_object_cache_v2");
+});
+
+test("a credential compared with a literal, by its method or an operator, is hidden; its type is not", () => {
+	hidden('if (password.equals("violet.indigo9079")) {', "violet.indigo9079");
+	hidden('if (password !== "violet.indigo9079") throw new Error("denied");', "violet.indigo9079");
+	kept("if (typeof password === 'function') password = password();", "'function'");
+	// A form's other fields are filled with what they name.
+	kept("await page.fill('#username', 'qa-user-7Xk2');", "qa-user-7Xk2");
+});
+
+test("a conditional in code that a JSON string holds is read once decoded, not across the string's end", () => {
+	kept('{"cmd": "pw = ready ? \\"a\\" : y", "user": "deploy-bot42"}', "deploy-bot42");
+});
+
+test("Terraform's and JSON's values: a block's own attributes, a pair's sibling name, what a sensitive mark reaches", () => {
+	hidden(
+		'variable "db_password" {\n  description = <<EOT\nGive it as {user}:{password, or {token\nEOT\n  default = "Kq8wZ3nB5vXcT"\n}',
+		"Kq8wZ3nB5vXcT",
+	);
+	// (The pair's name is its string sibling, not the number before it.)
+	const pair = '{"id": 17, "name": "DB_PASSWORD", "value": "violet.indigo9079"}';
+	hidden(pair, "violet.indigo9079");
+	kept(pair, '"name": "DB_PASSWORD"');
+	// A sensitive value that is JSON is read by its own names; a word marked sensitive is still a word.
+	kept(
+		'{"sensitive": true, "value": "{\\"username\\": \\"admin\\", \\"password\\": \\"Kq8wZ3nB5vXcT\\"}"}',
+		'\\"username\\": \\"admin\\"',
+	);
+	kept('{"sensitive": true, "type": "string", "value": "postgres"}', "postgres");
+	// A state's secret is hidden and the paths it lists as sensitive kept; a plan's change holds the secret too.
+	const state =
+		'{"type": "random_password", "instances": [{"attributes": {"result": "Hx7mQ2pL9vRt4wZk"}, "sensitive_attributes": [[{"type": "get_attr", "value": "override_special_chars"}]]}]}';
+	hidden(state, "Hx7mQ2pL9vRt4wZk");
+	kept(state, "override_special_chars");
+	hidden(
+		'{"resource_changes": [{"type": "random_password", "change": {"actions": ["delete"], "before": {"length": 12, "result": "tango-Panda-9945"}, "after": null}}]}',
+		"tango-Panda-9945",
+	);
+});
+
+test("a Go import block ends at its `)`, and Python's `import (` within a line opens none", () => {
+	hidden('import (\n\t"fmt"\n)\nstorePassword "violet.indigo9079";', "violet.indigo9079");
+	hidden('from app.models import (User, Token)\nstorePassword "violet.indigo9079";', "violet.indigo9079");
+});
