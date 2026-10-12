@@ -11,7 +11,7 @@
  * bash rejects such a line, and what follows it is not a command of its own.
  */
 import { lookup } from "./lookup.ts";
-import { lastText, lowerBound } from "./lines.ts";
+import { lastText, lineEnd, lowerBound } from "./lines.ts";
 import { UNQUOTED_READ } from "./syntax.ts";
 
 export interface ShellWord {
@@ -505,10 +505,12 @@ export function shellCommands(
 			continue;
 		}
 		if (c === "\n") {
+			// (A line that ends in `|`, `&&` or `||` goes on to the next: `echo "$PW" |` then `  docker login --password-stdin`.)
+			const continued = !words.length && !redirects.length && /^(?:\||\|&|&&|\|\|)$/.test(out.at(-1)?.then ?? "");
 			end("\n", i);
 			i = heredocBodies(i + 1);
 			start = i;
-			if (oneLine) break;
+			if (oneLine && !continued) break;
 			continue;
 		}
 		// `<(…)` and `>(…)` are words: process substitutions.
@@ -537,7 +539,9 @@ export function shellCommands(
 			const from = i;
 			i += redirect[0].length;
 			while (text[i] === " " || text[i] === "\t") i++;
-			const target = i < limit && !/[\r\n;&|()<>]/.test(text[i]) ? readWord() : undefined;
+			// (A process substitution is a target too, a file its command writes or reads: `tee out.log < <(cat .env)`.)
+			const target =
+				i < limit && (!/[\r\n;&|()<>]/.test(text[i]) || /^[<>]\(/.test(text.slice(i, i + 2))) ? readWord() : undefined;
 			const fd = /^\d+/.exec(redirect[0])?.[0];
 			redirects.push({
 				op: redirect[1],
@@ -612,6 +616,11 @@ export function shellCommands(
 		pending = [];
 		return at;
 	}
+}
+
+/** The shell word written at `at`, read to its line's end at most: `'it'\''s'` is one word, `it's`. */
+export function shellWordAt(text: string, at: number): ShellWord {
+	return lexWord({ text, limit: lineEnd(text, at, UNQUOTED_READ), backslash: true, offset: 0 }, at);
 }
 
 /** The words of a command line, redirections aside (see shellCommands). */

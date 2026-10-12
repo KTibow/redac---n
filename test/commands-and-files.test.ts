@@ -186,8 +186,18 @@ test("a .env file's credential line is hidden and its settings kept", () => {
 	kept("NODE_ENV=production\nAPI_KEY=k8Hq2LmZ9xPvR4tN\n", "NODE_ENV=production", { path: ".env" });
 });
 
-test("a ~/.netrc password is hidden", () => {
+test("a ~/.netrc password is hidden, and an entry whose password is a reference is kept", () => {
 	hidden("machine api.example.com login me password Tq8vR3nWx5", "Tq8vR3nWx5", { path: "~/.netrc" });
+	kept('echo "machine github.com login x password ${GITHUB_TOKEN}" > ~/.netrc', "machine github.com login x");
+});
+
+test("a shell's listing of its variables is read as a .env: declare -p, export -p", () => {
+	const listing = 'declare -x HOME="/home/me"\ndeclare -x MYAPP="Plover7Tango"\n';
+	for (const command of ["declare -p", "export -p"]) {
+		hidden(listing, "Plover7Tango", { command });
+		kept(listing, 'declare -x HOME="/home/me"', { command });
+	}
+	kept('declare -x MYAPP="Plover7Tango"\n', "declare -x MYAPP=", { command: "declare -p MYAPP" });
 });
 
 test("netrc's tokens in any order, over lines and past a comment, and not in prose or a reference", () => {
@@ -443,6 +453,9 @@ test("a secret file printed by find, xargs, a loop or a substitution is printed"
 		"python3 -c \"print(open('.env').read())\"",
 		'while read l; do echo "$l"; done < .env',
 		'for f in "$HOME/.env" "$HOME/.env.local"; do cat "$f"; done',
+		"xargs -a .env echo",
+		"xargs < .env",
+		"tee out.log < <(cat .env)",
 	])
 		hidden("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
 	for (const c of ["find . -name '*.ts' -exec cat {} \\;", "find . -name .env -exec cat {} \\; > /tmp/all.env"])
@@ -667,6 +680,12 @@ test("a public key's file and the public key a pipeline prints are not secret", 
 	for (const path of ["key.pem", "id_ed25519", ".env"]) assert.ok(isSecretFile(path), path);
 	assert.ok(!printsSecret("wg genkey | tee kp.key | wg pubkey | tee kp.pub"));
 	assert.ok(printsSecret("wg genkey | tee kp.key"));
+});
+
+test("a login that takes its token on stdin prints none of it, unless it prints the token back (vault login)", () => {
+	assert.ok(!printsSecret("echo $GH_TOKEN | gh auth login --with-token"));
+	assert.ok(!printsSecret("echo $CR_PAT | docker login ghcr.io -u me --password-stdin"));
+	assert.ok(printsSecret("echo $VAULT_TOKEN | vault login -"));
 });
 
 test("another occurrence of a guess is judged where it stands", () => {

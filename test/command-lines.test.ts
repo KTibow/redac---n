@@ -48,6 +48,13 @@ test("a program's own password option is read, catalogued or not", () => {
 	])
 		hidden(line, "Kx9mQv2Lp7Rt");
 	hidden("hydra -l admin -p correct_horse ssh://h", "correct_horse");
+	// (Past prose before the command, and without the stop that ends its sentence.)
+	hidden("Brute-force it: hydra -l admin -p Winter2024.", "Winter2024");
+	kept("Brute-force it: hydra -l admin -p Winter2024.", ".");
+	// The password a hash is made of, in a substitution inside a string.
+	hidden('useradd -m -p "$(openssl passwd -6 Winter2024pw)" bob', "Winter2024pw");
+	kept('useradd -m -p "$(openssl passwd -6 Winter2024pw)" bob', ')" bob');
+	hidden("mkpasswd -m sha-512 Winter2024pw", "Winter2024pw");
 	hidden("keytool -genkey -keystore release.keystore -storepass android", "android");
 	hidden("$ http -a ops:Xk9mQ2vL8nR GET https://x", "Xk9mQ2vL8nR");
 	hidden("$ http -a ops:CANYttjlub% GET https://registry.internal.example.com/v2/_catalog", "CANYttjlub%");

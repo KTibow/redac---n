@@ -752,7 +752,7 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 	const names = (w: ShellWord, i: number) =>
 		(i === 0 || !/[/\\]/.test(w.text)) &&
 		(isWrapper(w.text) ||
-			/^(?:rabbitmqctl|htpasswd|https?|httpie|steamcmd|vault|lftp|pulumi|openssl)$/.test(programName(w)) ||
+			/^(?:rabbitmqctl|htpasswd|https?|httpie|steamcmd|vault|lftp|pulumi|openssl|mkpasswd)$/.test(programName(w)) ||
 			USER_PASSWORD.test(programName(w)) ||
 			!!passwordOptions(programName(w)));
 	const k = words.findIndex(names);
@@ -804,6 +804,15 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 		if (rest[0]?.text !== "passwd") return;
 		for (const [i, w] of rest.entries())
 			if (i > 0 && !w.text.startsWith("-") && !/^-(?:salt|in)$/.test(rest[i - 1].text)) addWord(w, w.text);
+		return;
+	}
+	// `mkpasswd -m sha-512 <password> [<salt>]`, which hashes the password it's given (`-m`, `-S`, `-R`, `-P` take a value).
+	if (name === "mkpasswd") {
+		const pw = rest.find(
+			(w, i) =>
+				!w.text.startsWith("-") && !/^(?:-[mSRP]|--(?:method|salt|rounds|password-fd))$/.test(rest[i - 1]?.text ?? ""),
+		);
+		if (pw) addWord(pw, pw.text);
 		return;
 	}
 	if (name === "rabbitmqctl") {
@@ -1034,7 +1043,7 @@ const USER_PASSWORD = /^(?:curl|curlie|xh|xhs|http|https|httpie|wget|grpcurl|hey
  */
 function cliPasswords(text: string, out: Finding[]) {
 	if (
-		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
+		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|mkpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
 			text,
 		)
 	)
@@ -1052,23 +1061,29 @@ function cliPasswords(text: string, out: Finding[]) {
 		const pw = m[3] ?? m[4] ?? m[5];
 		const bare = m[5] !== undefined;
 		const at = m.index + m[0].length - pw.length - (bare ? 0 : 1);
-		const program = commandAt(text, at)?.command[0];
+		const command = commandAt(text, at)?.command;
 		// (A word list is no password: `nxc smb hosts -u users.txt -p passwords.txt`.)
-		if (pw.startsWith("-") || !program || /\.(?:txt|lst|list|dic|csv)$/i.test(pw)) continue;
-		const name = programName(program);
+		if (pw.startsWith("-") || !command?.length || /\.(?:txt|lst|list|dic|csv)$/i.test(pw)) continue;
+		const name = programName(command[0]);
 		const word = /^password/.test(option);
+		// (The program is the command's first word, or a word before the option that names one of these, past prose
+		// the line starts with: `Brute-force it: hydra -l admin -p …`.)
+		const names = command.filter((w, i) => i === 0 || (w.end <= at && !/[/\\]/.test(w.text))).map(programName);
 		// (rar's `-p` takes its password attached, `-pPW`; alone it asks for one, and the archive's name follows,
 		// `rar a -p backup.rar`. A password written apart anyway, `-p Summer2024`, is still the one its writer meant.)
 		const takes =
 			word ||
-			(option === "/p:" && /^(?:(?:x|w|s)?freerdp3?|rdesktop)$/.test(name)) ||
-			(option === "-p" &&
-				(/^(?:hydra|medusa|twine|evil-winrm|crackmapexec|netexec|nxc|rpcclient|smbmap|enum4linux(?:-ng)?|useradd|usermod)$|^impacket-/.test(
-					name,
-				) ||
-					(/^(?:unrar|rar)$/.test(name) && !(blank && /\.(?:rar|r\d\d|zip|7z|exe|sfx)$/i.test(pw))))) ||
-			(option === "-N" && name === "ssh-keygen") ||
-			(option === "-A" && /^snmp/.test(name));
+			names.some(
+				(name) =>
+					(option === "/p:" && /^(?:(?:x|w|s)?freerdp3?|rdesktop)$/.test(name)) ||
+					(option === "-p" &&
+						(/^(?:hydra|medusa|twine|evil-winrm|crackmapexec|netexec|nxc|rpcclient|smbmap|enum4linux(?:-ng)?|useradd|usermod)$|^impacket-/.test(
+							name,
+						) ||
+							(/^(?:unrar|rar)$/.test(name) && !(blank && /\.(?:rar|r\d\d|zip|7z|exe|sfx)$/i.test(pw))))) ||
+					(option === "-N" && name === "ssh-keygen") ||
+					(option === "-A" && /^snmp/.test(name)),
+			);
 		if (!takes) continue;
 		// A program's own password option or word takes any value, and quoted, all its quotes hold: `-p 'Xk9(mP2/vQ7'`.
 		// Otherwise a path or a call is no password (`-p /tmp/pwlist`, `password hash(pw1)`), and a sentence's
@@ -1149,7 +1164,7 @@ function cliPasswords(text: string, out: Finding[]) {
 		add(start, value + rest, rule, quoted, end + rest.length);
 	};
 	for (const line of text.matchAll(/^[^\n]*$/gm)) {
-		if (!/-|rabbitmqctl|steamcmd|vault[ \t]+login/.test(line[0])) continue;
+		if (!/-|rabbitmqctl|steamcmd|vault[ \t]+login|passwd/.test(line[0])) continue;
 		// (Read as the commands it runs: past a prompt, through wrappers, in PowerShell's dialect where it's written in it.)
 		for (const c of commandsRun(text, { at: line.index, oneLine: true })) commandPasswords(c.words, toBlank);
 	}

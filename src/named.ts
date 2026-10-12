@@ -46,7 +46,7 @@ import { blockExtent, isBlockIndicator, yamlLines } from "./yaml.ts";
 import { naturalness } from "./charlm.ts";
 import { clientSdkAt, isPlaceholder } from "./public.ts";
 import { jsonDocuments, type JsonNode } from "./json.ts";
-import { PROMPT } from "./shell.ts";
+import { PROMPT, shellWordAt } from "./shell.ts";
 import { promptsForValue } from "./commands.ts";
 import {
 	CREDENTIAL_QUALIFIERS,
@@ -510,6 +510,12 @@ function readValue(
 	}
 	if (c === '"' || c === "'" || c === "`") {
 		const close = literalEnd(text, at, { shell });
+		// (A single-quoted shell word goes on past a quote written as the shell writes one in it: `'Kx9mQ2'\''pLw7v'` and
+		// `'Kx9mQ2'"'"'pLw7v'` are one value.)
+		if (close >= 0 && shell && c === "'" && /^(?:\\'|"'")?'/.test(text.slice(close + 1, close + 5))) {
+			const word = shellWordAt(text, at);
+			return [at + 1, word.end - (/["']$/.test(word.raw) ? 1 : 0)];
+		}
 		if (close >= 0) return [at + 1, close];
 		// (A quote that never closes on its line opens no string: the value is the one word after it, `DB_PASSWORD='Kx9…`.)
 		const rest = UNCLOSED_WORD.exec(text.slice(at + 1, lineEndAt(text, at + 1, UNQUOTED_READ + 1) + 1));
@@ -3481,7 +3487,8 @@ function passwordShaped(text: string, out: Finding[]) {
 	)) {
 		// (Each opener with its own closer, so a quoted password may hold the others: `"Abc)1!"`, `«Mot(de)Passe1»`.)
 		const k = [2, 3, 4, 5].find((i) => m[i] !== undefined)!;
-		const value = withoutUnopenedClosers(m[k].replace(/[.,;:)]+$/, ""));
+		// (Nor quotes at its end that it didn't open: a string's around it, `"$(openssl passwd -6 …)"`.)
+		const value = withoutUnopenedClosers(m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:)]+$/, ""));
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, the readers' of those.)
 		if (

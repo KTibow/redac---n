@@ -174,15 +174,27 @@ function wholeFile(text: string, out: Finding[]) {
 	}
 }
 
-/** A line that is one value: not `NAME=value` or `NAME: value`, a URL, a comment, a section, a document or a reference. */
+/**
+ * The keyword a shell's listing of its variables puts before each: `export NAME=…` (`export -p` in sh and zsh), bash's
+ * `declare -x NAME="…"` (its `declare -p` and `export -p`), zsh's `typeset -x`.
+ */
+const DECLARATION = /(?:export|(?:declare|typeset)[ \t]+-[\w-]+)[ \t]+/;
+/** The name a line starts by assigning, a diff's or a declaration's included. */
+const DECLARED_NAME = new RegExp(String.raw`^[+ -]?(?:${DECLARATION.source})?([\w.-]+)[=:]`);
+
+/** A line that is one value: not `NAME=value` or `NAME: value`, a URL, a comment, a section, a document, a netrc entry or a reference. */
 function isOneValueLine(line: string): boolean {
-	const named = /^[+ -]?(?:export[ \t]+)?([\w.-]+)[=:]/.exec(line)?.[1];
+	const named = DECLARED_NAME.exec(line)?.[1];
 	const nameShaped =
 		named !== undefined && /^(?:[a-z_][a-z0-9_.-]*|[A-Z_][A-Z0-9_.-]*|[a-z]+(?:[A-Z][a-z]+)+)$/.test(named);
 	if (line.length > 1000 || /[=:]\s|:\/\//.test(line) || nameShaped) return false;
 	// One token in brackets is the value, brackets and all: `{Kd8pQ2zX9mL}`.
 	if (/^(?:\[[^\s\]]*\]|\{[^\s}]*\}|<[^\s>]*>)$/.test(line) && !/[:,=]/.test(line)) return true;
-	const structured = /^#[ \t!#]|^\[[^\]]*\]$|^\{[\s\S]*\}$|^<[\s\S]*>$|^["{[][\s\S]*[:,]/.test(line);
+	// (A netrc entry is read by its keywords, spacedKeywords: `machine github.com login x password ${GITHUB_TOKEN}`.)
+	const structured =
+		/^#[ \t!#]|^\[[^\]]*\]$|^\{[\s\S]*\}$|^<[\s\S]*>$|^["{[][\s\S]*[:,]|^(?:machine[ \t]+\S+|default)[ \t]+(?:login|password|account)[ \t]/.test(
+			line,
+		);
 	// (Nor a keyword and a reference: `requirepass ${REDIS_PASSWORD}`, its value read elsewhere.)
 	const keywordReference = /^[\w.-]+[ \t]+(?:\$\{[^{}\n]+\}|\$[A-Za-z_]\w*)$/.test(line);
 	return (
@@ -202,15 +214,19 @@ function pgpassLines(text: string, out: Finding[]) {
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "password", rule: "file:named", confidence: 1 });
 }
 
+/** A `NAME=value` or `name: value` line (assignments): its head (a line number, a declaration, a list's `- `), name, separator and value. */
+const ASSIGNMENT_LINE = new RegExp(
+	String.raw`^([ \t]{0,40}(?:\d{1,7}(?:[\t→:|]|[ \t]{1,4})[ \t]*)?(?:${DECLARATION.source}|-[ \t]+|\+[ \t]*)?["']?)([\w.\-/@]{1,200})(["']?[ \t]{0,20}(?:=|:(?!\/\/))[ \t]{0,20})([^\r\n]{1,4000})\r?$`,
+	"dgm",
+);
+
 /**
  * `NAME=value`, `name: value`, `"name": "value",` lines, and `+` lines of a patch that adds the file: the value under
  * a credential's name, or an opaque one under any name that says nothing of a secret (isOpaqueSetting). (Published
  * examples, `AKIAIOSFODNN7EXAMPLE`, are placeholders even in a secret file.)
  */
 function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
-	for (const m of text.matchAll(
-		/^([ \t]{0,40}(?:\d{1,7}(?:[\t→:|]|[ \t]{1,4})[ \t]*)?(?:export[ \t]+|-[ \t]+|\+[ \t]*)?["']?)([\w.\-/@]{1,200})(["']?[ \t]{0,20}(?:=|:(?!\/\/))[ \t]{0,20})([^\r\n]{1,4000})\r?$/dgm,
-	)) {
+	for (const m of text.matchAll(ASSIGNMENT_LINE)) {
 		if (PGPASS.test(m[0])) continue;
 		const name = m[2];
 		// Trailing blanks and a ` # comment` are cut in code: a regex for them backtracks on long blank runs.

@@ -198,6 +198,18 @@ export function commandsRun(
 						remap(r, textSource(text, s.start, s.end), text, c),
 					),
 				);
+			// A process substitution the command's input is redirected from is piped into it (`tee out.log < <(cat .env)`
+			// runs as `cat .env | tee out.log`); one its output goes to is run by it, as a word's is.
+			for (const r of c.redirects) {
+				for (const s of r.target?.substitutions ?? []) {
+					const feeds = r.op === "<";
+					const run = commandsRun(text.slice(s.start, s.end), { depth: depth + 1 }).map((x) =>
+						remap(x, textSource(text, s.start, s.end), text, feeds ? undefined : c),
+					);
+					if (feeds && run.length) run[run.length - 1].then = "|";
+					out.push(...run);
+				}
+			}
 		}
 		const inner = depth < 4 ? innerCommand(c, text) : undefined;
 		const run = inner ? commandsRun(inner.text, { depth: depth + 1 }).map((r) => remap(r, inner, text)) : [];
@@ -551,6 +563,10 @@ function readsSecretFile(c: ShellCommand): boolean {
 			sub.some((t) => /^[^:\s]*:./.test(t) && isSecretFile(t.slice(t.indexOf(":") + 1)))
 		);
 	}
+	// (xargs hands what it reads to the command it runs as words, so echo, its default command, prints it: `xargs -a .env
+	// echo`, `xargs < .env`; `xargs -a hosts.txt ping` prints no file.)
+	const xargs = xargsInput(c, words);
+	if (xargs !== undefined && (program === "xargs" || ECHOES.test(program))) return isSecretFile(xargs);
 	if (!CONTENT_COMMANDS.test(program) || printsNamesOnly(words) || editsInPlace(words)) return false;
 	// (`env` here runs no command: simpleCommand reads past it to the one it runs. `env -0` prints the environment too;
 	// `printenv NAME` prints one variable, judged by its name: printsSecret.)
@@ -589,6 +605,22 @@ function searchedFiles(rest: string[]): string[] {
 		else if (!t.startsWith("-")) operands.push(t);
 	}
 	return operands.slice(pattern ? 0 : 1);
+}
+
+/**
+ * The file a command's xargs (a wrapper before `words`, its simple command, or that command) reads its words from: its
+ * `-a FILE` (`-aFILE`, `--arg-file=FILE`), or else its input's `< FILE`.
+ */
+function xargsInput(c: ShellCommand, words: ShellWord[]): string | undefined {
+	const k = c.words.findIndex((w) => programName(w) === "xargs");
+	if (k < 0 || k > c.words.length - words.length) return undefined;
+	for (let i = k + 1; i < c.words.length && c.words[i].text.startsWith("-"); i++) {
+		const w = c.words[i].text;
+		if (w === "-a" || w === "--arg-file") return c.words[i + 1]?.text;
+		if (w.startsWith("--arg-file=")) return w.slice(11);
+		if (w.startsWith("-a")) return w.slice(2);
+	}
+	return allRedirects(c).find((r) => r.op === "<")?.target?.text;
 }
 
 /**
@@ -685,19 +717,21 @@ const PRINTS_NONE_OF_INPUT =
 
 /**
  * A stage that takes its input as a secret to store or use, printing only its own messages: `docker login
- * --password-stdin`, `gh secret set`, `kubectl create secret … --from-file=/dev/stdin`, `vault kv put … -`, `gpg -c`,
- * `openssl enc`, `tar`. (Not one that decrypts, `openssl enc -d`, nor gpg's `--clearsign`, which prints its input
- * signed but in the clear.)
+ * --password-stdin`, `gh auth login --with-token`, `gh secret set`, `kubectl create secret … --from-file=/dev/stdin`,
+ * `vault kv put … -`, `gpg -c`, `openssl enc`, `tar`. (Not one that decrypts, `openssl enc -d`, nor gpg's `--clearsign`,
+ * which prints its input signed but in the clear; nor `vault login -`, which prints the token it logged in with.)
  */
 function consumesInput(command: ShellWord[]): boolean {
 	const program = programName(command[0]);
 	const words = command.map((w) => w.text);
 	const sub = words[1] ?? "";
 	return (
-		words.some((w) => /^--password-stdin$|^--(?:from-file|data-file|body-file)=(?:-|\/dev\/stdin)$/.test(w)) ||
-		(program === "gh" && sub === "secret") ||
+		words.some((w) =>
+			/^--(?:password|token|identity-token)-stdin$|^--(?:from-file|data-file|body-file)=(?:-|\/dev\/stdin)$/.test(w),
+		) ||
+		(program === "gh" && ((sub === "auth" && words.includes("--with-token")) || sub === "secret")) ||
 		(program === "kubectl" && /^(?:create|apply|replace)$/.test(sub)) ||
-		(program === "vault" && /^(?:kv|write|login)$/.test(sub)) ||
+		(program === "vault" && /^(?:kv|write)$/.test(sub)) ||
 		(program === "openssl" &&
 			/^(?:enc|dgst|pkeyutl|rsautl|smime|cms)$/.test(sub) &&
 			!words.some((w) => /^-(?:d|decrypt)$/.test(w))) ||

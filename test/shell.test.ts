@@ -125,6 +125,21 @@ test("groups: case arms, a function's body, closers, and reserved words only unq
 	);
 });
 
+test("a process substitution is a redirection's target, piped into the command that reads it", () => {
+	assert.deepEqual(read("tee out.log < <(cat .env)"), [[["tee", "out.log"], ["<<(cat .env)"], ""]]);
+	assert.ok(printsSecretFile("tee out.log < <(cat .env)"));
+	assert.ok(!printsSecretFile("wc -l < <(cat .env)"));
+});
+
+test("a line that ends in a pipe or a list's operator goes on to the next, read as one line", () => {
+	const first = (line: string) => shellCommands(line, 0, { oneLine: true }).map((c) => c.words[0].text);
+	assert.deepEqual(first('echo "$PW" |\n  docker login --password-stdin\nls'), ["echo", "docker"]);
+	assert.deepEqual(first("make &&\n  make install\nls"), ["make", "make"]);
+	assert.deepEqual(first("make\nls"), ["make"]);
+	const out = new Redactor().redact('echo "Plover7Tango" |\n  docker login -u me --password-stdin').text;
+	assert.ok(!out.includes("Plover7Tango"), out);
+});
+
 test("heredocs: quoted delimiters, exact terminators, `<<-` tabs", () => {
 	const [c] = shellCommands("cat > .env <<\\EOF\nA=1\n  EOF\nEOF\necho done");
 	assert.equal(c.heredocs[0].quoted, true);
@@ -151,6 +166,10 @@ test("a password's span when quotes or escapes sit inside it", () => {
 	assert.equal(
 		r.redact("sshpass -p Xk9\\ mQ2pLw7v ssh host").text.replace(/#\w+/, "#"),
 		"sshpass -p [REDACTED password #] ssh host",
+	);
+	assert.equal(
+		r.redact("export DB_PASSWORD='Xk9'\\''mQ2pLw7v'").text.replace(/#\w+/, "#"),
+		"export DB_PASSWORD='[REDACTED password #]'",
 	);
 	const [w] = shellCommands("--password='pw9xQ2'")[0].words;
 	assert.deepEqual(wordSpan(w, 11), { start: 12, end: 18 });
