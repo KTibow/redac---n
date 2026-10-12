@@ -257,7 +257,7 @@ function isSettingOrSelfName(name: string, value: string): boolean {
 		name.length >= 8 && value.includes(name) && !value.includes(`${name}=`) && !value.includes(`${name}:`)
 			? value.split(name).join("")
 			: undefined;
-	return rest !== undefined && /[^\w]/.test(rest) && (rest.match(/[A-Za-z0-9]/g)?.length ?? 0) < 8;
+	return rest !== undefined && /[^\w]/.test(rest) && (rest.match(/[A-Za-z0-9]/g)?.length ?? 0) < 4;
 }
 
 /**
@@ -339,7 +339,8 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		if (
 			/^PASS(?:ED)?$/.test(name) &&
 			/^[\w./:\[\]-]+$/.test(value) &&
-			(/test|spec|::|\//i.test(value) || !(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
+			(/test|spec|::|\/[\w-]+\.\w{1,4}$/i.test(value) ||
+				!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
 		)
 			return false;
 		// A compound adjective about the password, not one: `case-sensitive`, `write-only`, `per-user`.
@@ -353,6 +354,13 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		// `ask devops team`, `case sensitive`, `randomly generated`), as isPassphrase reads them. (A wallet's seed
 		// phrase, twelve words or more, is any words.)
 		if (/^[a-z]+(?:[ \t]+[a-z]+){1,10}[.!]?$/.test(value.trim()) && value.trim().split(/\s+/).some(isSentenceWord))
+			return false;
+		// (Or a password manager's name, where it's kept: `check 1password`, `in bitwarden`, `see the team's keepass`.)
+		if (
+			/^[a-z' ]+$/.test(value.replace(/1password/gi, "onepassword").trim()) &&
+			/\b(?:1password|lastpass|bitwarden|keepass(?:xc)?|dashlane|keeper|keychain|vaultwarden)\b/i.test(value) &&
+			/\s/.test(value.trim())
+		)
 			return false;
 		const maxWords = /PHRASE/.test(last) ? 24 : 6;
 		if (/\s/.test(value) && value.split(/\s+/).length > maxWords) return false;
@@ -2188,7 +2196,7 @@ function userPassProse(text: string, out: Finding[]) {
 	if (!/pass|pw|creds?|login|wifi|wi-fi|account|u\/p/i.test(text)) return;
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`(?:\b(?:password|passwd|pw|pwd|passcode|passphrase)|\buser(?:name)?[ \t]{1,3}[\x60'"]?[\w.@-]{1,60}[\x60'"]?,?[ \t]{1,3}pass)[ \t]{1,3}(?:is[ \t]{1,3})?([\x60'"])([^\x60'"\s]{4,${MAX_VALUE}})\1`,
+			String.raw`(?:\b(?:password|passwd|pw|pwd|passcode|passphrase)|\buser(?:name)?:?[ \t]{1,3}[\x60'"]?[\w.@-]{1,60}[\x60'"]?,?[ \t]{1,3}pass:?)[ \t]{1,3}(?:is[ \t]{1,3})?([\x60'"])([^\x60'"\s]{4,${MAX_VALUE}})\1`,
 			"dgi",
 		),
 	)) {

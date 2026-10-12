@@ -146,7 +146,9 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		// became blanks) more material after a full run. A word that only starts like it (`hello world`) ends the block.
 		if (run > 0) {
 			const lineEnds = j >= text.length || breakAt(text, j) > 0 || endsAt(text, j);
-			if (run < 4 || !(lineEnds || (run >= 40 && j > runEnd && isArmorChar(text.charCodeAt(j))))) break;
+			// (Under four characters only as the material's last line, the END line next: `Q==`.)
+			const lastLine = lineEnds && /^(?:\r?\n|\\r?\\n)[ \t"']*-----END /.test(text.slice(j, j + 24));
+			if ((run < 4 && !lastLine) || !(lineEnds || (run >= 40 && j > runEnd && isArmorChar(text.charCodeAt(j))))) break;
 			material += run;
 		}
 		lastRun = run;

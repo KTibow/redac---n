@@ -51,10 +51,11 @@ const SECRET_FILE = [
 const SECRET_DIR =
 	/(^|\/)\.(aws|ssh|gnupg|docker|kube|azure)\/|(^|\/)\.config\/(gcloud|gh|rclone|sops)\/|(^|\/)\.?secrets\//;
 // (Also a key's public half by its name, `cache-pub-key.pem`, `server.pub.pem`, `public.key`; and a certificate's,
-// `fullchain.pem`, `cert.pem`, but not a private key's container named for its certificate, `cert.key`, `server.crt.p12`.
+// `fullchain.pem`, `cert.pem`, but not a private key's container named for its certificate, `cert.key`, `server.crt.p12`,
+// `cert-key.pem`.
 // A private key in a certificate's file anyway is found by its DER.)
 const NOT_SECRET_PATH =
-	/\.pub$|(?:^|[/._-])(?:pub|public|pubkey)(?=[._-][^/]*$)|(?:^|[/._-])(?:cert|certs|certificate|crt|chain|fullchain|cacert|ca-bundle)(?=[._-][^/]*$)(?![^/]*\.(?:key|p12|pfx|jks|keystore|ppk)$)|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
+	/\.pub$|(?:^|[/._-])(?:pub|public|pubkey)(?=[._-][^/]*$)|(?:^|[/._-])(?:cert|certs|certificate|crt|chain|fullchain|cacert|ca-bundle)(?=[._-][^/]*$)(?![^/]*(?:\.(?:key|p12|pfx|jks|keystore|ppk)|[-_.]key\.pem)$)|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
 
 /** Whether a path names a file whose whole content is secret material (`.env`, `id_rsa`, `credentials.json`). */
 export function isSecretFile(path: string): boolean {
@@ -563,7 +564,8 @@ function readsSecretFile(c: ShellCommand): boolean {
 	if (allRedirects(c).some((r) => r.op === "<" && r.target && isSecretFile(r.target.text))) return true;
 	// (grep's first word is its pattern, not a file: `grep -rn password src/`, `grep -E 'A|B' .env`. Counting, listing
 	// and testing print none of it: `grep -c`, `grep -l`, `grep -q`.)
-	if (/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep)$/.test(program) && rest.some((t) => COUNTS_MATCHES.test(t))) return false;
+	if (/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep)$/.test(program) && rest.some((t) => countsMatches(program, t)))
+		return false;
 	const args = rest.filter((t) => !t.startsWith("-"));
 	if (
 		/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program) &&
@@ -646,8 +648,16 @@ function stdoutFile(c: ShellCommand): string | undefined {
 	return r ? (r.target?.text ?? "") : undefined;
 }
 
-/** grep's options that print a count, a file list or nothing instead of the lines: `-c`, `-l`, `-L`, `-q`, `--count`. */
-const COUNTS_MATCHES = /^-[a-zA-Z]*[clLq][a-zA-Z]*$|^--(?:count|files-with(?:out)?-matches|quiet|silent)$/;
+/**
+ * Whether a grep's option prints a count, a file list or nothing instead of the lines: `-c`, `-l`, `-L`, `-q`,
+ * `--count`. (ripgrep's `-L` follows links and prints the lines.)
+ */
+function countsMatches(program: string, option: string): boolean {
+	return (
+		(program === "rg" ? /^-[a-zA-Z]*[clq][a-zA-Z]*$/ : /^-[a-zA-Z]*[clLq][a-zA-Z]*$/).test(option) ||
+		/^--(?:count|files-with(?:out)?-matches|quiet|silent)$/.test(option)
+	);
+}
 
 /**
  * Programs that print none of their input: counts, checksums, a clipboard's tools, tests, compressors and encrypters
@@ -686,7 +696,8 @@ function passesThrough(c: ShellCommand): boolean {
 	const words = simpleCommand(c.words);
 	const program = programName(words[0]);
 	// (A grep passes the lines it matches; counting, listing or testing them passes none: `grep -c`, `-l`, `-q`.)
-	if (/^(?:grep|egrep|fgrep|rg|ag|ack)$/.test(program)) return !words.slice(1).some((w) => COUNTS_MATCHES.test(w.text));
+	if (/^(?:grep|egrep|fgrep|rg|ag|ack)$/.test(program))
+		return !words.slice(1).some((w) => countsMatches(program, w.text));
 	// (Nor a stage that prints the public key of the private key it reads: `wg pubkey`, `openssl pkey -pubout`.)
 	const publicOfInput =
 		(program === "wg" && words[1]?.text === "pubkey") ||

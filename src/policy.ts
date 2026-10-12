@@ -534,7 +534,7 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 			/^\}[^\n]*\.format\(/.test(text.slice(f.end, f.end + 200)))
 	)
 		return "template hole";
-	// A SQL bind parameter: `WHERE password=@CONTRASEÑA`, `:password`, `?`.
+	// A SQL bind parameter: `WHERE password=@CONTRASEÑA`, `:password`. (A bare `?` is no value to begin with.)
 	// (A SQL token in a SQL statement: after a comparison or in `VALUES (…)`, in a statement its keywords say is one, in
 	// capitals or starting the line; not cmd's `set NAME=@…` nor a sentence's "update the password to @…".)
 	if (

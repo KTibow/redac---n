@@ -581,3 +581,31 @@ test("found in review, second batch: names, labels, prose, shell, transcripts an
 	const key = "AIza" + "SyD3k9Xm2Qp7Lw4Rt8Zn5Bv1Cx6Hj0Gf2Ks";
 	kept(`<meta-data\n    android:name="com.google.android.geo.API_KEY"\n    android:value="${key}" />`, key);
 });
+
+test("found in review, third batch: grep options, key files, quoted passwords, hosts, names", () => {
+	for (const [text, secret, hint] of [
+		["ADMIN=letmein99\nMAILGUN=mydomainpw\n", "letmein99", { command: "rg -L KEY .env" }],
+		["ADMIN=letmein99\nMAILGUN=mydomainpw\n", "letmein99", { command: "sed -n 1,9p ssl/cert-key.pem" }],
+		['openssl pkcs12 -export -passout "pass:correct horse 42" -out a.p12', "correct horse 42"],
+		['printf -- "%s" "Hx7mQ2pL9vRt" | docker login -u bob --password-stdin', "Hx7mQ2pL9vRt"],
+		["kind: Secret\nstringData:\n  value: hunter2.mypass", "hunter2.mypass"],
+		["X-Webhook-Signature-Secret: Hx7mQ2pL9vRt4wZk8nB3", "Hx7mQ2pL9vRt4wZk8nB3"],
+		["DB_PASSWORD=DB_PASSWORD!x7Kq2", "x7Kq2"],
+		["login with user: ro pass 'Xk9mQ2pL'", "Xk9mQ2pL"],
+		["PASS=Ab3/xyz9Qw", "Ab3/xyz9Qw"],
+	] as [string, string, object?][])
+		assert.ok(
+			!r()
+				.redact(text, hint ? { hint } : {})
+				.text.includes(secret),
+			text,
+		);
+	for (const [text, value] of [
+		["password: check 1password", "check 1password"],
+		["PASS: tests/test_auth.py::test_login", "tests/test_auth.py"],
+		["kind: Secret\nstringData:\n  site: api.example.com", "api.example.com"],
+		["isprivate: Hx7mQ2pL9vRt4wZk8nB3", "isprivate"],
+		["X-Hub-Signature-256: sha256=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0", "sha256="],
+	])
+		kept(text, value);
+});

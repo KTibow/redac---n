@@ -309,7 +309,7 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			);
 		},
 	],
-	// `$loginPass`, `$API_Password`, `{$pwd}`, `$this->passwd`, `$cfg['db']['pass']` (mixed case only without digits:
+	// `$loginPass`, `$API_Password`, `{$pwd}`, `$this->passwd`, `{$cfg['db']['pass']}` (mixed case only without digits:
 	// `$Secr3t` is a password); run together, as PHP interpolates them: `SIGNATURE=$API_Signature$nvpStr_`.
 	[
 		"PHP variable",
@@ -793,7 +793,7 @@ const ENV_LOOKUP =
  */
 export function isCode(raw: string, literal = false): boolean {
 	const v = raw.trim().replace(/[;,]$/, "").trim();
-	// A quoted string built from code: `".md5($password)."`, `"${prefix}${key}"`, `"$RANDOM***$RANDOM"`.
+	// A quoted string built from code: `".$password."`, `"${prefix}${key}"`, `"$RANDOM***$RANDOM"`.
 	if (/^["'`]/.test(v))
 		return (
 			(/^"[^"]*"$/.test(v) && isExpansionsOnly(v.slice(1, -1))) ||

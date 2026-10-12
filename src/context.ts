@@ -172,7 +172,7 @@ export interface Context {
 	 * on the line: "your new API key for the git server: <t>".
 	 */
 	hashPhrase: boolean;
-	/** The previous URL path segment, for `/hooks/<token>`, `/bot<token>/`. */
+	/** The previous URL path segment, for `/hooks/<token>`, `/webhook/<token>`. */
 	pathParent: string;
 	/** A phrase that hands over a value: "here's your key", "Token created:", "use this one". */
 	handover: boolean;

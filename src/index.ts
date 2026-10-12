@@ -165,7 +165,6 @@ export class Redactor {
 	private placeholder?: RedactOptions["placeholder"];
 	private layers: ReadonlySet<Layer>;
 	private without: ReadonlySet<Stage>;
-	/** How deep the encoded layer's reading of decoded text has gone. */
 
 	constructor(options: RedactorOptions = {}) {
 		this.layers = new Set(options.layers ?? LAYERS);

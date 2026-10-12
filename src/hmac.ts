@@ -1,6 +1,7 @@
 /**
  * HMAC-SHA256 in plain JS, so fingerprints work in every runtime (browsers, workers, Deno, Bun)
- * without node:crypto or async WebCrypto: placeholders' fingerprints, and SHA-256 for checksums.ts's address checks.
+ * without node:crypto or async WebCrypto: placeholders' fingerprints and public.ts's sample JWTs, and SHA-256 for
+ * checksums.ts's address checks and structure.ts's BIP-39 checksum.
  */
 const K = new Uint32Array([
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,

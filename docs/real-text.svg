@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 438" width="760" height="438" role="img" aria-labelledby="t d">
-<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.3 per MB; redac---n guessing confident: 4.0 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
+<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.3 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
 .hollow { fill: none; stroke: #898781; } .chain { fill: none; stroke: #c3c2b7; stroke-width: 1.5; }
@@ -47,20 +47,20 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <rect x="259.20000000000005" y="147" width="11.285493821388854" height="16" class="k0 gap"><title>redac---n guessing off: credential-shaped, 1.58 per MB</title></rect>
 <rect x="270.4854938213889" y="147" width="4.276608184947349" height="16" class="k1 gap"><title>redac---n guessing off: hex, 0.60 per MB</title></rect>
 <rect x="274.76210200633625" y="147" width="4.395402856751389" height="16" class="k2 gap"><title>redac---n guessing off: word or placeholder, 0.62 per MB</title></rect>
-<rect x="279.15750486308764" y="147" width="3.6826348259269253" height="16" class="k3 gap"><title>redac---n guessing off: other, 0.52 per MB</title></rect>
-<text class="tick" x="288.84013968901456" y="159">3.3</text>
+<rect x="279.15750486308764" y="147" width="3.9202241695351177" height="16" class="k3 gap"><title>redac---n guessing off: other, 0.55 per MB</title></rect>
+<text class="tick" x="289.07772903262276" y="159">3.3</text>
 <text x="249.20000000000005" y="185" text-anchor="end" class="ours">guessing confident</text>
 <rect x="259.20000000000005" y="173" width="13.780181929274761" height="16" class="k0 gap"><title>redac---n guessing confident: credential-shaped, 1.93 per MB</title></rect>
 <rect x="272.9801819292748" y="173" width="6.296117605616928" height="16" class="k1 gap"><title>redac---n guessing confident: hex, 0.88 per MB</title></rect>
 <rect x="279.27629953489173" y="173" width="4.395402856751446" height="16" class="k2 gap"><title>redac---n guessing confident: word or placeholder, 0.62 per MB</title></rect>
-<path d="M283.6717023916432,173 h0.3954028567514456 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.3954028567514456 z" class="k3 gap"><title>redac---n guessing confident: other, 0.62 per MB</title></path>
-<text class="tick" x="294.0671052483946" y="185">4.0</text>
+<path d="M283.6717023916432,173 h0.632992200359638 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.632992200359638 z" class="k3 gap"><title>redac---n guessing confident: other, 0.65 per MB</title></path>
+<text class="tick" x="294.3046945920028" y="185">4.1</text>
 <text x="249.20000000000005" y="211" text-anchor="end" class="ours">guessing eager</text>
 <rect x="259.20000000000005" y="199" width="14.849333975511627" height="16" class="k0 gap"><title>redac---n guessing eager: credential-shaped, 2.08 per MB</title></rect>
 <rect x="274.0493339755117" y="199" width="6.414912277421024" height="16" class="k1 gap"><title>redac---n guessing eager: hex, 0.90 per MB</title></rect>
 <rect x="280.4642462529327" y="199" width="4.395402856751446" height="16" class="k2 gap"><title>redac---n guessing eager: word or placeholder, 0.62 per MB</title></rect>
-<path d="M284.85964910968414,199 h1.4645549029882545 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-1.4645549029882545 z" class="k3 gap"><title>redac---n guessing eager: other, 0.76 per MB</title></path>
-<text class="tick" x="296.3242040126724" y="211">4.4</text>
+<path d="M284.85964910968414,199 h1.702144246596447 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-1.702144246596447 z" class="k3 gap"><title>redac---n guessing eager: other, 0.80 per MB</title></path>
+<text class="tick" x="296.5617933562806" y="211">4.4</text>
 <text x="249.20000000000005" y="237" text-anchor="end">Nosey Parker</text>
 <rect x="259.20000000000005" y="225" width="2.8512468195473843" height="16" class="k0 gap"><title>noseyparker: credential-shaped, 0.40 per MB</title></rect>
 <rect x="262.05124681954743" y="225" width="1" height="16" class="k1 gap"><title>noseyparker: hex, 0.13 per MB</title></rect>

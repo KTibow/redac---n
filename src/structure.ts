@@ -712,8 +712,9 @@ const isSecretKeyName = (key: string) => isCredentialName(key) || namesPasswordO
  * A host as a setting gives one (`mycluster.example.com`, `db.internal:5432`): lowercase labels, then a short TLD or an
  * internal zone's name; not a dotted token (`AbCdEf123456.zzSecret`, `qwerty.secretkeyvalue`).
  */
+// (Its top-level domain a country's or a common generic one, or a cluster's: `hunter2.mypass` is no host.)
 const HOST_NAME =
-	/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,6}|internal|local|cluster|example)(?::\d{1,5})?$/;
+	/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2}|com|net|org|edu|gov|mil|int|info|biz|dev|app|cloud|tech|site|online|xyz|internal|local|localdomain|lan|corp|home|svc|cluster|example)(?::\d{1,5})?$/;
 
 /**
  * A Secret's field written as text that holds nothing secret, under a key that names no credential: a word under a
@@ -916,8 +917,10 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 			const words = simpleCommand(c.words);
 			const program = programName(words[0]);
 			if (c.then !== "|" || !/^(?:echo|printf)$/.test(program) || !commands[k + 1]) return;
-			// (A format alone with `%s` in it prints no value.)
-			const args = words.slice(1).filter((w) => !/^-[neE]+$/.test(w.text));
+			// (A format alone with `%s` in it prints no value. Nor its options: echo's `-n`, printf's `--` before its format.)
+			const args = words
+				.slice(1)
+				.filter((w) => !/^-[neE]+$/.test(w.text) && !(program === "printf" && w.text === "--"));
 			const operands =
 				program === "printf" ? (args.length > 1 ? args.slice(1) : args.filter((w) => !/%[sd]/.test(w.text))) : args;
 			if (operands.length === 1) out.push({ value: operands[0], reader: commands[k + 1] });
@@ -1270,7 +1273,7 @@ function ciMasks(text: string, out: Finding[]) {
 /** Path segments of one-time links: `/reset/<token>`, `/auth/magic-link/<token>`, `/verify-email/<token>`. */
 const SIGN_IN_SEGMENT =
 	/^(?:(?:password|email|account|user|magic)[-_]?)?(?:reset|verify|verification|confirm|confirmation|magic|login|signin|sign[-_]in|activate|activation|invite|invitation|unlock|recover|recovery|otp|claim|passwordless|onetime|one[-_]time)(?:[-_]?(?:password|email|account|links?|tokens?|login))?$/i;
-/** A bundler's content-hashed asset: `app-Kx81kP0qLm2Vb7Rt.js`, `chunk.3f9a2c1e.css`, `Inter-Bold.Zk3mP9qL.woff2`. Named for its hash, served to everyone. */
+/** A bundler's content-hashed asset: `app-Kx81kP0qLm2Vb7Rt.js`, `chunk.3f9a2c1e.css`, `Inter-Bold-Zk3mP9qL.woff2`. Named for its hash, served to everyone. */
 const HASHED_ASSET =
 	/^[A-Za-z_][\w]*[-.][\w-]{6,}\.(?:m?js|cjs|css|map|json|woff2?|ttf|otf|eot|png|jpe?g|gif|webp|avif|svg|ico|mp[34]|webm|wasm)$/i;
 /** A path segment that is a one-time token: random, and not a UUID (a record's id as often as a token) or an asset's name. */
@@ -1523,9 +1526,11 @@ function configPasswords(text: string, out: Finding[]) {
 		add(m.index + m[0].length - v.length, v, "structure:haproxy");
 	}
 	for (const m of text.matchAll(
-		/(?:^|\s)-(?:pass(?:in|out|word)?|password|passphrase|storepass|keypass|srcstorepass|deststorepass)[ \t]+(['"]?)pass:([^\s'"]{1,4096})\1/gm,
+		// (Quoted, the value may hold blanks: `-passout "pass:correct horse"`.)
+		/(?:^|\s)-(?:pass(?:in|out|word)?|password|passphrase|storepass|keypass|srcstorepass|deststorepass)[ \t]+(?:(['"])pass:([^'"\n]{1,4096})\1|pass:([^\s'"]{1,4096}))/gm,
 	)) {
-		add(m.index + m[0].length - m[2].length - m[1].length, m[2], "structure:openssl-pass");
+		const pw = m[2] ?? m[3];
+		add(m.index + m[0].length - pw.length - (m[1] ? 1 : 0), pw, "structure:openssl-pass");
 	}
 }
 

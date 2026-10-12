@@ -897,7 +897,7 @@ function isVendorName(name: string): boolean {
 	return VENDORS.has(name.toLowerCase().replace(/[_-]/g, ""));
 }
 
-/** Words a vendor's name takes glued to it for its SDK or client: `algoliasearch`, `mapboxgl`, `MailgunClient`, `twilioSdk`, `pusherJs`, `stripeV2`. */
+/** Words a vendor's name takes glued to it for its SDK or client: `algoliasearch`, `mapboxgl`, `MailgunClient`, `twilioSdk`, `pusherJs`. */
 const CLIENT_SUFFIX = /^(?:search|gl|sdk|client|api|js|v\d+)?$/;
 
 /** A vendor's SDK or client by its name: `algoliasearch`, `Mailgun`, `TWILIO`, `twilio.Client` (a vendor's name, then a client word or nothing; not `imgurian`). */
@@ -1089,7 +1089,7 @@ export interface Name {
  * - hash: `sha256`, `commit`, `etag`, `integrity`, `nonce`, `cursor` (random but not secret)
  * - identifier: `user_id`, `bucket`, `url`, `sort_key`
  * - public: `public_key`, `NEXT_PUBLIC_*`, `publishable_key`
- * - neutral: anything else (`data`, `value`, `X-Lumen`, `password_label`)
+ * - neutral: anything else (`data`, `value`, `X-Lumen`)
  */
 export function readName(name: string): Name {
 	let cached = NAME_CACHE.get(name);
@@ -1262,7 +1262,12 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	)
 		return "identifier";
 	// An alarm's, a door's or a keypad's code is a PIN; `vapidPrivate`, `push_private`: the private half of a key pair.
-	if (isPinName(name) || (/^[a-z][a-z0-9]*(?:Private|[_-]private)$/i.test(name) && !ABOUT_WORDS.has(w[0])))
+	// (A key's private half named as a camel-case hump or after a separator, `vapidPrivate`, `VAPID_PRIVATE`; not a word
+	// that ends so, `isprivate`, `semiprivate`.)
+	if (
+		isPinName(name) ||
+		(/^[a-z][a-z0-9]*(?:Private|[_-]private)$|^[A-Za-z][A-Za-z0-9]*[_-]PRIVATE$/.test(name) && !ABOUT_WORDS.has(w[0]))
+	)
 		return "credential";
 	if (isPublicName(name, core)) return "public";
 	// A session's ID is its bearer credential; Consul's tokens and Vault's AppRole logins are `SecretID`s.
@@ -1310,7 +1315,7 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// `resumptionToken`), email and WebAuthn plumbing: hashes, not credentials.
 	if (
 		/signature_?base/i.test(name) ||
-		/^x-.*signature|-signature(?:-\d+)?$|^(?:\$?skiptoken|\$?deltatoken|resumptiontoken|starting-token|next-?token|page-?token|authenticatordata|clientdatajson|attestationobject|userhandle|rawid|credentialid|x-google-smtp-source|x-gm-message-state|arc-seal|arc-message-signature|dkim-signature|x-received|message-id|in-reply-to|references)$/i.test(
+		/^x-.*signature(?:-\d+)?$|-signature(?:-\d+)?$|^(?:\$?skiptoken|\$?deltatoken|resumptiontoken|starting-token|next-?token|page-?token|authenticatordata|clientdatajson|attestationobject|userhandle|rawid|credentialid|x-google-smtp-source|x-gm-message-state|arc-seal|arc-message-signature|dkim-signature|x-received|message-id|in-reply-to|references)$/i.test(
 			name,
 		)
 	)
@@ -1510,7 +1515,7 @@ export function readPhrase(before: string[], name: string): { name: string; clas
 
 /**
  * Whether the name is a credential's, or a neutral name has a credential word that the word before doesn't rule out
- * (`token_endpoint`, `auth_header`; not `cache.key.prefix`, nor a file's name, `has_key.rb`).
+ * (`auth_header`, `api_key_header`; not `cache.key.prefix`, nor a file's name, `has_key.rb`).
  */
 export function mentionsCredential(name: string): boolean {
 	const cls = readName(name).class;

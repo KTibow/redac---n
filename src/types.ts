@@ -10,7 +10,8 @@ export interface Finding {
 	rule: string;
 	/**
 	 * How sure the rule is, 0 to 1. Formats and whole known values are 1; a known value found by one end, 0.95. A finding
-	 * of 0.9 or more is also learned and hidden wherever its value turns up again; one below is hidden only where found.
+	 * of 0.9 or more may be learned and hidden wherever its value turns up again (spans.ts isLearnable: not a guess, 8
+	 * characters or more); one below is hidden only where found.
 	 */
 	confidence: number;
 	/** The name the value sat under, when a rule read one (`DB_PASSWORD`, `apiKey`). */

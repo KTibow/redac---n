@@ -143,7 +143,7 @@ const LINE_END_MARK_TEST = /\$\n[^\n]*\$(?:\n|$)/;
  * supplementary variation selectors, which carry a hidden copy of ASCII text through a copy and paste.
  */
 const INVISIBLE =
-	/[\x00\x07\x1b\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\u3164\ufe00-\ufe0f\ufeff\uffa0]|\udb40[\udc00-\udc7f\udd00-\uddef]/;
+	/[\x00\x07\x1b\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0]|\udb40[\udc00-\udc7f\udd00-\uddef]/;
 const NEEDS_PASS_ONE = (text: string) => INVISIBLE.test(text) || ESCAPED_CSI.test(text) || CARET_ESCAPE.test(text);
 const NEEDS_PASS_TWO = (text: string) =>
 	HAS_LINE_NUMBER.test(text) || PREFIXED.test(text) || LINE_END_MARK_TEST.test(text);
