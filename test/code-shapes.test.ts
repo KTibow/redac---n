@@ -323,6 +323,8 @@ test("a key's label above its PEM block, a placeholder naming its variable, a ha
 	const pem = `PrivateKey=ALICE_cf_c2pnb163v1\n-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`;
 	const out = r().redact(pem).text;
 	assert.ok(out.includes("ALICE_cf_c2pnb163v1") && !out.includes(body.slice(0, 64)), out);
+	const curve = r().redact(pem.replace("ALICE_cf_c2pnb163v1", "SECP521R1_RFC5903-Peer")).text;
+	assert.ok(curve.includes("SECP521R1_RFC5903-Peer") && !curve.includes(body.slice(0, 64)), curve);
 	for (const [text, value] of [
 		["POSTGRES_PASSWORD=!!!SET POSTGRES_PASSWORD!!!", "!!!SET POSTGRES_PASSWORD!!!"],
 		["- ELASTIC_PASSWORD=$ELASTIC_PASSWORD <1>", "$ELASTIC_PASSWORD <1>"],
