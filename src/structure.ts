@@ -52,7 +52,7 @@ const PRIVATE_END = /-{4,5} ?END (?:[A-Z0-9]+ ){0,4}PRIVATE KEY(?: BLOCK)? ?-{4,
  * is not a key.
  */
 function privateKeys(text: string, out: Finding[]) {
-	if (!text.includes("PRIVATE KEY") && !text.includes("OpenVPN Static key") && !text.includes("BEGIN ")) return;
+	if (!text.includes("PRIVATE KEY") && !text.includes("BEGIN ")) return;
 	// (A private key's DER under another label, `PUBLIC KEY` or `CERTIFICATE`, is a private key: its body says so.)
 	const blocks = armoredBlocks(text)
 		.filter(
@@ -159,24 +159,17 @@ function isDocsPassword(value: string): boolean {
  * is a literal).
  */
 export function isLiteralPassword(value: string, quoted = false): boolean {
-	if (
-		!value ||
-		value.length < 3 ||
-		(!quoted && isInert(value)) ||
-		isPlaceholder(value) ||
-		/^\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:\/|$)/i.test(value) ||
-		isUrl(value)
-	)
-		return false;
+	if (!value || value.length < 3 || (!quoted && isInert(value)) || isPlaceholder(value) || isUrl(value)) return false;
 	// A hole of an interpolated string, whole: `{quote_plus(password)}`, Swift's `\(password)`, `{Uri.EscapeDataString(pw)}`.
 	if (/^\{[^{}\n]{1,200}\}$|^\\\([^()\n]{1,200}\)$/.test(value) && /[A-Za-z_]/.test(value)) return false;
 	// `$DB_PASSWORD`-style names, a letter in each part, not all-caps passwords like `WINTER2024PASS`, `SUMMER_2024`
 	// or `WINTERPASS` (a placeholder word in capitals is read below). (Templates with holes, `${DB_PASS}`, `{{ pw }}`,
-	// `<password>`, are placeholders above when nothing secret is around their holes.)
+	// `<password>`, are placeholders above when nothing secret is around their holes.) A `$(…)` even in single quotes:
+	// a Makefile's `-p'$(DB_PASSWORD)'` is make's variable, expanded before the shell runs.
 	if (
 		/^[A-Z]+(?:_[A-Z0-9]*[A-Z][A-Z0-9]*)+$|^_[A-Z0-9_]+$/.test(value) ||
 		(!quoted && /^\$[A-Za-z_]\w*$/.test(value)) ||
-		/^%[sdv]$|^\$\(.*\)$/.test(value) ||
+		/^\$\(.*\)$/.test(value) ||
 		(/^[a-z_][A-Za-z_]{2,}\(.*\)$/.test(value) && readsAsWords(value.slice(0, value.indexOf("("))))
 	)
 		return false;
@@ -222,17 +215,16 @@ function urlCredentials(text: string, out: Finding[]) {
 	for (const url of urls(text)) {
 		const { user, password: pw, host } = url;
 		if (!user || !host) continue;
-		// A token as the whole user part: `https://<token>@github.com`, Azure DevOps PATs, `https://x-access-token:<token>@`.
-		// (With a password, the user is a name unless the password is a fixed word: `<token>:x-oauth-basic@`.)
+		// A token as the whole user part: `https://<token>@github.com`, Azure DevOps PATs, `https://x-access-token:<token>@`,
+		// whatever the host (`@${GIT_HOST}`). (With a password, the user is a name unless the password is empty, as curl's
+		// `-u <token>:` writes it, or a fixed word: `<token>:x-oauth-basic@`.)
 		if (
 			/^[A-Za-z0-9_-]{20,}$/.test(user.value) &&
-			/^[\w.-]/.test(host.value) &&
-			(!pw || pw.value === user.value || FIXED_PASSWORD.test(pw.value))
+			(!pw?.value || pw.value === user.value || FIXED_PASSWORD.test(pw.value))
 		) {
-			// Sentry DSNs carry a public key by design.
-			const hostname = /^[\w.-]{1,200}/.exec(host.value)![0];
-			const sentry =
-				/(?:^|\.)(?:sentry\.io|ingest\.[\w.]+|sentry\.[\w.]+)$/.test(hostname) || /^o\d+\.ingest/.test(hostname);
+			// Sentry DSNs carry a public key by design (`<key>@o123.ingest.sentry.io`).
+			const hostname = /^[\w.-]{0,200}/.exec(host.value)![0];
+			const sentry = /(?:^|\.)(?:sentry\.io|ingest\.[\w.]+|sentry\.[\w.]+)$/.test(hostname);
 			if (!sentry && isRandomToken(user.value, 20) && !isIdentifierShaped(user.value))
 				out.push({
 					start: user.start,
@@ -272,10 +264,7 @@ const NOT_AN_AUTHORIZATION: [what: string, test: (v: string) => boolean][] = [
 	// `authorization: "https://…/authorize"` in an OAuth provider's config.
 	["an endpoint", (v) => /^https?:\/\//.test(v)],
 	// `authorization: config.authHeader`, Swift's `authorization: Mastodon.API.OAuth.Authorization`.
-	[
-		"a member or type path",
-		(v) => /^[A-Za-z_$][\w$]{0,40}(?:\.[A-Za-z_$][\w$]{0,40}){1,6}$/.test(v) && !/eyJ/.test(v) && isNameLike(v),
-	],
+	["a member or type path", (v) => /^[A-Za-z_$][\w$]{0,40}(?:\.[A-Za-z_$][\w$]{0,40}){1,6}$/.test(v) && isNameLike(v)],
 	["too short", (v) => v.length < 6],
 	["inert", isInert],
 	["a test value", isTestValue],
@@ -297,7 +286,7 @@ function isAuthorizationLiteral(raw: string): boolean {
 
 /** The value after a scheme in an Authorization header or a bare `Bearer`/`Basic` token. */
 function authorization(text: string, out: Finding[]) {
-	if (!/auth|bearer|basic|token |apikey|ssws|Signature=/i.test(text)) return;
+	if (!/auth|bearer|basic|token |bot |apikey|ssws|Signature=/i.test(text)) return;
 	// `Authorization: Bearer x`, `"authorization": "Token x"`, `-H 'Authorization: Basic x'`, `Proxy-Authorization:`: as RFC 7235
 	// has it, a scheme (any token: `Negotiate`, `NTLM`, `Zoho-oauthtoken`, `SharedKey`) and its credential, or a
 	// credential alone (`authorization: <token>` in a config).
@@ -308,10 +297,11 @@ function authorization(text: string, out: Finding[]) {
 		const scheme = m[1]?.trim();
 		const end = m.index + m[0].length;
 		// OAuth 1 and MAC headers are `k="v"` and `k=v` lists (`k=\"v\"` inside a JSON string); their secret parts are
-		// named and caught by name. Base64 ending in `=` padding is a credential.
+		// named and caught by name: a `k=` is theirs when a quoted value follows it. Base64 ending in `=` padding is a
+		// credential, the quote after it the string's end (`-H 'Authorization: Basic ZGV2OlhrOWYycFE='`).
 		if (
 			/^[\w-]+=[^=]/.test(m[2]) ||
-			(/^[\w-]+=$/.test(m[2]) && /["'\\]/.test(text[end] ?? "")) ||
+			(/^[\w-]+=$/.test(m[2]) && /^\\?["'][^\s"'\\,;)\]}]/.test(text.slice(end, end + 3))) ||
 			!isAuthorizationLiteral(m[2])
 		)
 			continue;
@@ -411,17 +401,12 @@ function signedUrls(text: string, out: Finding[]) {
 	for (const { name: n, value } of queryParams(text, NAMES)) {
 		const name = n.toLowerCase();
 		const v = value.value;
-		// (`refresh_token=refresh_token`, `client_secret=my_client_secret`: placeholders made of words.)
-		if (
-			v.length < 8 ||
-			isInert(decodeURIComponentSafe(v)) ||
-			isPlaceholder(v) ||
-			/\{\{|%7B%7B|%3C/i.test(v) ||
-			v.toLowerCase() === name ||
-			isWordsValue(v)
-		)
-			continue;
-		// `key=` and `code=` are often not secrets (`?key=value` pagination, `?code=200`): require randomness.
+		// (Judged decoded: `%24%7BAPI_KEY%7D` is `${API_KEY}`. `refresh_token=refresh_token`,
+		// `client_secret=my_client_secret`: placeholders made of words.)
+		const decoded = decodeURIComponentSafe(v);
+		if (v.length < 8 || isInert(decoded) || isPlaceholder(decoded) || isWordsValue(v)) continue;
+		// `key=`, `code=`, `token=` and `appid=` are often not secrets (`?key=value`, `?code=200`, a page's
+		// `?token=next-page-2`, `?appid=WeatherDashboard`): require randomness.
 		if ((name === "key" || name === "code" || name === "token" || name === "appid") && !isRandomToken(v)) continue;
 		out.push({
 			start: value.start,
@@ -441,14 +426,13 @@ function decodeURIComponentSafe(v: string): string {
 	}
 }
 
-/** Whether a cookie holds something worth hiding: not an attribute, a flag, or an analytics or preference cookie. */
+/** Whether a cookie holds something worth hiding: not an attribute, a flag, a number, or an analytics or preference cookie. */
 export function isSessionCookie(name: string, value: string): boolean {
 	if (/^(domain|path|expires|max-age|samesite|secure|httponly|priority|partitioned|version|comment)$/i.test(name))
 		return false;
-	if (value.length < 8 || isInert(value) || /^(true|false|-?\d+(?:\.\d+)?)$/i.test(value) || isWordsValue(value))
-		return false;
+	if (value.length < 8 || isInert(value) || isWordsValue(value)) return false;
 	// Analytics and preference cookies: `_ga=GA1.1.35…`, `_gid`, `_fbp`, consent, locale.
-	return !(ANALYTICS_COOKIE.test(name) || /^(?:GA|GS)\d\.\d\.|^fb\.\d\.|^[\d.]+$/.test(value));
+	return !(ANALYTICS_COOKIE.test(name) || /^(?:GA|GS)\d\.\d\.|^fb\.\d\.|^-?[\d.]+$/.test(value));
 }
 
 /** Google's app passwords, as Google writes them: `Your app password for your device: qwhz kfmt vbnr xplo`. */
@@ -479,13 +463,11 @@ function cookies(text: string, out: Finding[]) {
 		for (const m of text.matchAll(
 			/(?<![\w.-])([A-Za-z_][\w.-]{1,60})=([^;\s"'|]{6,4096});[ \t]*(?:Path|Domain|Expires|Max-Age|HttpOnly|Secure|SameSite)\b/gi,
 		)) {
-			// (Not CSRF tokens, kept as everywhere else, nor a deletion's `deleted`, nor an email.)
+			// (A session's cookie by its name, as isSessionCookie judges one; not a CSRF token, nor an email.)
 			if (
 				!/sess|sid$|token|auth|jwt|remember|login/i.test(m[1]) ||
 				/csrf|xsrf/i.test(m[1]) ||
-				ANALYTICS_COOKIE.test(m[1]) ||
-				isInert(m[2]) ||
-				/^(?:deleted|expired|null|none|invalid|bearer)$/i.test(m[2]) ||
+				!isSessionCookie(m[1], m[2]) ||
 				/@/.test(m[2])
 			)
 				continue;
@@ -528,7 +510,7 @@ function cookies(text: string, out: Finding[]) {
 function connectionStrings(text: string, out: Finding[]) {
 	if (!/pass|pwd|accountkey|sharedaccess|secret/i.test(text)) return;
 	for (const m of text.matchAll(
-		/(?:^|[;"'\s?&{])((?:User )?Password|Pwd|AccountKey|SharedAccessKey|SharedAccessSignature|SharedSecret|ClientSecret|Client Secret)[ \t]{0,3}=[ \t]{0,3}(?:\{([^}\n]+)\}|'([^'\n]+)'|"([^"\n]+)"|([^;"'\s](?:[^;"'\n]{0,4096}[^;"'\s])?))/dgi,
+		/(?:^|[;"'\s?&{])((?:User )?Password|Pwd|AccountKey|SharedAccessKey|SharedAccessSignature|SharedSecret|ClientSecret|Client Secret)[ \t]{0,3}=[ \t]{0,3}(?:\{(?!\{)([^}\n]+)\}|'([^'\n]+)'|"([^"\n]+)"|([^;"'\s](?:[^;"'\n]{0,4096}[^;"'\s])?))/dgi,
 	)) {
 		// (The value inside its braces or quotes, or bare.)
 		const g = m[2] !== undefined ? 2 : m[3] !== undefined ? 3 : m[4] !== undefined ? 4 : 5;
@@ -538,17 +520,11 @@ function connectionStrings(text: string, out: Finding[]) {
 		// In a URL query (`?password=x&y=z`) `&` ends the value; in `Password=Wi&nter;` it's part of it.
 		if (/^[?&]/.test(m[0]) && value.includes("&")) value = value.slice(0, value.indexOf("&"));
 		// The `Key=Value;` shape is a literal context; a `{…}` or quoted value is a literal whatever it holds.
-		if (
-			value.length < 4 ||
-			isInert(value) ||
-			isPlaceholder(value) ||
-			(bare && isCode(value, true)) ||
-			/\{\{|%[sd]|^\{\d\}$/.test(value)
-		)
-			continue;
-		// Only in something shaped like a connection string: two other `Key=Value` pairs separated by `;` on the line.
+		if (value.length < 4 || isInert(value) || isPlaceholder(value) || (bare && isCode(value, true))) continue;
+		// Only in something shaped like a connection string: two other `Key=Value` pairs separated by `;` on the line. (A
+		// value may hold `=`: base64's padding, `Pwd=Xk9fPq2LmZ=`.)
 		const line = text.slice(lineStart(text, m.index), lineEnd(text, m.index + m[0].length));
-		if ((line.match(/(?:^|;)[ \t]{0,3}["']?[A-Za-z][\w .-]{0,40}=[^;=\n]{0,300}(?=;|["']|$)/g) ?? []).length < 3)
+		if ((line.match(/(?:^|;)[ \t]{0,3}["']?[A-Za-z][\w .-]{0,40}=[^;\n]{0,300}(?=;|["']|$)/g) ?? []).length < 3)
 			continue;
 		out.push({
 			start,
@@ -582,7 +558,7 @@ function harmlessBase64(v: string, key = ""): boolean {
 function isPlainUrl(t: string, key: string): boolean {
 	if (isCredentialName(key)) return false;
 	const [url] = urls(t);
-	if (!url || url.start !== 0 || url.end !== t.length || url.password || /\s/.test(t)) return false;
+	if (!url || url.start !== 0 || url.end !== t.length || url.password) return false;
 	return (
 		url.segments.every((s) => !isRandomToken(s.value)) &&
 		[...queryParams(t)].every((p) => !isRandomToken(p.value.value))
@@ -647,9 +623,14 @@ function* secretDataEntries(text: string): Generator<{ key: string; value: Span 
 			siblingValue(lines, i, "kind") !== "Secret"
 		)
 			continue;
+		// The mapping's own entries, at its first entry's indent: a line deeper is a block scalar's or a flow
+		// collection's (the config file under `config.yaml: |`), and a line without a key (`- item`) is none.
+		let indent = -1;
 		for (let j = i + 1; j < lines.length && (lines[j].blank || lines[j].indent > data.indent); j++) {
-			const { key, value, block } = lines[j];
-			if (!key) continue;
+			const { key, value, block, blank } = lines[j];
+			if (blank) continue;
+			if (indent < 0) indent = lines[j].indent;
+			if (lines[j].indent !== indent || !key) continue;
 			// A `key: |` block scalar: one line is a value like any other; several (a config file) are scanned as text
 			// by the other detectors.
 			const body = block ? blockLines(text, lines[j].start) : [];
@@ -695,19 +676,15 @@ function isKubeSecretKey(key: string): boolean {
 }
 
 function isKubeSecretValue(value: string, key = ""): boolean {
-	// (A block scalar's lines are read as its value: yaml.ts gives the key's line none.)
+	// (A flow collection written over several lines, `config.json: {`, leaves its key's line the bracket alone.)
 	return (
 		!isInert(value) &&
 		!/^[{[]$/.test(value) &&
-		!(/^\d{1,6}$/.test(value) && !isSecretKeyName(key)) &&
 		!isPlainUrl(value, key) &&
 		!harmlessBase64(value, key) &&
 		!isHarmlessText(value, key)
 	);
 }
-
-/** Whether a key names a credential: by its words (`token`, `api-key`) or as a password or a PIN. */
-const isSecretKeyName = (key: string) => isCredentialName(key) || namesPasswordOrPin(key);
 
 /**
  * A host as a setting gives one (`mycluster.example.com`, `db.internal:5432`): lowercase labels, then a short TLD or an
@@ -724,16 +701,14 @@ const HOST_NAME =
  */
 function isHarmlessText(value: string, key: string): boolean {
 	const t = value.trim().replace(/^"|",?$|,$/g, "");
-	if (isSecretKeyName(key)) return false;
+	if (isCredentialName(key)) return false;
 	// (A word only under a setting's key, `type: git`: under `value` or `key1` a word is as likely a weak password.)
 	return (
 		/^\{\{.*\}\}$/.test(t) ||
 		/^(?:true|false|null|-?\d+(?:\.\d+)?)$/.test(t) ||
 		HOST_NAME.test(t) ||
 		/^[a-z0-9.-]+\/v\d\w*$/.test(t) ||
-		(t.length < 40 &&
-			isWordsValue(t) &&
-			(isSettingName(key) || /^(?:type|kind|mode|project|insecure|enabled)$/i.test(key)))
+		(t.length < 40 && isWordsValue(t) && isSettingName(key))
 	);
 }
 

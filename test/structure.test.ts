@@ -16,6 +16,7 @@ import {
 	parseJson,
 	pythonReprLiterals,
 } from "../src/json.ts";
+import { findStructure } from "../src/structure.ts";
 import { urlEnd, urls } from "../src/urls.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 import { randomBytes } from "./random.ts";
@@ -280,4 +281,197 @@ test("a cookie's value is read quoted, and ends at an escaped line break", () =>
 	);
 	const escaped = g.redact('{"h":"Cookie: sid=Zq8Vn3Kx9mQv2Lp7Rt\\r\\nHost: x"}').text;
 	assert.ok(!escaped.includes("Zq8Vn3Kx9mQv2Lp7Rt") && escaped.includes("\\r\\nHost: x"), escaped);
+});
+
+/** `text` redacted with guessing off: what the rules decide without the unnamed layer's guesses. */
+const ruled = (text: string) => new Redactor({ guessing: "off", fingerprintKey: "t" }).redact(text).text;
+
+test("docs' passwords and default credentials are kept in a URL, a command line and a Basic header", () => {
+	for (const [text, value] of [
+		["postgres://app:test@db.example.com/app", "app:test@"],
+		["postgres://app:postgres@db.example.com/app", "app:postgres@"],
+		["postgres://app:encodeURIComponent(pw)@db.example.com/app", "encodeURIComponent(pw)"],
+		["redis-cli -a database-password ping", "database-password"],
+		["redis-cli -a 'guest' ping", "'guest'"],
+		["mysql -u root -pmysql app", "-pmysql"],
+		["mysql -u root -p'$(DB_PASSWORD)' app", "$(DB_PASSWORD)"],
+		["sshpass -p 'your-password-here' ssh host", "your-password-here"],
+		["sshpass -p 'xxxxxxxx' ssh host", "xxxxxxxx"],
+		// `admin:changeme`, `admin:<password>`, `admin:my_db_password`, and `user` with no password at all.
+		["Authorization: Basic YWRtaW46Y2hhbmdlbWU=", "YWRtaW46Y2hhbmdlbWU="],
+		["Authorization: Basic YWRtaW46PHBhc3N3b3JkPg==", "YWRtaW46PHBhc3N3b3JkPg=="],
+		["Authorization: Basic YWRtaW46bXlfZGJfcGFzc3dvcmQ=", "YWRtaW46bXlfZGJfcGFzc3dvcmQ="],
+		["Authorization: Basic dXNlcg==", "dXNlcg=="],
+	])
+		kept(text, value);
+	hidden("postgres://app:Harbor2291x@db.example.com/app", "Harbor2291x");
+	hidden("mysql -u root -p'Harbor2291x' app", "Harbor2291x");
+});
+
+test("a Go DSN's password is hidden after a key", () => {
+	for (const text of [
+		"dsn: root:Harbor2291x@tcp(127.0.0.1:3306)/app",
+		'dsn: "root:Harbor2291x@tcp(127.0.0.1:3306)/app"',
+	])
+		assert.ok(!ruled(text).includes("Harbor2291x"), text);
+});
+
+test("a token as a URL user is hidden whatever its host and with an empty password; a name, a mask or a fixed word is kept", () => {
+	const token = "Zq81mXw0pLr7Tb2Nc9VdQ4kP";
+	for (const text of [
+		`git clone https://${token}@\${GIT_HOST}/org/repo.git`,
+		`curl https://${token}:@api.example.com/v1/charges`,
+		`git clone https://${token}:x-oauth-basic@github.com/org/repo.git`,
+	]) {
+		const out = ruled(text);
+		assert.ok(!out.includes(token) && !out.includes("[REDACTED password"), out);
+	}
+	// The same token as the user and the password: both are hidden.
+	assert.ok(!ruled("https://Kx9mQv2Lp7Rt9Wz4:Kx9mQv2Lp7Rt9Wz4@host.example.com/").includes("Kx9mQv2Lp7Rt9Wz4"));
+	for (const [text, value] of [
+		// (A Twilio account SID, built here so the file holds none.)
+		[
+			`https://AC${["8f3a9b2c", "4d5e6f70", "8192a3b4", "c5d6e7f8"].join("")}:Harbor2291x@api.twilio.com/2010-04-01`,
+			"AC8f3a9b2c4d5e6f",
+		],
+		["git clone https://xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@github.com/org/repo.git", "xxxxxxxxxxxxxxxx"],
+		["git clone https://ci-runner-8f3a9b2c4d5e@git.example.com/repo.git", "ci-runner-8f3a9b2c4d5e"],
+	])
+		assert.ok(ruled(text).includes(value), text);
+});
+
+test('an Authorization credential ending in = is hidden inside quotes, and an OAuth header\'s k="v" list is not one', () => {
+	hidden("curl -H 'Authorization: Basic ZGV2OlhrOWYycFE=' https://api.example.com", "ZGV2OlhrOWYycFE=");
+	hidden("headers = {'Authorization': 'ApiKey ZGV2OlhrOWYycFE='}", "ZGV2OlhrOWYycFE=");
+	const oauth = 'Authorization: OAuth oauth_consumer_key="xvz1evFS4wEEPTGEFPHBog", oauth_version="1.0"';
+	assert.ok(ruled(oauth).includes("oauth_consumer_key="));
+});
+
+test("an Authorization credential is labelled by a known scheme, and a dotted token is no member path", () => {
+	const out = ruled(
+		"Authorization: Digest Zq81mXw0pLr7Tb2Nc9VdQ4kP\nProxy-Authorization: Custom Kx9mQv2Lp7Rt9Wz4Lp7Rt9W",
+	);
+	assert.match(
+		out,
+		/Digest \[REDACTED digest credential #\w+\]\nProxy-Authorization: Custom \[REDACTED authorization /,
+	);
+	const call = 'headers.set("Authorization", "Xk9fPq2LmZ.Ab3dEf9hIjKl")';
+	assert.deepEqual(
+		findStructure(call).map((f) => call.slice(f.start, f.end)),
+		["Xk9fPq2LmZ.Ab3dEf9hIjKl"],
+	);
+});
+
+test("a bare Bot token is read without an Authorization header and is not learned; a Bearer path in prose is kept", () => {
+	const token = "Zq81mXw0pLr7Tb2Nc9VdQ4kP";
+	assert.equal(ruled(`const t = "Bot ${token}"; log(${token})`).split(token).length, 2);
+	assert.equal(ruled(`const t = "Bearer ${token}"; log(${token})`).split(token).length, 1);
+	kept("see the Bearer tokens/authentication-flows guide", "tokens/authentication-flows");
+});
+
+test("a query credential is judged decoded, and a page's token or an app's name is no credential", () => {
+	// (`${API_KEY}` and `$DB_PASSWORD` percent-encoded.)
+	for (const query of ["apikey=%24%7BAPI_KEY%7D", "password=%24DB_PASSWORD"])
+		assert.deepEqual(findStructure(`https://api.example.com/v1/items?${query}&page=2`), []);
+	for (const [text, value] of [
+		["https://api.example.com/v1/items?api_key=1234567890abcdef&page=2", "1234567890abcdef"],
+		["https://api.example.com/v1/items?token=next-page-2", "next-page-2"],
+		["https://api.example.com/data/2.5/weather?q=London&appid=MyCoolApp2024", "MyCoolApp2024"],
+	])
+		kept(text, value);
+	hidden(
+		"https://api.example.com/data/2.5/weather?q=London&appid=8f3a9b2c4d5e6f708192a3b4c5d6e7f8",
+		"8f3a9b2c4d5e6f708192a3b4c5d6e7f8",
+	);
+});
+
+test("a cookie's attributes, CSRF token, analytics id, reference, email, words and numbers are kept; a session's hidden", () => {
+	for (const [text, value] of [
+		["Set-Cookie: sid=Zq81mXw0pLr7Tb2Nc9VdQ4kP; Domain=.example.com; Path=/", ".example.com"],
+		["csrf_token=Zq81mXw0pLr7Tb2Nc9VdQ4kP; Path=/; HttpOnly", "Zq81mXw0pLr7Tb2Nc9VdQ4kP"],
+		["_uetsid=8f3a9b2c4d5e6f708192a3b4c5d6e7f8; Path=/; Max-Age=86400", "8f3a9b2c4d5e6f708192a3b4c5d6e7f8"],
+		["session_id=${SESSION_ID}; Path=/; HttpOnly", "${SESSION_ID}"],
+		["login_email=alice@example.com; Path=/", "alice@example.com"],
+		["Cookie: session=${SESSION_ID}; view=compact_list_mode", "${SESSION_ID}"],
+		["Cookie: session=${SESSION_ID}; view=compact_list_mode", "compact_list_mode"],
+		["Cookie: offset=-12345678; visits=12345678", "-12345678"],
+		["Cookie: offset=-12345678; visits=12345678", "visits=12345678"],
+	])
+		assert.ok(ruled(text).includes(value), text);
+	assert.ok(!ruled("user_session=Zq81mXw0pLr7Tb2Nc9VdQ4kP; Path=/; HttpOnly").includes("Zq81mXw0pLr7Tb2Nc9VdQ4kP"));
+});
+
+test("a connection string's template, reference or code is no password; its literal is", () => {
+	const helm = "Data Source=db;Initial Catalog=app;User ID=sa;Password={{ .Values.dbPassword }};";
+	assert.equal(r().redact(helm).text, helm);
+	kept('$cs = "Server=db;Database=app;User Id=sa;Password=$env:DB_PASSWORD;"', "$env:DB_PASSWORD");
+	kept(
+		"Endpoint=sb://ns.servicebus.windows.net/;SharedAccessKeyName=Root;SharedAccessKey=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG=",
+		"abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG=",
+	);
+	assert.deepEqual(findStructure("Server=db;Database=app;User Id=sa;Password=settings.Database.Password;"), []);
+	hidden("Driver={ODBC Driver 18 for SQL Server};Server=db;Uid=sa;Pwd={Harbor2291x!};", "Harbor2291x!");
+	assert.ok(!ruled("Server=db;Uid=sa;Pwd=Xk9fPq2LmZ8bW4kY=").includes("Xk9fPq2LmZ8bW4kY="));
+});
+
+test("a Secret's config file, certificates, public keys, endpoint and base64 settings are kept, its credentials hidden", () => {
+	const secret = (data: string) => `apiVersion: v1\nkind: Secret\nmetadata:\n  name: app\nstringData:\n${data}`;
+	const config = ruled(
+		secret(
+			"  config.yaml: |\n    database:\n      driver: postgresql\n      password: Harbor2291x\n    features:\n      owner: platform-team\n",
+		),
+	);
+	assert.ok(
+		config.includes("postgresql") && config.includes("platform-team") && !config.includes("Harbor2291x"),
+		config,
+	);
+	for (const [data, value] of [
+		["  type: git\n  url: https://github.com/argoproj/private-repo\n", "https://github.com/argoproj/private-repo"],
+		['  config.json: {\n    "auths": {}\n  }\n', "config.json: {"],
+		// `db.example.com` and `12345678`.
+		["  smtp-relay: ZGIuZXhhbXBsZS5jb20=\n", "ZGIuZXhhbXBsZS5jb20="],
+		["  max-conns: MTIzNDU2Nzg=\n", "MTIzNDU2Nzg="],
+		// The CA's certificate (its value made up, as in the test above).
+		[
+			"  ca: L0ZtMG01WHVHSS9FM3FMaERFNU9SeEFTVFNSTlFITVJ2ZzNBNHo3YkdnYjI1VDNZ\n",
+			"L0ZtMG01WHVHSS9FM3FMaERFNU9SeEFTVFNSTlFITVJ2ZzNBNHo3YkdnYjI1VDNZ",
+		],
+	])
+		assert.ok(ruled(secret(data)).includes(value), data);
+	for (const [data, value] of [
+		["  webhook: https://hooks.example.com/notify Zq81mXw0pLr7Tb2Nc9VdQ4kP\n", "Zq81mXw0pLr7Tb2Nc9VdQ4kP"],
+		["  webhook: Zq81mXw0pLr7Tb2Nc9VdQ4kP https://hooks.example.com/notify\n", "Zq81mXw0pLr7Tb2Nc9VdQ4kP"],
+	])
+		assert.ok(!ruled(secret(data)).includes(value), data);
+	// A public key by its name.
+	assert.deepEqual(
+		findStructure(secret("  VAPID_PUBLIC_KEY: BEl62iUYgUivxIkv69yViEuiBIa40HI0F8m6V1r9Xk9fPq2LmZ8b\n")),
+		[],
+	);
+	// A URL holding a password, base64'd (`postgres://app:Tiger4414yx@db/app`), and one under a key that names it a
+	// secret: the Secret's rule hides them, whatever the others do.
+	for (const data of [
+		"  DATABASE_URL: cG9zdGdyZXM6Ly9hcHA6VGlnZXI0NDE0eXhAZGIvYXBw\n",
+		"  webhook-secret: https://hooks.example.com/catch/23808906/7c06jvh/\n",
+	])
+		assert.ok(
+			findStructure(secret(data)).some((f) => f.rule === "structure:kube-secret"),
+			data,
+		);
+});
+
+test("a ConfigMap listed beside a Secret keeps its values, in YAML and in JSON", () => {
+	const value = "Zq81mXw0pLr7Tb2Nc9VdQ4kP";
+	const secret = "V2ludGVyMjAyNHBhc3M=";
+	const yaml = `apiVersion: v1\nkind: ConfigMap\ndata:\n  release: ${value}\n---\napiVersion: v1\nkind: Secret\ndata:\n  blob: ${secret}\n`;
+	const json = JSON.stringify({
+		items: [
+			{ kind: "ConfigMap", data: { release: value } },
+			{ kind: "Secret", data: { blob: secret } },
+		],
+	});
+	for (const text of [yaml, json]) {
+		const out = ruled(text);
+		assert.ok(out.includes(value) && !out.includes(secret), out);
+	}
 });

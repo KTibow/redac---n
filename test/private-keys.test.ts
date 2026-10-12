@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { normalize } from "../src/normalize.ts";
 import { armoredBlocks, pemTail } from "../src/pem.ts";
 import { b62, hidden, kept, privateKeyLines, r } from "./helpers.ts";
@@ -220,4 +221,31 @@ test("SEC 1's explicit EC parameters start as an EC key does and are public", ()
 	const params =
 		"-----BEGIN EC PARAMETERS-----\nMIG3AgEBMCUGByqGSM49AQIwGgICAKMGCSqGSM49AQIDAzAJAgEBAgECAgEIMEQE\nFQclRrVDUjSkIuB4lnX0MsiUNd5SQgQUyVF9BtUkDTz/OMdLILbNTW+d1NkDFQDS\nwPsVdghg3vHu9NaW5naHVhUXVAQrBAevaZiVRhA9eTKfzD10iA8zu+gDywHsIyEb\nWWat6h0/h/fqWEiu8LfKnwIVBAAAAAAAAAAAAAHmD8iCHMdNrq/BAgEC\n-----END EC PARAMETERS-----";
 	kept(params, "MIG3AgEBMCUGByqGSM49AQIwGgICAKMGCSqGSM49AQIDAzAJAgEBAgECAgEIMEQE");
+});
+
+test("a key's tail before a whole key is hidden, and a whole key's END is not read up past its BEGIN", () => {
+	const key = privateKeyLines();
+	const tail = [...Array.from({ length: 4 }, () => b62(64)), "-----END PRIVATE KEY-----"];
+	const out = new Redactor({ guessing: "off" }).redact(
+		`the old key ends with:\n${tail.join("\n")}\nand the new one is:\n${key.join("\n")}\n`,
+	).text;
+	assert.ok(!out.includes(tail[2]), out);
+	// A key flattened onto one line (`echo $KEY`): the digest on the line above is not its material.
+	const digest = "3f786850e387550fdab836ed7e6dc881de23001b3f786850e387550fdab836ed7e6dc881de23001b";
+	kept(`${digest}\n${key.join(" ")}\n`, digest);
+});
+
+test("an OpenSSL text dump's private value is hidden", () => {
+	const bytes = (n: number) =>
+		randomBytes(n)
+			.toString("hex")
+			.match(/../g)!
+			.join(":")
+			.match(/.{1,45}/g)!
+			.map((l) => `    ${l}`)
+			.join("\n");
+	const priv = bytes(32);
+	const dump = `read EC key\nPrivate-Key: (256 bit)\npriv:\n${priv}\npub:\n${bytes(65)}\nASN1 OID: prime256v1\n`;
+	const out = new Redactor({ guessing: "off" }).redact(dump).text;
+	assert.ok(!out.includes(priv.split("\n")[1].trim()), out);
 });
