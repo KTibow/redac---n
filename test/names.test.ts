@@ -1267,3 +1267,72 @@ test("a secret's word before a site or GPG key names the pair's secret half", ()
 	assert.equal(nameClass("SECRET_CACHE_KEY"), "identifier");
 	hidden("SECRET_SITE_KEY=6LdKx9mP2vQ7tL4wR8a1b2c3d4e5f6g7h8i9j0kA", "6LdKx9mP2vQ7tL4wR8a1b2c3d4e5f6g7h8i9j0kA");
 });
+
+test("a list of strings under a credential's name is read item by item, on one line or over several", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	const [a, b] = [b62(20), b62(20)];
+	for (const text of [
+		`API_KEYS='["${a}","${b}"]'`,
+		`API_KEYS='["${a}"]'`,
+		`{"api_keys": ["${a}", "${b}"]}`,
+		`{"api_keys": [\n  "${a}",\n  "${b}"\n]}`,
+		`api_keys:\n  # rotated monthly\n  - ${a}\n  - "${b}"\n`,
+	]) {
+		const out = off.redact(text).text;
+		// (Each item alone: the list's brackets, quotes and markers stay.)
+		assert.ok(!out.includes(a) && !out.includes(b) && /\["\[|"\[|- \[/.test(out), out);
+	}
+	hidden('passwords: ["hunter2hunter2", "letmein2024"]', "letmein2024");
+	hidden("passwords:\n  - Summer2024!\n  - Winter2023#\n", "Winter2023#");
+	hidden('{"passwords": ["Summer2024!", "Winter2023#"]}', "Winter2023#");
+	// A list of names, of references or of hashers' classes holds none; nor does a ternary's branch after a list.
+	for (const [text, value] of [
+		['required_secrets: ["github_token", "npm_token"]', "npm_token"],
+		['api_keys: ["${KEY_ONE}", "${KEY_TWO}"]', "${KEY_TWO}"],
+		["PASSWORD_HASHERS=['django.contrib.auth.hashers.PBKDF2PasswordHasher']", "PBKDF2PasswordHasher"],
+		["auth: [ 'bamf,bamf_id,bamf_secret',\n  'baz,baz_id_new,baz_secret_new' ]", "bamf_secret"],
+		["const fields = tab ? ['username', 'password'] : ['mobile', 'captcha']", "captcha"],
+		[
+			'Key                  Value\n---                  -----\ntoken_policies       ["default" "ci"]',
+			'["default" "ci"]',
+		],
+	])
+		kept(text, value);
+});
+
+test("a value's own comment, a keyword argument's comma and a command after a token are no part of it", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	const out = off.redact("bind 127.0.0.1\nrequirepass Kx9mQ2vL7pZr # set by ops\nmaxmemory 2gb").text;
+	assert.ok(!out.includes("Kx9mQ2vL7pZr") && out.includes("] # set by ops"), out);
+	const call = off.redact("login(\n  PASSWORD=Kx9mQ2vL7pZr,\n  USER=bob)").text;
+	assert.ok(!call.includes("Kx9mQ2vL7pZr") && call.includes("],\n  USER=bob"), call);
+	const key = b62(40);
+	const dev = off.redact(`STRIPE_SECRET_KEY=${key} next dev`).text;
+	assert.ok(!dev.includes(key) && dev.endsWith("] next dev"), dev);
+	const long = b62(300);
+	assert.ok(!off.redact(`TOKEN=${long} next`).text.includes(long.slice(0, 40)));
+	// (Nor are Cypress's keystrokes after a typed password.)
+	const typed = off.redact("cy.get('#password').type('Hq3mQ2vL9z{enter}')").text;
+	assert.ok(!typed.includes("Hq3mQ2vL9z") && typed.includes("]{enter}')"), typed);
+});
+
+test("a row that leaves its last cells out is read under its columns, and a Go import's path is no value", () => {
+	hidden("user,password,host\nalice,Xk9#fmQ2vLpz,db1\nbob,Hq3#mQ2vL9z", "Hq3#mQ2vL9z");
+	for (const text of [
+		'import (\n\tpwd "github.com/acme/password-x9"\n\t"fmt"\n)',
+		'import pwd "github.com/acme/password-x9"',
+	])
+		kept(text, "github.com/acme/password-x9");
+	// (Where a password is read from is no password: `| --pass-file | path |`.)
+	kept("| Source | Password |\n|---|---|\n| --pass-file | path |\n| --pass-stdin | stdin |", "| path |");
+	kept("| Source | Password |\n|---|---|\n| --pass-file | path |\n| --pass-stdin | stdin |", "| stdin |");
+});
+
+test("a line of several pairs is no YAML value, and a comment after a sibling's name leaves it the name", () => {
+	for (const text of ['"password": null, "user": "bob"', '  "password": null, "user": "bob",'])
+		kept(text, '"user": "bob"');
+	hidden('  "password": Xk9fmQ2vLpzW, "user": "bob",', "Xk9fmQ2vLpzW");
+	// (`REQUEST_ID` says the value is a request's ID, comment or not.)
+	kept("env:\n  - name: REQUEST_ID  # set by CI\n    value: Xk9fmQ2vLpzWq7Rt4NbYc8Hd\n", "Xk9fmQ2vLpzWq7Rt4NbYc8Hd");
+	assert.equal([...attributes("  - name: API_TOKEN  # from vault")][0].value.value, "API_TOKEN");
+});

@@ -898,7 +898,8 @@ export function namesPasswordOrPin(name: string): boolean {
 	return words(name).some(isPasswordWord) || /PASSE$/.test(phraseName(readName(name).core) ?? "") || isPinName(name);
 }
 
-function isVendorName(name: string): boolean {
+/** A vendor's name alone, which holds that vendor's key: `deepgram`, `NGROK` (VENDORS). */
+export function isVendorName(name: string): boolean {
 	return VENDORS.has(name.toLowerCase().replace(/[_-]/g, ""));
 }
 
@@ -1181,6 +1182,8 @@ const ABOUT_CREDENTIAL = new Set([
 	"STORE",
 	"COMPLEXITY",
 	"GENERATOR",
+	"HASHER",
+	"HASHERS",
 	"HISTORY",
 	"CHANGE",
 	"UPDATE",

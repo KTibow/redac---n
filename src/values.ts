@@ -10,7 +10,7 @@ import { FOREIGN_PASSWORD_SPELLINGS, isCredentialName } from "./names.ts";
 import { base64Binary } from "./base64.ts";
 import { isBech32Address } from "./checksums.ts";
 import { isPlaceholder, isTruncated } from "./public.ts";
-import { isDerPublicKey, isDerSignature, isRsaPublicKey } from "./publickeys.ts";
+import { isDerCertificate, isDerPublicKey, isDerSignature, isRsaPublicKey } from "./publickeys.ts";
 import { isPasswordlessUrl } from "./urls.ts";
 import { MAX_VALUE } from "./syntax.ts";
 import { decodeEntities } from "./normalize.ts";
@@ -529,12 +529,18 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			/^<[\w.$=+%-]{1,200}@[\w.-]{1,200}>$/.test(v) ||
 			/^0x[0-9a-fA-F]{1,16}$/.test(v),
 	],
-	// DER public keys and signatures in base64, by their structure (publickeys.ts): SPKI (`MIIBIjAN…`, `MCowBQYDK2Vw…`),
-	// PKCS #1 (`MIIBCgKC…`), ECDSA signatures (`MEUCI…`); an SSH public key line, an `age1…` recipient.
+	// DER public keys, certificates and signatures in base64, by their structure (publickeys.ts): SPKI (`MIIBIjAN…`,
+	// `MCowBQYDK2Vw…`), PKCS #1 (`MIIBCgKC…`), X.509 (`MIIDdzCCAl+gAwIBAgI…`), ECDSA signatures (`MEUCI…`); an SSH public
+	// key line, an `age1…` recipient.
 	[
 		"public key",
 		(v) =>
-			isDerPublicKey(v) || isRsaPublicKey(v) || isDerSignature(v) || isSshPublicKey(v) || /^age1[0-9a-z]{58}$/.test(v),
+			isDerPublicKey(v) ||
+			isRsaPublicKey(v) ||
+			isDerCertificate(v) ||
+			isDerSignature(v) ||
+			isSshPublicKey(v) ||
+			/^age1[0-9a-z]{58}$/.test(v),
 	],
 	// Hardhat/Anvil's first account, BIP-39's `abandon … about` test vectors.
 	[
@@ -1163,12 +1169,16 @@ function isKeyGroups(parts: string[]): boolean {
 
 /**
  * A Kubernetes pod's name: its workload's name, then the generated suffixes of a ReplicaSet (6–10 characters)
- * and of the pod (5): `ledger-api-58d4f7c9b-rbjl3`, `search-i12seefem-wq3g4`.
+ * and of the pod (5): `ledger-api-58d4f7c9b-rbjl3`, `search-i12seefem-wq3g4`. (A word in the workload's name: its first
+ * part may be none, `k8s-agent-…`.)
  */
 export function isPodName(value: string): boolean {
 	return (
 		/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-[a-z0-9]{6,10}-[a-z0-9]{5}$/.test(value) &&
-		naturalness(value.split("-")[0]) > 0
+		value
+			.split("-")
+			.slice(0, -2)
+			.some((part) => naturalness(part) > 0)
 	);
 }
 
@@ -1181,8 +1191,22 @@ export function hasThreeClasses(value: string): boolean {
 }
 
 /** How many of the four character classes a value has: lower case, upper case, digits, symbols. */
-export function characterClasses(value: string): number {
+function characterClasses(value: string): number {
 	return [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9\s]/].filter((r) => r.test(value)).length;
+}
+
+/**
+ * A password made to a password rule's demands: eight characters or more of three classes, a symbol among them (not
+ * only a name's `.` `_` `-`), and neither code nor words: `CANYpfso8s%`, `Harbor2291!`.
+ */
+export function isMadePassword(value: string): boolean {
+	return (
+		value.length >= 8 &&
+		characterClasses(value) >= 3 &&
+		/[^A-Za-z0-9._-]/.test(value) &&
+		!isCode(value, true) &&
+		naturalness(value) < 1
+	);
 }
 
 /**
@@ -1485,6 +1509,8 @@ export const COMMON_WORDS = new Set([
 	"prompt",
 	"keyring",
 	"file",
+	"path",
+	"stdin",
 	"env",
 	"vault",
 	"password",

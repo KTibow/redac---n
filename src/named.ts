@@ -35,6 +35,7 @@ import {
 	quoted,
 	type Span,
 	stringEnd,
+	stringListItems,
 	unquotedValue,
 	withoutUnopenedClosers,
 } from "./syntax.ts";
@@ -69,7 +70,6 @@ import {
 	ALGORITHM,
 	CJK_COUNT,
 	isBenignValue,
-	characterClasses,
 	isRandomToken,
 	COMMON_WORDS,
 	cleanValue,
@@ -81,6 +81,7 @@ import {
 	isIdentifierShaped,
 	isInert,
 	hasThreeClasses,
+	isMadePassword,
 	isNameLike,
 	isWordy,
 	looksSecret,
@@ -282,6 +283,10 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// A shell's backticks run a command: `PASSWORD=\`openssl rand -hex 16\``.
 	if (/^`[a-z][\w.-]*\s[^`]*`$/.test(raw.trim())) return false;
 	if (isVerdictUnderPass(name, value)) return false;
+	// A list of strings (`API_KEYS='["…", "…"]'`, `passwords:` over `- …` lines) is judged by its items: findNamed hides
+	// each that is a secret under the name.
+	const items = stringListItems(value);
+	if (items) return items.some((item) => isNamedSecret(name, `"${item.value}"`, true));
 	// A JSON object or array as a string (`"SecretString": "{\"username\": …}"`): its own pairs are judged by name.
 	// (Starting as JSON does: `{"`, `{key:`, `[1`, `["`, `[{`; `[bZ0{6tfzE&n2q:]` is a password in brackets.)
 	if (
@@ -432,8 +437,9 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		!(/^[A-Za-z]{16,}$/.test(value) && naturalness(value) < 1.2)
 	)
 		return false;
-	// dotted.config.keys, kebab-names, a word in any script (`--rpc-secret bayrağını kullanın`, Turkish for "use the flag").
-	if (/^\p{Ll}+(?:[._-]\p{Ll}+)*$/u.test(value)) return false;
+	// dotted.config.keys, kebab-names, a list of names (`bamf,bamf_id,bamf_secret`), a word in any script (`--rpc-secret
+	// bayrağını kullanın`, Turkish for "use the flag").
+	if (/^\p{Ll}+(?:[._,-]\p{Ll}+)*$/u.test(value)) return false;
 	if (isGenericName(name.replace(/^[-$@]+/, ""))) {
 		// Cache keys, object keys, content addresses: hashes with words or paths around them.
 		// (Under a generic name a hex run beside a separator is one, whatever else is in it.)
@@ -475,15 +481,11 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 			return false;
 		// `"key": "user.name"`, `token: refresh`: a bare generic name needs a generated-looking value: with a digit, or
 		// letters in no words (mixed case scores near words by its humps: `WnDKpEQCbOciskIKhAfdQxFmY`).
-		// (Or a made password: three character classes, a symbol among them, `CANYpfso8s%` as an express-session secret.)
+		// (Or a made password, `CANYpfso8s%` as an express-session secret.)
 		return (
 			(value.length >= 12 && naturalness(value) < 0.6 && /\d/.test(value)) ||
 			(value.length >= 20 && (naturalness(value) < 0.2 || (/^[A-Za-z_-]+$/.test(value) && !readsAsWords(value)))) ||
-			(value.length >= 8 &&
-				characterClasses(value) >= 3 &&
-				/[^A-Za-z0-9._-]/.test(value) &&
-				!isCode(value, true) &&
-				naturalness(value) < 1)
+			isMadePassword(value)
 		);
 	}
 	return true;
@@ -661,7 +663,11 @@ const RULES: ((text: string, out: Finding[]) => void)[] = [
 export function findNamed(text: string): Finding[] {
 	const out: Finding[] = [];
 	for (const rule of RULES) rule(text, out);
-	return out.filter((f) => !explainedByNeighbours(text, f)).flatMap((f) => urlTokens(text, f));
+	const imports = goImports(text);
+	return out
+		.filter((f) => !explainedByNeighbours(text, f) && !imports.some(([start, end]) => f.start >= start && f.end <= end))
+		.flatMap((f) => listItems(text, f))
+		.flatMap((f) => urlTokens(text, f));
 }
 
 /**
@@ -703,6 +709,15 @@ function explainedByNeighbours(text: string, f: Finding): boolean {
 			return true;
 	}
 	return false;
+}
+
+/** A list of strings a name says holds secrets (isNamedSecret) is its items: each that is a secret under the name is hidden, the list around them kept. */
+function listItems(text: string, f: Finding): Finding[] {
+	const items = stringListItems(text.slice(f.start, f.end));
+	if (!items) return [f];
+	return items
+		.filter((item) => isNamedSecret(f.name ?? "", `"${item.value}"`, true))
+		.map((item) => ({ ...f, start: f.start + item.start, end: f.start + item.end }));
 }
 
 /**
@@ -835,10 +850,13 @@ function assignments(text: string, out: Finding[]) {
 		// (A sigil makes the name code's variable, not an environment's or an INI file's: Perl's `@key=map(…);`.)
 		const sigil = /^[$@]/.test(m[2]);
 		const envLine = op === "=" && m[1] === "" && tight && !continued && !sigil && ENV_LINE_START.test(before);
+		// (Not a line of several pairs, `"password": null, "user": "bob"`: a YAML value holds no `name: ` of its own, an
+		// object's line of code does.)
 		const yamlLine =
 			op === ":" &&
 			!continued &&
 			YAML_LINE_START.test(before) &&
+			!/,[ \t]*(["']?)[A-Za-z_$][\w$.-]*\1[ \t]*:(?:[ \t]|$)/.test(text.slice(at, lineEndAt(text, at))) &&
 			!(
 				entry !== undefined &&
 				(/^(?:[A-Za-z_$][\w$.]*|\d+|true|false|null)$/.test(entry) ||
@@ -863,7 +881,8 @@ function assignments(text: string, out: Finding[]) {
 		// `SMTP_PASSWORD=x` anywhere (`heroku config:set …`, `API_KEY=x npm start`) is an env var, so a literal; and
 		// `user=root password=x` in a log line or a CLI is data, as is a pair in a query string, `?user=a&pass=x`, or in an
 		// option's comma list of them, `mount -o username=a,password=x`. (Not a declaration's list, `let user=a,password=b`.)
-		const envName = op === "=" && /^[A-Z][A-Z0-9_]*$/.test(name) && !sigil && tight && openParens <= 0;
+		// (Nor a keyword argument on a call's own line, `login(` / `  PASSWORD=x,`: code, whose value ends at its comma.)
+		const envName = op === "=" && /^[A-Z][A-Z0-9_]*$/.test(name) && !sigil && tight && openParens <= 0 && !continued;
 		const pair = op === "=" && m[1] === "" && tight && openParens <= 0;
 		const logPair = pair && /[ \t]$/.test(before);
 		const listPair = pair && /(?:[?&]|(?:^|[ \t])(?<!\b(?:let|var|const)[ \t]+)(?:[\w.-]+=[^\s=,]*,)+)$/.test(before);
@@ -883,6 +902,18 @@ function assignments(text: string, out: Finding[]) {
 		// (A logfmt line, `level=info … password=V host=db`: its pairs are separated by blanks, a value runs to one.)
 		const logfmt =
 			logPair && (text.slice(lineStart, lineEndAt(text, at)).match(/(?:^|[ \t])[\w.-]+=[^\s=]/g)?.length ?? 0) >= 3;
+		// A list of strings under the name, on its line or over the lines below (`"api_keys": [` then `"…",` lines,
+		// `passwords:` then `- …` lines): read whole, each item judged under the name (isNamedSecret) and hidden alone
+		// (findNamed). (No pairs inside to read.)
+		const list = listValue(text, at, op === ":" && YAML_LINE_START.test(before) ? before : undefined);
+		if (list) {
+			ASSIGN.lastIndex = Math.max(ASSIGN.lastIndex, list[1]);
+			if (isNamedSecret(name, text.slice(list[0], list[1]), true)) {
+				namedFinding(out, list[0], list[1], name, "named:assign");
+				out[out.length - 1].literal = true;
+			}
+			continue;
+		}
 		let span = assignedValue(text, at, {
 			wholeLine,
 			envLine,
@@ -1015,13 +1046,13 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 	if (section && nameClass(`${section}/${name}`) !== "credential") return false;
 	// `pw:api`, `key:value`, `redis:6379`: an unquoted name with a colon and no space is a namespace, not YAML; in
 	// backticks, `` `pwd`:/workspace ``, a command substitution. (Except a password in a comma list of fields:
-	// `Logon ID: 0x1a2b, Password:Rmtq@1234!`.)
+	// `Logon ID: 0x1a2b, Password:Rmtq@1234!`; and a colon that ends its line, a YAML key whose value is below it.)
 	const end = m.index + m[0].length;
 	if (
 		op === ":" &&
 		(quote === "" || quote === "`") &&
 		!/[ \t]/.test(text[end - 1]) &&
-		!/["'`]/.test(text[end] ?? "") &&
+		!/["'`\r\n]/.test(text[end] ?? "") &&
 		!(/,[ \t]+$/.test(text.slice(Math.max(0, m.index - 4), m.index)) && isPasswordName(name))
 	)
 		return false;
@@ -1035,6 +1066,15 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 	if (/^(?:set-)?cookies?$/i.test(name) && op === ":") return false;
 	// `$expected ? 'pass' : 'cancel'`, `type={shown ? 'text' : 'password'}`: a ternary's strings, not a key and its value.
 	if (quote && op === ":" && /\?[ \t]*$/.test(text.slice(Math.max(0, m.index - 4), m.index))) return false;
+	// `tab ? ['username', 'password'] : ['mobile', 'captcha']`: a list's last string before a ternary's other branch.
+	// (Not a computed key, `{ ['password']: 'x' }`, its bracket right before it.)
+	if (
+		quote &&
+		op === ":" &&
+		/\][ \t]*:[ \t]*$/.test(m[0]) &&
+		!/\[[ \t]*$/.test(text.slice(Math.max(0, m.index - 8), m.index))
+	)
+		return false;
 	// A country's ISO code among others, `{"SK": "Slovakia", "PW": "Palau", …}`: a map of countries, not a secret key.
 	if (
 		/^[A-Z]{2}$/.test(name) &&
@@ -1071,6 +1111,36 @@ function enclosingCall(text: string, at: number): string | undefined {
 		}
 	}
 	return undefined;
+}
+
+/**
+ * The list of strings (stringListItems) an assignment's value at `at` is, when it is one: a flow list from its `[` to the
+ * bracket that closes it, however many lines that takes; or, after a YAML key whose line ends there (`yamlKey`, the
+ * line before the key), the `- …` lines below it, no less indented than the key, comments and blank lines among them.
+ */
+function listValue(text: string, at: number, yamlKey?: string): [number, number] | undefined {
+	if (text[at] === "[") {
+		const close = closingBracket(text, at + 1);
+		return close > 0 && stringListItems(text.slice(at, close + 1)) ? [at, close + 1] : undefined;
+	}
+	const eol = lineEndAt(text, at);
+	if (yamlKey === undefined || text[eol] !== "\n" || !/^[ \t]*(?:#.*)?\r?$/.test(text.slice(at, eol))) return undefined;
+	const indent = /^[ \t]*/.exec(yamlKey)![0].length;
+	let end = -1;
+	for (let k = eol + 1; k < text.length && k - eol < MAX_VALUE;) {
+		const next = lineEndAt(text, k, MAX_VALUE);
+		const line = text.slice(k, next);
+		const item = /^([ \t]*)-[ \t]+(.*)/.exec(line);
+		// (A mapping or a collection as an item, `- name: x`, makes no list of strings: read no further.)
+		if (item && item[1].length >= indent && /^[^"']\S*:(?:[ \t]|\r?$)|^[[{&*!|>]/.test(item[2])) return undefined;
+		if (item && item[1].length >= indent) end = next;
+		else if (!/^[ \t]*(?:#.*)?\r?$/.test(line)) break;
+		k = next + 1;
+	}
+	if (end < 0) return undefined;
+	const start = eol + 1 + /^\s*/.exec(text.slice(eol + 1, end))![0].length;
+	const span: [number, number] = [lineStartAt(text, start), end - (text[end - 1] === "\r" ? 1 : 0)];
+	return stringListItems(text.slice(span[0], span[1])) ? span : undefined;
 }
 
 /** Reads an assignment's value at `at` (after its operator, blanks and a literal's prefix). */
@@ -1158,8 +1228,8 @@ const COMMAND_WORDS =
 /**
  * The value of an unquoted `NAME=value` that starts an env line, when a command follows it on the line: its first word,
  * up to a blank (read as a line, a password may hold `&`, `;` and `<` themselves: `Tr0ub4dor&3horse`). A command follows when the next word is an operator
- * (`&&`, `;`, `|`) or the first ends with `;`, a command or a path comes next, or later words are flags, `NAME=`s or
- * tokens. Otherwise the line's words are the value (a dotenv passphrase, `correct horse battery staple`).
+ * (`&&`, `;`, `|`) or the first ends with `;` or is a generated token, a command or a path comes next, or later words
+ * are flags, `NAME=`s or tokens. Otherwise the line's words are the value (a dotenv passphrase, `correct horse battery staple`).
  */
 function shellWordValue(text: string, span: [number, number]): [number, number] {
 	const words = [...text.slice(span[0], span[1]).matchAll(/\S+/g)];
@@ -1177,8 +1247,10 @@ function shellWordValue(text: string, span: [number, number]): [number, number] 
 	].some((l) => /^[ \t]*(?:export[ \t]+)?[A-Z_][A-Z0-9_]*=/.test(l));
 	const program =
 		/^[a-z][a-z0-9.+_-]{0,30}$/.test(next) && !FUNCTION_WORDS.has(next) && !envFile && !/^[A-Za-z][a-z]*$/.test(first);
+	// (A generated token is a value whole, as a passphrase's words never are: `STRIPE_SECRET_KEY=<token> next dev`.)
 	const command =
 		/;$/.test(first) ||
+		isRandomToken(first) ||
 		/^(?:&&?|\|\|?|;)$/.test(next) ||
 		COMMAND_WORDS.test(next) ||
 		program ||
@@ -1327,14 +1399,11 @@ function spacedPairs(text: string, out: Finding[]) {
 		)
 			continue;
 		// More words after the cell (and its closing quote) on a line that isn't a table: a directive (`password requisite
-		// pam_pwquality.so`). (Not when the cell was read as far as a value is, UNQUOTED_READ: the rest is its own.)
+		// pam_pwquality.so`). (Not when the cell was read as far as a value is, UNQUOTED_READ: the rest is its own; nor a
+		// comment after the value, `requirepass Kx9mQ2vL # set by ops`, which readValue cut.)
 		const after = span[0] > at ? span[1] + 1 : span[1];
-		if (
-			!jsonLine &&
-			!barred &&
-			span[1] - span[0] < UNQUOTED_READ &&
-			/\S/.test(text.slice(after, lineEndAt(text, after)))
-		)
+		const rest = text.slice(after, lineEndAt(text, after));
+		if (!jsonLine && !barred && span[1] - span[0] < UNQUOTED_READ && /\S/.test(rest) && !/^[ \t]+#/.test(rest))
 			continue;
 		// `requirepass value`, `ENV API_KEY value`, `│ password │ value │`: but not prose (`password reset link`).
 		if (PROSE_START.test(raw) || (!barred && PROSE_START.test(raw.split(/[ \t]/)[0]))) continue;
@@ -1811,9 +1880,12 @@ function formFills(text: string, out: Finding[]) {
 	const fill = (selector: string | undefined, value: Literal | undefined) => {
 		const name = selector === undefined ? undefined : fieldName(selector);
 		if (!name || !value || !isCredentialName(name)) return;
-		// (Cypress's key sequences, `{selectall}{backspace}`, are keystrokes, not text.)
-		if (isNamedSecret(name, `"${value.value.replace(/\{[a-z]+\}/gi, "")}"`, true))
-			namedFinding(out, value.start, value.end, name, "named:form-fill");
+		// (Cypress's key sequences, `{selectall}{backspace}`, are keystrokes, not text: those before and after it are kept,
+		// `'{selectall}Kx9mQ2vL{enter}'`.)
+		if (!isNamedSecret(name, `"${value.value.replace(/\{[a-z]+\}/gi, "")}"`, true)) return;
+		const before = /^(?:\{[a-z]+\})*/i.exec(value.value)![0].length;
+		const after = /(?:\{[a-z]+\})*$/i.exec(value.value)![0].length;
+		namedFinding(out, value.start + before, value.end - after, name, "named:form-fill");
 	};
 	for (const { args } of calls(text, /\.(?:fill|type)\(/g))
 		if (args.length === 2) fill(args[0].literal?.value, args[1].literal);
@@ -2271,15 +2343,20 @@ function dslCalls(text: string, out: Finding[]) {
 		const close = literalEnd(text, at);
 		if (close < 0 || !/^[ \t]*[,;]?[ \t]*(?:\/\/.*|#.*)?\r?$/.test(text.slice(close + 1, lineEndAt(text, close + 1))))
 			continue;
-		if (inGoImports(text, m.index)) continue;
 		namedValue(out, m[1], { value: text.slice(at + 1, close), start: at + 1, end: close }, "named:dsl-call");
 	}
 }
 
-/** Whether `at` is in a Go `import ( … )` block, where a name before a string is a package's alias: `pwd "…/password"`. */
-function inGoImports(text: string, at: number): boolean {
-	const open = text.lastIndexOf("import (", at);
-	return open >= 0 && (open === 0 || text[open - 1] === "\n") && !/\n[ \t]*\)/.test(text.slice(open, at));
+/**
+ * Go's imports, a block (`import (` to its `)`) or a line (`import pwd "…"`), where a name before a string is a
+ * package's alias: `pwd "github.com/acme/password-x9"`. Each as where it starts and ends.
+ */
+function goImports(text: string): [number, number][] {
+	if (!text.includes("import")) return [];
+	return [...text.matchAll(/^[ \t]*import[ \t]+(?:\([^)]*\)|[\w.]+[ \t]+"[^"\n]*")/gm)].map((m) => [
+		m.index,
+		m.index + m[0].length,
+	]);
 }
 
 /** Credentials given as a pair in prose: `wifi: guest / Cherry-Jade-57*`, `user \`ro\` pass \`p@ss\``, `login admin/hunter22`. */
@@ -2397,13 +2474,14 @@ function columnTables(text: string, out: Finding[]) {
 			}
 			if (credIdx.length) {
 				let j = i + 1;
-				// (A row of another width is skipped, not the end of the table; a blank line ends it.)
+				// (A wider row is skipped, not the end of the table; a blank line ends it. A narrower one has left its last
+				// fields out, `bob,<password>` under `user,password,host`: its cells are still under their columns.)
 				for (; j < lines.length && lines[j].trim(); j++) {
 					const cells = delimitedCells(lines[j].replace(/\r$/, ""), delim, offsets[j]);
-					if (cells.length !== names.length) continue;
+					if (cells.length > names.length || cells.length < 2) continue;
 					for (const k of credIdx) {
 						const cell = cells[k];
-						const value = cell.text.trim();
+						const value = cell?.text.trim();
 						if (!value || !isNamedSecret(names[k], `"${value}"`, true)) continue;
 						const st = cell.start + cell.text.indexOf(value);
 						namedFinding(out, st, st + value.length, names[k], "named:table-delimited", 0.85);
@@ -3490,10 +3568,13 @@ function passwordShaped(text: string, out: Finding[]) {
 		// (Nor quotes at its end that it didn't open: a string's around it, `"$(openssl passwd -6 …)"`.)
 		const value = withoutUnopenedClosers(m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:)]+$/, ""));
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
-		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, the readers' of those.)
+		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
+		// `["Summer2024!",`, the readers' of those.)
 		if (
 			!PASSWORD_SHAPE.test(value) ||
-			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]/.test(value) ||
+			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]|^\[["'\x60]/.test(
+				value,
+			) ||
 			isCode(value, true) ||
 			!looksSecret(`"${value}"`, true)
 		)

@@ -688,6 +688,23 @@ test("a login that takes its token on stdin prints none of it, unless it prints 
 	assert.ok(printsSecret("echo $VAULT_TOKEN | vault login -"));
 });
 
+test("a secret file's word lists, table words, variables, hosts and certificates are settings; its lists of passwords are not", () => {
+	const vault = 'Key                  Value\n---                  -----\ntoken_policies       ["default" "ci"]\n';
+	kept(vault, '["default" "ci"]', { command: "vault login" });
+	hidden('passwords: ["hunter2hunter2", "letmein2024"]\n', "letmein2024", { path: "secrets.yml" });
+	kept("name       type\nsecret     value\ntoken      string\n", "secret     value", { secretFile: true });
+	kept("admin:$ADMIN_PASSWORD\nops:$ADMIN_PASSWORD\n", "admin:$ADMIN_PASSWORD", { path: ".htpasswd" });
+	hidden("admin:$apr1$Xk9fmQ2v$abcdEFGH12345678abcdEF\n", "abcdEFGH12345678abcdEF", { path: ".htpasswd" });
+	kept("NGROK=abc123def456.ngrok.io\n", "abc123def456.ngrok.io", { path: ".env" });
+	const cert = `MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ${b62(500)}`;
+	kept(`CERT=${cert}\n`, cert, { path: ".env" });
+});
+
+test("a file that holds only secrets hides a made password under any name", () => {
+	hidden("admin: Harbor2291!\n", "Harbor2291!", { path: "config/secrets.yml" });
+	kept("admin: Harbor2291!\n", "Harbor2291!", { path: ".env" });
+});
+
 test("another occurrence of a guess is judged where it stands", () => {
 	const pub = "rC6LxV3uCapgW94Y9+Wq/lsyx4zf04YAIuEZjQoHgWW=";
 	const out = r().redact(`$ cat key.txt\n${pub}\n\n[Peer]\nPublicKey = ${pub}\nAllowedIPs = 10.8.0.9/32`).text;

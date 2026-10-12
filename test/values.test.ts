@@ -12,7 +12,7 @@ import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
 import { isBech32Address } from "../src/checksums.ts";
 import { Redactor } from "../src/index.ts";
 import { isPlaceholder, isPublicJwt } from "../src/public.ts";
-import { isDerPublicKey, isDerSignature, isPgpPublicKey, isRsaPublicKey } from "../src/publickeys.ts";
+import { isDerCertificate, isDerPublicKey, isDerSignature, isPgpPublicKey, isRsaPublicKey } from "../src/publickeys.ts";
 import { alphabetOf, shape } from "../src/random.ts";
 import {
 	inertShape,
@@ -170,7 +170,14 @@ test("public keys are recognised by structure, and private keys and random base6
 		"MC4CAQAwBQYDK2VwBCIEIGgLKVifQEFYw6VB6CRl",
 		"MIICXQIBAAKBgQDF3QM26NYCoYbG/vNugxGLPbtd",
 	])
-		assert.ok(!isDerPublicKey(priv), priv);
+		assert.ok(!isDerPublicKey(priv) && !isDerCertificate(priv), priv);
+	// X.509 certificates' prefixes (ISRG Root X1's, an RSA certificate's with a 4-byte serial), not a public key's.
+	for (const cert of [
+		"MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw",
+		"MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ",
+	])
+		assert.ok(isDerCertificate(cert) && !isDerPublicKey(cert), cert);
+	assert.ok(!isDerCertificate("MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC"));
 	// OpenPGP: an old-format RSA 2048 key packet (`mQENB…`, as `gpg --export --armor` writes), a new-format Ed25519 one,
 	// and a secret key packet (tag 5), a v4 RSA packet whose modulus doesn't start at its stated size and one whose length
 	// isn't its fields'.
@@ -191,7 +198,7 @@ test("public keys are recognised by structure, and private keys and random base6
 	for (const [gen, make] of Object.entries(GENERATORS)) {
 		for (let i = 0; i < 30_000; i++) {
 			const v = make();
-			assert.ok(!isDerPublicKey(v) && !isPgpPublicKey(v), `${gen}: ${v}`);
+			assert.ok(!isDerPublicKey(v) && !isDerCertificate(v) && !isPgpPublicKey(v), `${gen}: ${v}`);
 		}
 	}
 });
@@ -321,6 +328,11 @@ function bech32(hrp: string, data: number[]): string {
 	const checksum = Array.from({ length: 6 }, (_, i) => (mod >>> (5 * (5 - i))) & 31);
 	return `${hrp}1${[...data, ...checksum].map((v) => CHARSET[v]).join("")}`;
 }
+
+test("a pod's name is its workload's, a word in it, then two generated suffixes", () => {
+	for (const pod of ["ledger-api-58d4f7c9b-rbjl3", "k8s-agent-7d9f8b6c4-x2k9p"]) assert.ok(isPodName(pod), pod);
+	assert.ok(!isPodName("x9k2q-7d9f8b6c4-x2k9p"));
+});
 
 test("password hashes are kept whole by default and hidden whole with hashes: hide", () => {
 	const strict = new Redactor({ fingerprintKey: "t", hashes: "hide" });

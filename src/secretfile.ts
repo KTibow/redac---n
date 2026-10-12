@@ -16,7 +16,14 @@ import {
 import { allRedirects, type Heredoc, LineIndex, programName, PROMPT, simpleCommand, wordSpan } from "./shell.ts";
 import { naturalness } from "./charlm.ts";
 import { isPlaceholder } from "./public.ts";
-import { hasCredentialWord, isCredentialName, isSettingName, namesPasswordOrPin, words } from "./names.ts";
+import {
+	hasCredentialWord,
+	isCredentialName,
+	isSettingName,
+	isVendorName,
+	namesPasswordOrPin,
+	words,
+} from "./names.ts";
 import { lowerBound } from "./lines.ts";
 import type { Finding } from "./types.ts";
 import {
@@ -27,6 +34,7 @@ import {
 	isGeneratedSegment,
 	isIdentifierShaped,
 	isInert,
+	isMadePassword,
 	isPath,
 	isPodName,
 	isRandomToken,
@@ -35,6 +43,7 @@ import {
 } from "./values.ts";
 import { isSentenceWord } from "./named.ts";
 import { isPasswordlessUrl, leadingUrl } from "./urls.ts";
+import { stringListItems } from "./syntax.ts";
 import { publicBlocks } from "./publickeys.ts";
 import { isSessionCookie } from "./structure.ts";
 
@@ -48,11 +57,16 @@ import { isSessionCookie } from "./structure.ts";
  */
 function isOpaqueSetting(name: string, v: string, tokenUnderAnyName: boolean): boolean {
 	if (isSettingName(name) || isPodName(v)) return false;
-	// (Under a name that says nothing, `admin:` in `config/secrets.staging.yml`, only a generated token is one, and only in
-	// a file that holds nothing else: `.env` has settings and public IDs (`GPG_KEY=<fingerprint>`). Not one a word and a
-	// hyphen lead, `gradle-<hash>`: a cache's key.)
+	// (Under a name that says nothing, `admin:` in `config/secrets.staging.yml`, only a generated token or a made password
+	// is one, and only in a file that holds nothing else: `.env` has settings and public IDs (`GPG_KEY=<fingerprint>`).
+	// Not one a word and a hyphen lead, `gradle-<hash>`: a cache's key.)
 	if (!(isBareVendorWord(name) || hasCredentialWord(name)))
-		return tokenUnderAnyName && isRandomToken(v, MIN_UNNAMED_TOKEN) && !isSettingShaped(v) && !/^[a-z]{2,}-/i.test(v);
+		return (
+			tokenUnderAnyName &&
+			(isRandomToken(v, MIN_UNNAMED_TOKEN) || isMadePassword(v)) &&
+			!isSettingShaped(v) &&
+			!/^[a-z]{2,}-/i.test(v)
+		);
 	if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v)) return true;
 	// (Letters alone are a word, `livemode`, unless random, `XGxAdcVIefCUMAVsDhkYhErsQwPz`. Digits with symbols are a
 	// password, `90210!@#`: a number a setting holds is setting-shaped.)
@@ -67,6 +81,9 @@ function isBareVendorWord(name: string): boolean {
 	return /^[A-Z][A-Z0-9]{2,30}$/.test(name);
 }
 
+/** A host's name, and its port: `db.internal:5432`, `abc123def456.ngrok.io`. */
+const HOST = /^[\w-]+(?:\.[a-z][\w-]*)+(?::\d+)?$/;
+
 /**
  * What settings hold: words, numbers, versions, hosts, emails, URLs without credentials, and a JSON object, whose
  * pairs jsonPairs reads (`CORS={"origins":[…]}`). (Paths are inert, isNotSecret's.)
@@ -78,7 +95,7 @@ function isSettingShaped(v: string): boolean {
 		isPasswordlessUrl(v) ||
 		/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(v) ||
 		/^v?\d+(?:[.:-]\d+)*$/.test(v) ||
-		/^[\w-]+(?:\.[a-z][\w-]*)+(?::\d+)?$/.test(v) ||
+		HOST.test(v) ||
 		isWordySetting(v) ||
 		isIdentifierShaped(v) ||
 		isBenignValue(v) ||
@@ -119,12 +136,19 @@ function isPlainUrl(value: string): boolean {
 	return url.segments.every((s) => !isGeneratedSegment(value.slice(s.start, s.end)));
 }
 
-/** A duration (`24h`, `90s`, `1h30m`) or a list of words (`["ci" "default"]`): a setting a secret manager's listing shows. */
+/**
+ * A duration (`24h`, `90s`, `1h30m`) or a list of words (`["ci" "default"]`, a token's policies): a setting a secret
+ * manager's listing shows. (Words of letters: `["hunter2hunter2", "letmein2024"]` are passwords. Two or three letters,
+ * `ci`, `qa`, are an abbreviation the model reads no word in.)
+ */
 function isSettingList(value: string): boolean {
 	return (
 		/^(?:\d+(?:\.\d+)?(?:ns|us|ms|s|m|h|d|w))+$/.test(value) ||
-		(/^\[(?:[ \t,]*(["'])[a-z][\w-]{0,30}\1)+[ \t]*\]$/.test(value) &&
-			[...value.matchAll(/[a-z][\w-]*/g)].every((m) => readsAsWords(m[0])))
+		(/^\[/.test(value) &&
+			(stringListItems(value)?.every(
+				(item) => /^[a-z][a-z_-]{0,30}$/.test(item.value) && (item.value.length <= 3 || readsAsWords(item.value)),
+			) ??
+				false))
 	);
 }
 
@@ -253,7 +277,8 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 			isSettingNumber(name, value)
 		)
 			continue;
-		const credential = isCredentialName(name) || /^pass$/i.test(name);
+		// (A vendor's name alone holds the vendor's key, or where the vendor is: `NGROK=abc123def456.ngrok.io` is a host.)
+		const credential = (isCredentialName(name) && !(isVendorName(name) && HOST.test(value))) || /^pass$/i.test(name);
 		if (!credential && !isOpaqueSetting(name, value, tokenUnderAnyName)) continue;
 		const start = at(m, 4)[0] + (quoted ? 1 : 0);
 		out.push({
@@ -267,6 +292,9 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 	}
 }
 
+/** A table's own word in a value's place, not a value: an empty cell's (`-`, `n/a`, `null`) or a header's (`value`, `type`). */
+const TABLE_WORD = /^(?:true|false|null|n\/a|-+|values?|data|type|description)$/i;
+
 /** Table rows, as secret managers print them: `client_secret    abc123` (vault kv get), `│ KEY │ value │` (doppler). */
 function tableRows(text: string, out: Finding[]) {
 	for (const m of text.matchAll(
@@ -277,7 +305,7 @@ function tableRows(text: string, out: Finding[]) {
 			!isCredentialName(name) ||
 			isNotSecret(value) ||
 			isPlaceholder(value) ||
-			/^(true|false|null|n\/a|-+|values?|data|type|description)$/i.test(value) ||
+			TABLE_WORD.test(value) ||
 			isSettingNumber(name, value)
 		)
 			continue;
@@ -320,7 +348,8 @@ function spacedKeywords(text: string, out: Finding[]) {
 	)) {
 		const g = m[1] !== undefined ? 1 : m[2] !== undefined ? 2 : 3;
 		const v = m[g];
-		if (v.length < 4 || isInert(v) || COMMON_WORDS.has(v.toLowerCase())) continue;
+		// (Nor a table's word: `secret     value` is a header, as tableRows reads it.)
+		if (v.length < 4 || isInert(v) || COMMON_WORDS.has(v.toLowerCase()) || TABLE_WORD.test(v)) continue;
 		out.push({ start: at(m, g)[0], end: at(m, g)[1], kind: "password", rule: "file:spaced", confidence: 0.95 });
 	}
 }
@@ -341,9 +370,11 @@ function cookiesTxt(text: string, out: Finding[]) {
 	}
 }
 
-/** htpasswd: `user:<hash>`. */
+/** htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or `{SSHA}`. (Not `admin:$ADMIN_PASSWORD`: a variable.) */
 function htpasswd(text: string, out: Finding[]) {
-	for (const m of text.matchAll(/^[\w.@-]{1,100}:(\$[\w$./+=-]{10,300}|\{SSHA\}[\w+/=]{10,200})[ \t]*$/dgm))
+	for (const m of text.matchAll(
+		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{SSHA\}[\w+/=]{10,200})[ \t]*$/dgm,
+	))
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "password hash", rule: "file:hash", confidence: 1 });
 }
 

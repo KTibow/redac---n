@@ -64,6 +64,22 @@ export function isDerPublicKey(b64: string): boolean {
 }
 
 /**
+ * An X.509 certificate's DER (what `-----BEGIN CERTIFICATE-----` holds, `MIIDdzCCAl+gAwIBAgI…`): a SEQUENCE whose first
+ * element, the certificate to be signed, opens with its version (`[0]` holding an INTEGER of 0 to 2) and an INTEGER
+ * serial number of 1 to 21 bytes, then the signature algorithm's SEQUENCE.
+ */
+export function isDerCertificate(b64: string): boolean {
+	const b = head(b64);
+	if (b[0] !== 0x30) return false;
+	const tbs = derContent(b, 0);
+	if (tbs < 0 || b[tbs] !== 0x30) return false;
+	const version = derContent(b, tbs);
+	if (version < 0 || hex(b, version, 4) !== "a0030201" || b[version + 4] > 2) return false;
+	const serial = version + 5;
+	return b[serial] === 0x02 && b[serial + 1] >= 1 && b[serial + 1] <= 21 && b[serial + 2 + b[serial + 1]] === 0x30;
+}
+
+/**
  * A private key's DER, whatever armor it's in: a SEQUENCE whose first element is a one-byte INTEGER version, 0 to 2
  * (PKCS #1's RSAPrivateKey and PKCS #8's PrivateKeyInfo start with 0, OneAsymmetricKey with 1, SEC 1's EC key with
  * 1). No public structure starts so: a SubjectPublicKeyInfo or a certificate opens with a SEQUENCE, an RSAPublicKey

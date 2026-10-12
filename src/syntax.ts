@@ -77,6 +77,59 @@ export function stringEnd(
 	return -1;
 }
 
+/** A quoted item of a flow list and the blanks after it, read from where the last one ended (`y`): its content is group 2. */
+const FLOW_ITEM = /[ \t\r\n]*(["'])((?:(?!\1)[^\\\n]|\\.)*)\1[ \t\r\n]*/y;
+/** The bracket that closes a flow list, and nothing after it but blanks. */
+const FLOW_CLOSE = /[ \t\r\n]*\][ \t\r\n]*$/y;
+
+/**
+ * The items of a list of strings that `value` is, each without its quotes (where in `value`, and its text): a flow
+ * list on one line or over several, `["a", "b"]`, `['a','b']` (JSON, Python, TOML, YAML), its commas optional as HCL
+ * and Vault's listings write it (`["a" "b"]`); or a YAML block list, `- a` lines, plain or quoted. Undefined when it
+ * is no such list or anything else is in it: a number, an object, a name (code), a mapping under a `-`.
+ */
+export function stringListItems(value: string): Span[] | undefined {
+	const items: Span[] = [];
+	const open = /^[ \t\r\n]*\[/.exec(value);
+	if (open) {
+		let at = open[0].length;
+		for (;;) {
+			FLOW_ITEM.lastIndex = at;
+			const m = FLOW_ITEM.exec(value);
+			if (!m) return undefined;
+			const start = m.index + m[0].indexOf(m[1]) + 1;
+			items.push({ value: m[2], start, end: start + m[2].length });
+			at = m.index + m[0].length;
+			if (value[at] === ",") at++;
+			FLOW_CLOSE.lastIndex = at;
+			if (FLOW_CLOSE.test(value)) return items;
+		}
+	}
+	let at = 0;
+	for (const line of value.split("\n")) {
+		const m = /^([ \t]*-[ \t]+)(.*?)[ \t]*\r?$/.exec(line);
+		if (/^[ \t]*(?:#.*)?\r?$/.test(line)) {
+			at += line.length + 1;
+			continue;
+		}
+		if (!m) return undefined;
+		let item = m[2];
+		let start = at + m[1].length;
+		const quote = /^(["'])(.*)\1$/.exec(item);
+		if (quote) {
+			item = quote[2];
+			start++;
+		} else {
+			item = item.replace(/[ \t]+#.*$/, "");
+			// (A mapping, `- name: x`, or a collection, `- [a]`, is no string.)
+			if (!item || /:(?:[ \t]|$)|^[[{&*!|>]/.test(item)) return undefined;
+		}
+		items.push({ value: item, start, end: start + item.length });
+		at += line.length + 1;
+	}
+	return items.length ? items : undefined;
+}
+
 /** The opening bracket of each closing one. */
 const OPENER: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
 
@@ -287,7 +340,7 @@ function bareEnd(text: string, at: number, stops: Int32Array): number {
 /**
  * The name a sibling attribute gives a value: in the text before it on its line, the last name attribute with a quoted
  * value and no brace after it (`{"name": "api_key", "value": "`), or, with `alone`, a line that is a name attribute and
- * nothing else (`- name: API_KEY` above `  value: …`). Not a word in a sentence: `Missing environment variable: X`.
+ * nothing else but a comment (`- name: API_KEY  # from vault` above `  value: …`). Not a word in a sentence: `Missing environment variable: X`.
  */
 export function siblingName(text: string, { alone = false } = {}): string | undefined {
 	if (!/(?:name|key|id|label|variable|env|field)["']?[ \t]*[:=]/i.test(text)) return undefined;
@@ -296,7 +349,8 @@ export function siblingName(text: string, { alone = false } = {}): string | unde
 	for (const a of attributes(text)) {
 		const value = a.quoted || alone ? a.value.value : "";
 		if (!PAIR_NAME.test(a.key) || !/^[\w.-]{1,80}$/.test(value)) continue;
-		if (alone && !(/^[ \t-]*$/.test(text.slice(0, a.start)) && /^[ \t,]*\r?$/.test(text.slice(a.end)))) continue;
+		if (alone && !(/^[ \t-]*$/.test(text.slice(0, a.start)) && /^[ \t,]*(?:#.*)?\r?$/.test(text.slice(a.end))))
+			continue;
 		name = value;
 		after = a.end;
 	}
