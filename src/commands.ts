@@ -50,10 +50,11 @@ const SECRET_FILE = [
 ];
 const SECRET_DIR =
 	/(^|\/)\.(aws|ssh|gnupg|docker|kube|azure)\/|(^|\/)\.config\/(gcloud|gh|rclone|sops)\/|(^|\/)\.?secrets\//;
-// (Also a key's public half or a certificate by its name, `cache-pub-key.pem`, `server.pub.pem`, `fullchain.pem`: a
-// private key that is in one anyway is found by its DER.)
+// (Also a key's public half by its name, `cache-pub-key.pem`, `server.pub.pem`, `public.key`; and a certificate's,
+// `fullchain.pem`, `cert.pem`, but not a private key's container named for its certificate, `cert.key`, `server.crt.p12`.
+// A private key in a certificate's file anyway is found by its DER.)
 const NOT_SECRET_PATH =
-	/\.pub$|(?:^|[/._-])(?:pub|public|pubkey|cert|certs|certificate|crt|chain|fullchain|cacert|ca-bundle)(?=[._-][^/]*$)|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
+	/\.pub$|(?:^|[/._-])(?:pub|public|pubkey)(?=[._-][^/]*$)|(?:^|[/._-])(?:cert|certs|certificate|crt|chain|fullchain|cacert|ca-bundle)(?=[._-][^/]*$)(?![^/]*\.(?:key|p12|pfx|jks|keystore|ppk)$)|known_hosts|authorized_keys|(?:^|\/)\.ssh\/config$|\.(md|ts|tsx|js|py|go|rs|rb|java)$|(?:^|\/)etc\/(?:passwd|group)-?$/;
 
 /** Whether a path names a file whose whole content is secret material (`.env`, `id_rsa`, `credentials.json`). */
 export function isSecretFile(path: string): boolean {
@@ -408,8 +409,9 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
  * reader that steps over a command's options finds its operands at the same word.
  */
 const VALUE_OPTIONS = lookup<RegExp>({
+	// (Every option of `docker run` that takes a value, as its reference lists them.)
 	"docker run":
-		/^(?:-[evpuwlhma]|--(?:env|env-file|volume|name|publish|network|net|workdir|user|entrypoint|mount|label|label-file|platform|hostname|add-host|cpus|memory|restart|log-driver|log-opt|dns|device|cap-add|cap-drop|security-opt|tmpfs|ulimit|pull|gpus|ipc|pid|shm-size|cidfile|expose|link|runtime|stop-signal|attach|detach-keys))$/,
+		/^(?:-[acehlmpuvw]|--(?:add-host|annotation|attach|blkio-weight(?:-device)?|cap-add|cap-drop|cgroup-parent|cgroupns|cidfile|cpu-period|cpu-quota|cpu-rt-period|cpu-rt-runtime|cpu-shares|cpus|cpuset-cpus|cpuset-mems|detach-keys|device|device-cgroup-rule|device-(?:read|write)-(?:bps|iops)|dns|dns-option|dns-search|domainname|entrypoint|env|env-file|expose|gpus|group-add|health-(?:cmd|interval|retries|start-period|start-interval|timeout)|hostname|ip|ip6|ipc|isolation|kernel-memory|label|label-file|link|link-local-ip|log-driver|log-opt|mac-address|memory|memory-reservation|memory-swap|memory-swappiness|mount|name|net|net-alias|network|network-alias|oom-score-adj|pid|pids-limit|platform|publish|pull|restart|runtime|security-opt|shm-size|stop-signal|stop-timeout|storage-opt|sysctl|tmpfs|ulimit|user|userns|uts|volume|volume-driver|volumes-from|workdir))$/,
 	"docker exec": /^(?:-[uewU]|--user|--env|--workdir|--env-file|--index|--detach-keys)$/,
 	"docker compose":
 		/^(?:-f|--file|-p|--project-name|--profile|--env-file|--project-directory|--ansi|--progress|--parallel)$/,
@@ -697,7 +699,7 @@ const MAX_TOOL_LINE = 4000;
 /**
  * Whether one command prints a credential: a tool that prints one (SECRET_TOOLS), a secret source it reads or calls
  * (`head -c 32 /dev/urandom`, `python -c 'print(secrets.token_hex())'`), or a credential variable printed on its own
- * (`echo $DB_PASSWORD`, `printf '%s' "$TOKEN"`, `printenv OPENAI_API_KEY`).
+ * (`echo $DB_PASSWORD`, `printf 'Token: %s\n' "$TOKEN"`, `printenv OPENAI_API_KEY`).
  */
 function printsCredential(c: ShellCommand): boolean {
 	const words = simpleCommand(c.words);
@@ -708,12 +710,14 @@ function printsCredential(c: ShellCommand): boolean {
 	const args = words.slice(1);
 	if (program === "printenv") return args.length === 1 && isCredentialName(args[0].text);
 	if (program !== "echo" && program !== "printf") return false;
+	// (printf prints its format and its operands alike, `printf "Token: %s\n" "$TOKEN"`, `printf "$TOKEN"`; but `-v NAME`
+	// assigns what it would print and prints nothing.)
 	const values =
 		program === "echo"
 			? args.filter((w) => !/^-[neE]+$/.test(w.text))
-			: /^%s(?:\\n)?$/.test(args[0]?.text ?? "")
-				? args.slice(1)
-				: [];
+			: args[0]?.text === "-v"
+				? []
+				: args.filter((w) => w.text !== "--");
 	// (A credential's variable printed alone, `echo $DB_PASSWORD`, or inside its words, `echo "token: $GITHUB_TOKEN"`.)
 	return values.some(
 		(v) => !v.literalEnd && [...v.text.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => isCredentialName(m[1])),
@@ -781,9 +785,10 @@ const TOOLS: [RegExp, ToolSpec][] = [
 			attached: false,
 		},
 	],
-	// (`-p` alone prompts; the password is attached, `-pPW`, or given as `--password=PW`.)
+	// MySQL's and MariaDB's clients, which share one option parser. (`-p` alone prompts; the password is attached, `-pPW`,
+	// or given as `--password=PW`.)
 	[
-		/^(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump|mysqlsh)$/,
+		/^(?:mysql(?:admin|binlog|check|dump|import|pump|show|slap|sh|_upgrade|_secure_installation)?|mariadb(?:-(?:admin|binlog|check|dump|import|show|slap|upgrade|secure-installation))?)$/,
 		{ flags: new Set(["--password"]), next: "never", attached: true },
 	],
 ];

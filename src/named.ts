@@ -1107,9 +1107,11 @@ function shellWordValue(text: string, span: [number, number]): [number, number] 
 	// (Or any program's name, `gh`, `vercel`, `mvn`, on a line of its own: not an env file's next line, nor a passphrase
 	// of plain words, `correct horse battery staple`.)
 	const lineAt = lineStartAt(text, span[0]);
+	// (The next line from its `\n`: a CRLF line's value ends before its `\r`.)
+	const nextAt = text.indexOf("\n", span[1]) + 1;
 	const envFile = [
 		text.slice(lineStartAt(text, Math.max(0, lineAt - 1)), Math.max(0, lineAt - 1)),
-		text.slice(span[1] + 1, lineEndAt(text, span[1] + 1)),
+		nextAt > 0 ? text.slice(nextAt, lineEndAt(text, nextAt)) : "",
 	].some((l) => /^[ \t]*(?:export[ \t]+)?[A-Z_][A-Z0-9_]*=/.test(l));
 	const program =
 		/^[a-z][a-z0-9.+_-]{0,30}$/.test(next) && !FUNCTION_WORDS.has(next) && !envFile && !/^[A-Za-z][a-z]*$/.test(first);
@@ -1441,7 +1443,8 @@ function terraformVariables(text: string, out: Finding[]) {
 		const sensitive = /(?<![\w.-])sensitive[ \t]*=[ \t]*true\b/.test(block);
 		const name = m[2];
 		if (m[1] === "output" && !sensitive) continue;
-		const attribute = /(?<![\w.-])(?:default|value)[ \t]*=(?!=)[ \t]*/.exec(block);
+		// (An attribute starts its line, or the block: not one in a comment, `# default = "changeme"`, `description = "…" # value = …`.)
+		const attribute = /(?:^|\n)[ \t]*(default|value)[ \t]*=(?!=)[ \t]*/.exec(block);
 		if (!attribute) continue;
 		const at = open + attribute.index + attribute[0].length;
 		if (HEREDOC.test(text.slice(at, at + 100))) {
@@ -1744,8 +1747,8 @@ function formFills(text: string, out: Finding[]) {
 }
 
 /**
- * The name of the field a selector or label points at: `#password` and `[name=api_key]` name it; a label's words
- * do (`Password`, `API token`); `#token-name` and `#password-hint` name a token's name and a password's hint.
+ * The name of the field a selector or label points at: `#password`, `[name=api_key]` and `[type=password]` name it; a
+ * label's words do (`Password`, `API token`); `#token-name` and `#password-hint` name a token's name and a password's hint.
  */
 function fieldName(selector: string): string | undefined {
 	const attribute =
@@ -1753,6 +1756,8 @@ function fieldName(selector: string): string | undefined {
 			selector,
 		)?.[1];
 	const id = /#([\w-]{1,80})(?![\w-])/.exec(selector)?.[1];
+	// (A password input names its field whatever else the selector says: `input[type=password]`, `[name=pw][type="password"]`.)
+	if (/\[type=\\?["']?password\\?["']?\]/i.test(selector)) return "password";
 	const name =
 		attribute ??
 		id ??
@@ -2145,8 +2150,12 @@ function declarations(text: string, out: Finding[]) {
 				namedValue(out, name, { value: text.slice(at + 1, close), start: at + 1, end: close }, "named:declaration");
 			continue;
 		}
-		// (A command's value word, unquoted: to a blank.)
-		const word = /^[^\s'"`;&|]{3,4096}/.exec(text.slice(at, at + 4096));
+		// (A command's value word, unquoted: to a blank, and CMake's to its call's `)`. VB's `Dim … As … =` takes an
+		// expression, code, `txtPassword.Text`: only its literal is a value.)
+		if (/\bAs\b[^=]*=[ \t]*$/i.test(m[0])) continue;
+		const word = (/^set\(/i.test(m[0]) ? /^[^\s'"`;&|)]{3,4096}/ : /^[^\s'"`;&|]{3,4096}/).exec(
+			text.slice(at, at + 4096),
+		);
 		if (word) namedValue(out, name, { value: word[0], start: at, end: at + word[0].length }, "named:declaration");
 	}
 }

@@ -492,3 +492,34 @@ test("a credential given through code: a conditional's branch, a hasher's argume
 	kept("kind: Secret\ndata:\n  checksums.txt: 3f2a9c1b4d5e6f708192a3b4c5d6e7f8", "3f2a9c1b4d5e6f708192a3b4c5d6e7f8");
 	kept("cur.execute(\"INSERT INTO users (email, password) VALUES ('bob@x.io', %s)\", (pw,))", "bob@x.io");
 });
+
+test("found in review: tool and file lists, printf, CRLF, prefixed hex, password inputs, declarations, Terraform", () => {
+	for (const [text, secret, hint] of [
+		["$ mysqlcheck -u root -pHarbor2291 --all-databases", "Harbor2291"],
+		["$ mariadb-admin -u root -pHarbor2291 status", "Harbor2291"],
+		["DB_PASSWORD=correct horse battery staple\r\nAPI_URL=https://x.io", "battery staple"],
+		["blob = 0x" + Buffer.from("password=hunter2hunter2xx").toString("hex"), "70617373776f7264"],
+		['await page.fill("input[type=password]", "Tr0ub4dor&3xQ");', "Tr0ub4dor&3xQ"],
+		["set(DB_PASSWORD Xk9fQ2mZp7Lw)", "Xk9fQ2mZp7Lw"],
+		['variable "db_password" {\n  # default = "changeme"\n  default = "Tr0ub4dor&3xQ"\n}', "Tr0ub4dor&3xQ"],
+		[
+			"ADMIN=letmein99\nMAILGUN=mydomainpw\n",
+			"mydomainpw",
+			{ command: "docker run --rm --volumes-from db alpine cat .env" },
+		],
+		["ADMIN=letmein99\nMAILGUN=mydomainpw\n", "mydomainpw", { command: "sed -n 1,9p ssl/cert.key" }],
+		["Token: Hx7mQ2pL9vRt4wZk\n", "Hx7mQ2pL9vRt4wZk", { command: "printf 'Token: %s\\n' \"$GITHUB_TOKEN\"" }],
+	] as [string, string, object?][])
+		assert.ok(
+			!r()
+				.redact(text, hint ? { hint } : {})
+				.text.includes(secret),
+			text,
+		);
+	// What isn't a credential there is kept.
+	kept("Dim password As String = txtPassword.Text", "txtPassword.Text");
+	kept("set(DB_PASSWORD Xk9fQ2mZp7Lw)", ")");
+	kept("blob = 0x" + "9f".repeat(32), "9f".repeat(32));
+	assert.equal(r().redact("hello %s\n", { hint: { command: "printf 'hello %s\\n' \"$USER\"" } }).text, "hello %s\n");
+	assert.equal(r().redact("x\n", { hint: { command: "printf -v line '%s' \"$TOKEN\"" } }).text, "x\n");
+});

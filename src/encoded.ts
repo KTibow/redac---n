@@ -282,8 +282,14 @@ export function findHexDumps(text: string, inner: (decoded: string) => boolean):
 	// Plain hex (`xxd -p`): runs of whole lines of hex, or one long run, that decode to text holding a secret.
 	const runs: { index: number; text: string }[] = [];
 	for (const [start, end] of longRuns(text, HEX_SET, MIN_HEX_RUN)) {
-		// (A hex run that a letter or digit touches is part of a longer word; one past the most is no value but a dump.)
-		if (end - start <= MAX_HEX_RUN && !/[0-9a-z]/i.test(text[start - 1] ?? "") && !/[0-9a-z]/i.test(text[end] ?? ""))
+		// (A hex run that a letter or digit touches is part of a longer word; one past the most is no value but a dump. A
+		// literal's prefix is no word: `0x…` (mysqldump's --hex-blob, SQL Server), `\x…` (psql's bytea).)
+		const prefixed = /(?:^|[^0-9a-z])0x$|\\x$/i.test(text.slice(Math.max(0, start - 3), start));
+		if (
+			end - start <= MAX_HEX_RUN &&
+			(prefixed || !/[0-9a-z]/i.test(text[start - 1] ?? "")) &&
+			!/[0-9a-z]/i.test(text[end] ?? "")
+		)
 			runs.push({ index: start, text: text.slice(start, end) });
 	}
 	// (Lines are read together, a dump's last line as short as it is: a secret read line by line leaves its tail on the
