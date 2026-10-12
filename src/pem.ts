@@ -78,8 +78,6 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export interface PemBody {
 	end: number;
 	material: number;
-	/** Whether the body reached its END line, rather than stopping where its material did. */
-	ended: boolean;
 }
 
 /**
@@ -118,7 +116,7 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		if (endsAt(text, j)) {
 			END_LINE.lastIndex = j;
 			const e = END_LINE.exec(text);
-			return e ? { end: j + e[0].length, material, ended: true } : { end, material, ended: false };
+			return { end: e ? j + e[0].length : end, material };
 		}
 		const lineFrom = j;
 		let run = 0;
@@ -138,24 +136,32 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 			// (A blank line separates the headers from the material; once material has begun, it ends the block.)
 			if (run === 0 && (material > 0 || !breakAt(text, j))) break;
 		}
-		// The line's ending: blanks, a closing quote, a comma; a `+` only as an operator, before the line ends or a
-		// quote (`"…" +`), not the `+` that starts the next line's material in a key joined by blanks.
+		// The line's ending: blanks, a closing quote, a comma. (Not a `+`: before the line's break, breakAt reads it as an
+		// operator, `"…" +⏎`; after a blank, it starts the next line's material in a key joined by blanks.)
 		const runEnd = j;
-		while (j < text.length && (" \t\"',;".includes(text[j]) || (text[j] === "+" && isOperator(text, j)))) j++;
+		while (j < text.length && " \t\"',;".includes(text[j])) j++;
 		// A line of material is all armor: what follows is the line's end, the END line, or (in a key whose line breaks
-		// became blanks) more material after a full run. A word that only starts like it (`hello world`) ends the block.
+		// became blanks) more material after a full run. A word that only starts like it (`hello world`) ends the block;
+		// a full run that something else follows is the last material, cut where output was shortened (`…AB…`,
+		// `…AB... [truncated]`).
 		if (run > 0) {
 			const lineEnds = j >= text.length || breakAt(text, j) > 0 || endsAt(text, j);
-			// (Under four characters only as the material's last line, the END line next: `Q==`.)
-			const lastLine = lineEnds && /^(?:\r?\n|\\r?\\n)[ \t"']*-----END /.test(text.slice(j, j + 24));
-			if ((run < 4 && !lastLine) || !(lineEnds || (run >= 40 && j > runEnd && isArmorChar(text.charCodeAt(j))))) break;
+			// (Under four characters only as the material's last line, the END line next however the line ends: `Q==`,
+			// `"Q==\n" +⏎    "-----END`, `Q== -----END`.)
+			const next = j + breakAt(text, j);
+			const lastLine = lineEnds && /^[ \t"']*-----END /.test(text.slice(next, next + 24));
+			if (run < 4 && !lastLine) break;
+			if (!(lineEnds || (run >= 40 && j > runEnd && isArmorChar(text.charCodeAt(j))))) {
+				if (run >= 40) return { end: Math.max(end, lineFrom + run), material: material + run };
+				break;
+			}
 			material += run;
 		}
 		lastRun = run;
 		end = Math.max(end, lineFrom + run);
 		i = j;
 	}
-	return { end, material, ended: false };
+	return { end, material };
 }
 
 /**
@@ -193,18 +199,16 @@ export function pemTail(text: string, end: number): { start: number; material: n
 	return { start, material };
 }
 
-/** Between an escaped break and the real one after it in source: the string's closing quote, an operator, a comma. */
+/** Between a string's line and the source's own break after it: the string's closing quote, an operator, a comma. */
 const CONTINUATION = ` \t"',;+`;
 
 /**
- * The length of the line break at `i`, or 0: a real one, or one escaped in a string (`\n`, `\r\n`, `\\n`, `\r\n`
- * escaped) together with what may follow it before the source's own break (`…\n" +⏎`, `…\n"⏎`).
+ * The length of the line break at `i`, or 0: a real one, after what may end a string written a line at a time in
+ * source (`"-----BEGIN PRIVATE KEY-----",⏎`, a key as an array of lines); or one escaped in a string (`\n`, `\r\n`,
+ * `\\n`, `\r\n` escaped), together with that before the source's own break (`…\n" +⏎`, `…\n"⏎`).
  */
 function breakAt(text: string, i: number): number {
-	if (text[i] === "\n") return 1;
-	if (text[i] === "\r" && text[i + 1] === "\n") return 2;
 	const escaped = escapedBreakAt(text, i);
-	if (!escaped) return 0;
 	let j = i + escaped;
 	while (j < text.length && j - i < 40 && CONTINUATION.includes(text[j])) j++;
 	if (text[j] === "\r" && text[j + 1] === "\n") return j + 2 - i;
@@ -218,13 +222,6 @@ function escapedBreakAt(text: string, i: number): number {
 	if (text[i + 1] === "\\" && text[i + 2] === "n") return 3;
 	if (text[i + 1] === "r" && text[i + 2] === "\\" && text[i + 3] === "n") return 4;
 	return 0;
-}
-
-/** Whether the `+` at `j` is an operator joining strings: blanks, then the line's end or a quote. */
-function isOperator(text: string, j: number): boolean {
-	let k = j + 1;
-	while (k < text.length && k - j < 40 && (text[k] === " " || text[k] === "\t")) k++;
-	return k >= text.length || text[k] === "\n" || text[k] === "\r" || text[k] === '"' || text[k] === "'";
 }
 
 /**

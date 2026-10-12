@@ -7,6 +7,8 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
+import { normalize } from "../src/normalize.ts";
+import { armoredBlocks, pemTail } from "../src/pem.ts";
 import { b62, hidden, kept, privateKeyLines, r } from "./helpers.ts";
 import { randomBytes } from "./random.ts";
 
@@ -142,6 +144,76 @@ test("a private key's DER is a private key under any armor; a public key's stays
 		const spki = publicKey.export({ type: "spki", format: "pem" }) as string;
 		kept(spki, spki.split("\n")[1]);
 	}
+});
+
+test("a block's body is read to its END line in each way text carries one", () => {
+	const body = Array.from({ length: 6 }, () => b62(64));
+	const pem = ["-----BEGIN PRIVATE KEY-----", ...body, "-----END PRIVATE KEY-----"];
+	const java = `String pem = "${pem[0]}\\n" +\n${body.map((l) => `    "${l}" +`).join("\n")}\n    "${pem.at(-1)}";`;
+	for (const text of [
+		pem.join("\n"),
+		JSON.stringify(pem.join("\n")).slice(1, -1),
+		JSON.stringify(JSON.stringify(pem.join("\n"))).slice(3, -3),
+		pem.join(" "),
+		pem.map((l) => `web-1  | ${l}`).join("\n"),
+		[pem[0], "Proc-Type: 4,ENCRYPTED", "DEK-Info: AES-128-CBC,0A1B2C3D4E5F", "", ...body, pem.at(-1)].join("\n"),
+		[pem[0], 'Comment: "imported-openssh-key"', ...body, pem.at(-1)].join("\n"),
+		// (Lines joined with no `\n` in them: normalizing joins the pieces, and the END line is the next piece.)
+		normalize(java).text.slice(0, -2),
+	]) {
+		const [block] = armoredBlocks(text);
+		assert.deepEqual([block.end, block.material], [text.length, 384], text);
+	}
+	// (A last line under four characters, however the lines end.)
+	const short = [pem[0], ...body, "Q==", pem.at(-1)];
+	for (const text of [short.map((l) => `    "${l}\\n" +`).join("\n"), short.join(" ")])
+		assert.equal(armoredBlocks(text)[0].material, 387, text);
+	// A diff in Markdown that rotates the key, with no hunk header to read its markers by: they aren't material.
+	const rotated = [` ${pem[0]}`, ...body.map((l) => `-${l}`), ...body.map((l) => `+${l}`), ` ${pem.at(-1)}`].join("\n");
+	assert.deepEqual(
+		armoredBlocks(rotated).map((b) => [b.end, b.material]),
+		[[rotated.length, 768]],
+	);
+});
+
+test("a block cut short ends with its material: before a blank line, a word, or where its line was cut", () => {
+	const lines = ["-----BEGIN PRIVATE KEY-----", ...Array.from({ length: 3 }, () => b62(64))];
+	const cut = lines.join("\n");
+	for (const after of [
+		"\n\nConnected",
+		"\nOK\n",
+		"\nCertificate saved to /tmp/x",
+		"\nÜbersicht",
+		"…\nmore output",
+		"... [truncated]",
+	])
+		assert.deepEqual(
+			armoredBlocks(cut + after).map((b) => [b.end, b.material]),
+			[[cut.length, 192]],
+			after,
+		);
+	hidden(`${privateKeyLines().slice(0, 6).join("\n")}… [truncated]`, privateKeyLines()[5].slice(10, 40));
+	// (A key as an array of lines: the BEGIN line's string ends at its quote and comma.)
+	const array = `"key": [\n${lines.map((l) => `  "${l}",`).join("\n")}`;
+	assert.deepEqual(
+		armoredBlocks(array).map((b) => b.material),
+		[192],
+	);
+	// A BEGIN line quoted in code reads none of the code after it.
+	assert.equal(
+		armoredBlocks('const pem = "-----BEGIN PRIVATE KEY-----" + body + "-----END PRIVATE KEY-----";')[0].material,
+		0,
+	);
+});
+
+test("a key's tail is read up through a log's prefix, the line breaks it has, and none it doesn't", () => {
+	const body = Array.from({ length: 4 }, () => `${b62(63)}n`);
+	const tail = [...body, "-----END PRIVATE KEY-----"];
+	const logged = tail.map((l) => `2026-10-10T08:00:00Z ${l}`).join("\n");
+	assert.deepEqual(pemTail(logged, logged.lastIndexOf("-----END")), { start: 21, material: 256 });
+	assert.deepEqual(pemTail(tail.join("\n"), tail.join("\n").lastIndexOf("-----END")), { start: 0, material: 256 });
+	// (Output that starts at the END line has nothing above it.)
+	assert.deepEqual(pemTail(`-----END PRIVATE KEY-----\nsha: ${b62(80)}`, 0), { start: 0, material: 0 });
 });
 
 test("SEC 1's explicit EC parameters start as an EC key does and are public", () => {
