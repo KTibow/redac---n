@@ -9,8 +9,9 @@
  *       --real-mb 0 --json eval/out/baselines-creddata.json
  *   node eval/creddata-chart.ts [--cases eval/out] [--baselines eval/out/baselines-creddata.json]
  *
- * Writes docs/creddata.svg (test) and docs/creddata-dev.svg. CredSweeper is drawn hollow and left out of the unions:
- * CredData's lines come partly from what it finds, and its model is trained on CredData's labels.
+ * Writes docs/creddata.svg: a column for each kind, the dev split above the test split. CredSweeper is drawn hollow
+ * and left out of the unions: CredData's lines come partly from what it finds, and its model is trained on CredData's
+ * labels.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -81,24 +82,29 @@ function ours(cases: Case[], guessing: Guessing): Record<string, number[]> {
 	return t;
 }
 
-function chart(split: "dev" | "test"): string {
-	const cases: Case[] = readFileSync(join(casesDir, `creddata-${split}.jsonl`), "utf8")
-		.split("\n")
-		.filter(Boolean)
-		.map((l) => JSON.parse(l));
-	const mine = Object.fromEntries(SETTINGS.map((g) => [g, ours(cases, g)]));
+/** One chart, a row for each kind and a column for each split: dev (what the fixes were made on) and test. */
+function chart(): string {
+	const SPLITS = ["dev", "test"] as const;
+	const data = Object.fromEntries(
+		SPLITS.map((split) => {
+			const cases: Case[] = readFileSync(join(casesDir, `creddata-${split}.jsonl`), "utf8")
+				.split("\n")
+				.filter(Boolean)
+				.map((l) => JSON.parse(l));
+			return [split, Object.fromEntries(SETTINGS.map((g) => [g, ours(cases, g)]))];
+		}),
+	);
 	const theirs = baselines.groups.ctx;
-	const COLS = 2;
-	const PW = 470;
-	const PH = 300;
-	const GX = 70;
-	const GY = 110;
+	const PW = 380;
+	const PH = 330;
+	const GX = 56;
+	const GY = 160;
 	const L = 56;
-	const T = 142;
-	const W = L + COLS * PW + (COLS - 1) * GX + 30;
-	const H = T + 2 * (PH + GY) - GY + 80;
+	const T = 160;
+	const W = L + REDACTION_KINDS.length * (PW + GX) - GX + 30;
+	const H = T + SPLITS.length * (PH + GY) - GY + 90;
 	const out: string[] = [];
-	const title = `CredData's ${split === "test" ? "test" : "dev"} split by kind of value: secrets caught against false values hit`;
+	const title = "CredData by kind of value: secrets caught against false values hit, on its dev and test splits";
 	out.push(
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-labelledby="t">`,
 	);
@@ -107,42 +113,53 @@ function chart(split: "dev" | "test"): string {
 	out.push(`<rect width="${W}" height="${H}" rx="8" class="bg"/>`);
 	out.push(`<text x="16" y="26" class="title">${esc(title)}</text>`);
 	for (const [i, s] of [
-		`${split === "test" ? "Repositories the fixes never saw" : "The repositories the fixes were made on"}: each labelled value, true or false, sorted by the ordinary-text chart's classifier. A false value is hit only if it is`,
-		"redacted. Blue: redac---n (guessing off, confident, eager). Grey: other scanners; a line from gitleaks adds Betterleaks and Kingfisher, then TruffleHog",
-		"and Nosey Parker, then detect-secrets (the other six). Hollow: CredSweeper, which CredData's lines partly come from and whose model is trained on its labels.",
-		"√ scale across; up and left is better.",
+		"Each labelled value, true or false, sorted by the ordinary-text chart's classifier; a false value is hit only if it is redacted. Top: the dev split, the repositories the fixes were made on.",
+		"Bottom: the test split, repositories they never saw. Blue: redac---n (guessing off, confident, eager). Grey: other scanners; a line from gitleaks adds Betterleaks and Kingfisher, then TruffleHog",
+		"and Nosey Parker, then detect-secrets (the other six). Hollow: CredSweeper, which CredData's lines partly come from and whose model is trained on its labels. √ scale across; up and left is better.",
 	].entries())
 		out.push(`<text x="16" y="${44 + i * 16}">${esc(s)}</text>`);
-	REDACTION_KINDS.forEach((kind, n) => {
-		const ox = L + (n % COLS) * (PW + GX);
-		const oy = T + Math.floor(n / COLS) * (PH + GY);
-		const dot = (t: number[] | undefined, name: string, look: Dot["look"], label?: string | null): Dot | undefined =>
-			t && t[1] && t[3] ? { name, caught: t[0] / t[1], lost: t[2] / t[3], look, label } : undefined;
-		const dots = [
-			...SETTINGS.map((g) => dot(mine[g][kind], `guessing ${g}`, "ours", g === "confident" ? "redac---n" : null)),
-			...Object.entries(SCANNERS).map(([tool, name]) =>
-				dot(theirs[tool]?.[`creddata-${split}`]?.[kind], name, tool === "credsweeper" ? "tuned" : "other", STEP[tool]),
-			),
-		].filter((d) => d !== undefined);
-		const counts = mine.confident[kind];
+	SPLITS.forEach((split, row) =>
 		out.push(
-			`<text x="${ox}" y="${oy - 12}" class="panel">${esc(kind)} <tspan class="tick">${counts[1].toLocaleString("en")} true, ${counts[3].toLocaleString("en")} false</tspan></text>`,
-		);
-		const { svg, note } = scatterPanel(
-			{ x: ox, y: oy, w: PW, h: PH },
-			dots,
-			[
-				{ names: CHAIN.map((c) => SCANNERS[c]), cls: "chain" },
-				{ names: SETTINGS.map((g) => `guessing ${g}`), cls: "accent-line" },
-			],
-			{ margin: 24 },
-		);
-		out.push(...svg);
-		note.forEach((l, i) => out.push(`<text x="${ox}" y="${oy + PH + 34 + i * 14}" class="tick">${esc(l)}</text>`));
-	});
+			`<text x="16" y="${T + row * (PH + GY) - 44}" class="title">${split === "dev" ? "Dev split (the fixes were made on it)" : "Test split (never seen by the fixes)"}</text>`,
+		),
+	);
+	SPLITS.forEach((split, row) =>
+		REDACTION_KINDS.forEach((kind, col) => {
+			const ox = L + col * (PW + GX);
+			const oy = T + row * (PH + GY);
+			const mine = data[split];
+			const dot = (t: number[] | undefined, name: string, look: Dot["look"], label?: string | null): Dot | undefined =>
+				t && t[1] && t[3] ? { name, caught: t[0] / t[1], lost: t[2] / t[3], look, label } : undefined;
+			const dots = [
+				...SETTINGS.map((g) => dot(mine[g][kind], `guessing ${g}`, "ours", g === "confident" ? "redac---n" : null)),
+				...Object.entries(SCANNERS).map(([tool, name]) =>
+					dot(
+						theirs[tool]?.[`creddata-${split}`]?.[kind],
+						name,
+						tool === "credsweeper" ? "tuned" : "other",
+						STEP[tool],
+					),
+				),
+			].filter((d) => d !== undefined);
+			const counts = mine.confident[kind];
+			out.push(
+				`<text x="${ox}" y="${oy - 12}" class="panel">${esc(kind)} <tspan class="tick">${counts[1].toLocaleString("en")} true, ${counts[3].toLocaleString("en")} false</tspan></text>`,
+			);
+			const { svg, note } = scatterPanel(
+				{ x: ox, y: oy, w: PW, h: PH },
+				dots,
+				[
+					{ names: CHAIN.map((c) => SCANNERS[c]), cls: "chain" },
+					{ names: SETTINGS.map((g) => `guessing ${g}`), cls: "accent-line" },
+				],
+				{ margin: 24 },
+			);
+			out.push(...svg);
+			note.forEach((l, i) => out.push(`<text x="${ox}" y="${oy + PH + 34 + i * 14}" class="tick">${esc(l)}</text>`));
+		}),
+	);
 	out.push(`</svg>`);
 	return out.join("\n") + "\n";
 }
 
-writeFileSync(join(root, "docs/creddata.svg"), chart("test"));
-writeFileSync(join(root, "docs/creddata-dev.svg"), chart("dev"));
+writeFileSync(join(root, "docs/creddata.svg"), chart());

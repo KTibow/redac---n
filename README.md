@@ -53,13 +53,14 @@ and about half of redac---n's is credential-shaped. It can also
 do something they can't: told which command or file the text came from, it reads what `cat .env` printed as a secret
 file, and knows that `cat .env | wc -l` printed only a number.
 
-![CredData's test split by kind of value: secrets caught against false values hit, redac---n against the same scanners](docs/creddata.svg)
+![CredData's dev and test splits by kind of value: secrets caught against false values hit, redac---n against the same scanners](docs/creddata.svg)
 
-On [CredData](https://github.com/Samsung/CredData)'s test split (labelled lines from public repositories none of the
-fixes were made on), sorted into the same kinds, redac---n catches more than any other scanner but CredSweeper in every
-kind, and hits fewer false values than the other six combined: 88% of credential-shaped secrets for 6.8% of the false
-values there, against 75% and 14%. CredSweeper is drawn apart because CredData's lines come partly from it and its
-model is trained on CredData's labels. [The dev split](docs/creddata-dev.svg) is where the fixes were made.
+[CredData](https://github.com/Samsung/CredData) is labelled lines from public repositories, sorted here into the same
+kinds. The top row is its dev split, the repositories the fixes were made on; the bottom row is its test split, which
+none of them saw. On the test split redac---n catches more than any other scanner but CredSweeper in every kind, and
+hits fewer false values than the other six combined: 88% of credential-shaped secrets for 6.8% of the false values
+there, against 75% and 14%. CredSweeper is drawn apart because CredData's lines come partly from it and its model is
+trained on CredData's labels.
 
 It isn't a guarantee: about one secret in fourteen still gets through, mostly short values with no name or format
 next to them. See [what it misses](#what-it-misses).
