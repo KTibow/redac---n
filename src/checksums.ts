@@ -6,21 +6,37 @@
 import { sha256 } from "./hmac.ts";
 
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+/** The XRP Ledger's base58 alphabet: Bitcoin's characters in another order, so that its version bytes lead with `r` (an account) or `s` (a seed). */
+const XRP_BASE58 = "rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz";
 
 /** A Bitcoin-style address: Base58Check of 21 bytes with a P2PKH or P2SH version (mainnet or testnet) and a valid checksum. */
 export function isBase58Address(t: string): boolean {
 	if (t.length < 26 || t.length > 35 || !/^[123mnT][1-9A-HJ-NP-Za-km-z]+$/.test(t)) return false;
+	const bytes = base58Check(t, BASE58);
+	return bytes?.length === 21 && [0x00, 0x05, 0x6f, 0xc4, 0x41].includes(bytes[0]); // (0x41: TRON)
+}
+
+/** An XRP Ledger account address (`rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh`): Base58Check, in its own alphabet, of version 0 and a 20-byte account ID. (Never a seed, `s…`: version 33.) */
+export function isXrpAddress(t: string): boolean {
+	if (t.length < 25 || t.length > 35 || !/^r[1-9A-HJ-NP-Za-km-z]+$/.test(t)) return false;
+	const bytes = base58Check(t, XRP_BASE58);
+	return bytes?.length === 21 && bytes[0] === 0;
+}
+
+/** The payload of Base58Check text in `alphabet` (version byte first) if its last 4 bytes are the double SHA-256 of the rest, else undefined. */
+function base58Check(t: string, alphabet: string): number[] | undefined {
 	let n = 0n;
-	for (const c of t) n = n * 58n + BigInt(BASE58.indexOf(c));
+	for (const c of t) n = n * 58n + BigInt(alphabet.indexOf(c));
 	const bytes: number[] = [];
 	while (n > 0n) {
 		bytes.unshift(Number(n & 255n));
 		n >>= 8n;
 	}
-	for (let i = 0; i < t.length && t[i] === "1"; i++) bytes.unshift(0);
-	if (bytes.length !== 25 || ![0x00, 0x05, 0x6f, 0xc4, 0x41].includes(bytes[0])) return false; // (0x41: TRON)
-	const check = sha256(sha256(Uint8Array.from(bytes.slice(0, 21))));
-	return check[0] === bytes[21] && check[1] === bytes[22] && check[2] === bytes[23] && check[3] === bytes[24];
+	for (let i = 0; i < t.length && t[i] === alphabet[0]; i++) bytes.unshift(0);
+	if (bytes.length < 5) return undefined;
+	const payload = bytes.slice(0, -4);
+	const check = sha256(sha256(Uint8Array.from(payload)));
+	return check.slice(0, 4).every((b, i) => b === bytes[payload.length + i]) ? payload : undefined;
 }
 
 /**

@@ -675,7 +675,9 @@ const DATA_FILE =
 	/^[\w.-]{1,80}\.(?:csv|json|txt|tar|gz|tgz|zip|whl|jar|js|css|py|so|dll|exe|bin|dat|h5|nc|parquet|pkl|pt|onnx|png|jpg|svg|wasm|xz|bz2|deb|rpm)$/i;
 /** File names' extensions, so a file name that holds a credential word (`has_key_spec.rb`) isn't one; never a qualifier (`.prod`, `.old`, `.value`, `.test`). */
 export const FILE_EXTENSION =
-	/\.(?:csv|json|txt|vue|svelte|tar|gz|tgz|zip|whl|jar|js|mjs|cjs|ts|tsx|jsx|css|scss|py|pyc|rb|go|rs|java|kt|swift|php|cs|c|h|cc|cpp|hpp|so|dll|exe|bin|dat|h5|nc|parquet|pkl|pt|onnx|png|jpg|jpeg|gif|svg|ico|wasm|xz|bz2|deb|rpm|yml|yaml|toml|ini|cfg|conf|md|rst|html|xml|sh|bash|ps1|lock|log|sql|tf|proto)$/i;
+	/\.(?:csv|json|txt|vue|svelte|tar|gz|tgz|zip|whl|jar|js|mjs|cjs|ts|tsx|jsx|css|scss|py|pyc|rb|erb|pp|epp|go|rs|java|kt|swift|php|cs|c|h|cc|cpp|hpp|so|dll|exe|bin|dat|h5|nc|parquet|pkl|pt|onnx|png|jpg|jpeg|gif|svg|ico|wasm|xz|bz2|deb|rpm|yml|yaml|toml|ini|cfg|conf|md|rst|html|xml|sh|bash|ps1|lock|log|sql|tf|proto)$/i;
+/** A file's name or path as a name (`spec/has_key_spec.rb`, `manifests/key.pp`): its words name the file, not a credential. */
+const isFileName = (name: string) => FILE_EXTENSION.test(name) && /^[\w./-]+$/.test(name);
 
 /**
  * A name that says its value is public: an SDK's public key by name (`MIXPANEL_TOKEN`, `client_key`), a browser
@@ -1210,6 +1212,9 @@ const ABOUT_CREDENTIAL = new Set([
 /** The rules, in order: the first that applies decides. */
 function classify(name: string, w: string[], core: string[], last: string): NameClass {
 	if (!name || name.length > 120 || !last) return "neutral";
+	// A file's path names the file, whatever words it holds (`lib/pin.rb`, `manifests/pin.pp` in a checksum manifest).
+	// (A bare file name is read below, after the PIN's: it may be a Kubernetes Secret's key, `pin.txt`.)
+	if (name.includes("/") && isFileName(name)) return "neutral";
 	// A vendor's name holds that vendor's key.
 	if (isVendorName(name)) return "credential";
 	// A bare `private` is a flag or provider state (`"private": true`, a tfstate's `"private"` blob), not a key.
@@ -1249,7 +1254,7 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// A certificate's or a public key's file (`tls.crt`, `ca.cer`, `id_ed25519.pub`, a signing request): public material.
 	if (/\.(?:crt|cer|cert|pub|csr)$/i.test(name)) return "public";
 	if (DATA_FILE.test(name)) return "hash";
-	if (FILE_EXTENSION.test(name) && /^[\w./-]+$/.test(name)) return "neutral";
+	if (isFileName(name)) return "neutral";
 	// A credential word that the word before rules out (`GPG_KEY`, `SORT_KEY2`, `PAGE_TOKEN`); PagerDuty's routing and
 	// integration keys are its Events API credentials. (A word that clouds' keys share with lookup keys makes the name
 	// neutral, its value judged by how it looks: Azure's `primaryKey`, `AZURE_STORAGE_KEY`, `hostKey`, `REDIS_KEY`.)
@@ -1478,11 +1483,11 @@ export function readPhrase(before: string[], name: string): { name: string; clas
 
 /**
  * Whether the name is a credential's, or a neutral name has a credential word that the word before doesn't rule out
- * (`token_endpoint`, `auth_header`; not `cache.key.prefix`).
+ * (`token_endpoint`, `auth_header`; not `cache.key.prefix`, nor a file's name, `has_key.rb`).
  */
 export function mentionsCredential(name: string): boolean {
 	const cls = readName(name).class;
-	return cls === "credential" || (cls === "neutral" && hasCredentialWord(name));
+	return cls === "credential" || (cls === "neutral" && hasCredentialWord(name) && !isFileName(name));
 }
 
 /** Whether any word of a name is a credential word that the word before doesn't rule out (`BASIC_AUTH`; not `CACHE_KEY`), whatever the name's class. */

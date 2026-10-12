@@ -57,6 +57,7 @@ const SAMPLES: [reason: string, text: string, token: string][] = [
 		"CP///////////wESC2hlbGxvIHdvcmxk",
 	],
 	["data-name", '{"embedding": "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te8S"}', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te8S"],
+	["repeating", "Key = ef012345ef012345ef012345ef012345", "ef012345ef012345ef012345ef012345"],
 	[
 		"ssh-public-key",
 		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te8Sf9Rg0Hh1 me@host",
@@ -148,6 +149,12 @@ const NOT: [reason: string, text: string, token: string][] = [
 		"9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015",
 	],
 	["bare-key-hash", "Here is your key: acme_9f86d081884c7d659a2feaa0c55ad015", "acme_9f86d081884c7d659a2feaa0c55ad015"],
+	// The unit repeated is short: a key written twice is a key.
+	[
+		"repeating",
+		"Key = 9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015",
+		"9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015",
+	],
 	// Prefixed hex in a vendor client's arguments is judged as plain hex there is: a key.
 	[
 		"hex-suffix",

@@ -16,7 +16,7 @@ import {
 	PUBLIC_SDK_PARAM,
 	PUBLISHED_EXAMPLE,
 } from "./public.ts";
-import { isBase58Address, isBech32Address, isNatsPublicKey, isStellarPublicKey } from "./checksums.ts";
+import { isBase58Address, isBech32Address, isNatsPublicKey, isStellarPublicKey, isXrpAddress } from "./checksums.ts";
 import { isPairLabel } from "./named.ts";
 import { nameClass, namesPasswordOrPin } from "./names.ts";
 import { base64Binary, base64Prefix } from "./base64.ts";
@@ -312,7 +312,13 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	}
 	// Public identifiers and keys whose shape or checksum says so.
 	if (/^wx[0-9a-f]{16}$/.test(value)) return "WeChat app ID";
-	if (isNatsPublicKey(value) || isStellarPublicKey(value) || isBase58Address(value) || isBech32Address(value))
+	if (
+		isNatsPublicKey(value) ||
+		isStellarPublicKey(value) ||
+		isBase58Address(value) ||
+		isXrpAddress(value) ||
+		isBech32Address(value)
+	)
 		return "public key (checksum verified)";
 	if (isDerPublicKey(value)) return "DER public key";
 	if (isPgpPublicKey(value)) return "OpenPGP public key";

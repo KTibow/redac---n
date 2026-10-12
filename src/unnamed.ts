@@ -467,6 +467,10 @@ const VETOES: Veto[] = [
 	// The token's own shape.
 	["digits", (_, t) => /^\d+$/.test(t)],
 	["placeholder", (_, t) => isPlaceholder(t)],
+	// Hex of one short unit written over and over (`Key = ef012345ef012345ef012345ef012345`): a filler someone typed, not
+	// key bytes, which never repeat in step. (Other alphabets' fillers, `foobarfoobar…`, are in the model's training
+	// negatives, which a veto would change.)
+	["repeating", (f, t) => alphaIsHex(f.alphabet) && /^(.{2,8}?)\1{2,}$/.test(t)],
 	["public-id", (_, t) => API_OBJECT_ID.test(t)],
 	// Ciphertext inside an encryption wrapper: sops `ENC[AES256_GCM,data:…`, Spring Cloud Config `{cipher}…`, jasypt
 	// `ENC(…)`, WildFly `${VAULT::…}`, IIS `[enc:IISCngProvider:…`, Splunk's `$7$…`, Pulumi's passphrase-encrypted

@@ -154,6 +154,17 @@ test("hashes, digests, cache keys and pinned versions are kept", () => {
 	assert.equal(r().redact(t).text, t);
 });
 
+test("a checksum manifest's file names name files, not credentials", () => {
+	const md5 = () => randomBytes(16).toString("hex");
+	const [key, pin, type, api] = [md5(), md5(), md5(), md5()];
+	const manifest = `{\n  "manifests/key.pp": "${key}",\n  "manifests/pin.pp": "${pin}",\n  "lib/puppet/type/apt_key.rb": "${type}",\n  "api_key": "${api}"\n}`;
+	for (const v of [key, pin, type]) kept(manifest, v);
+	hidden(manifest, api);
+	// A key file's name, as a Kubernetes Secret's key: its value is the key.
+	const master = md5();
+	hidden(`stringData:\n  master.key: ${master}\n`, master);
+});
+
 test("ids of requests, traces, customers, refunds, events and jobs are kept", () => {
 	kept("request_id=d389154b-f4aa-4049-a502-f7360774dea4", "d389154b-f4aa-4049-a502-f7360774dea4");
 	kept("traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", "0af7651916cd43dd8448eb211c80319c");
@@ -263,6 +274,9 @@ test("wallet addresses are kept", () => {
 	);
 	kept('signer:"celestia1rky9086t340m7rmkctuj4spxwv2gc62vlwx59v"', "celestia1rky9086t340m7rmkctuj4spxwv2gc62vlwx59v");
 	kept("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq");
+	// An XRP Ledger account, by its checksum in XRP's own base58 alphabet; one character off, it's a random token.
+	kept("{ issuer: 'rfXK4fN2AAqH7H5Uo94JQwT88qQkv69pqR', value: '0' }", "rfXK4fN2AAqH7H5Uo94JQwT88qQkv69pqR");
+	hidden("{ issuer: 'rfXK4fN2AAqH7H5Uo94JQwT88qQkv69pqS', value: '0' }", "rfXK4fN2AAqH7H5Uo94JQwT88qQkv69pqS");
 });
 
 test("build, tracking and protocol data that looks like a secret is kept", () => {

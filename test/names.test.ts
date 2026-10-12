@@ -656,6 +656,13 @@ test("a French credential name is a credential", () => {
 	assert.equal(nameClass("mot_de_passe"), "credential");
 });
 
+test("a file's path names the file; a Secret's key file names the key", () => {
+	assert.equal(nameClass("lib/pin.rb"), "neutral");
+	assert.equal(nameClass("manifests/pin.pp"), "neutral");
+	assert.equal(nameClass("pin.txt"), "credential");
+	assert.equal(nameClass("master.key"), "credential");
+});
+
 test("the phrase before a name is read word by word", () => {
 	assert.deepEqual(phraseBefore("Ingrese su contraseña ", 3), ["Ingrese", "su", "contraseña"]);
 	// (Not from inside a pair's value: `portal` of `id=web-portal` is no word before `secret`.)
