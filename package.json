@@ -44,6 +44,7 @@
 		"test": "node --test test/*.test.ts",
 		"eval": "node eval/all.ts",
 		"check": "node eval/check.ts",
+		"site": "node scripts/build-site.ts",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && knip"
 	},
@@ -51,6 +52,7 @@
 		"@types/node": "^26.6.4",
 		"knip": "^6.41.0",
 		"prettier": "^3.9.10",
+		"rolldown": "^1.2.13",
 		"typescript": "^7.0.2"
 	}
 }

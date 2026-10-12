@@ -22,6 +22,9 @@ redactor.redact("DATABASE_URL=postgres://app:Hx7mQ2pL9vRt@db:5432/app\nSALT=k2Lm
 redactor.redactValue(messages).value; // a whole Anthropic or OpenAI message list, before you send it
 ```
 
+**[Try it in your browser](https://kendell.dev/redac---n/):** paste a tool's output, give the command or file it
+came from, and see what would be sent. The library runs in the page, so nothing you paste leaves it.
+
 ## How well it works
 
 ![Secrets caught against look-alike values destroyed, redac---n and seven open-source scanners](docs/holdout.svg)
@@ -299,6 +302,8 @@ it as a `known` value: known values are hidden whatever they look like, as long 
 - **Evaluations:** `node eval/all.ts` runs the development checks. `node eval/layers.ts` scores each detector alone
   and left out. `node eval/report.ts` scores the held-out set (totals only) and draws the first two charts above;
   `node eval/creddata-chart.ts` draws the CredData charts (its header gives the steps before it).
+- **The demo** (`site/`): `pnpm site` builds it into `_site/`, and every push to `main` deploys it to GitHub Pages
+  (`.github/workflows/pages.yml`).
 - **Corpora:** the third-party corpora live outside the repository (`$REDACT_CORPORA`, by default
   `~/Downloads/redact-corpora`); on a fresh clone, the scripts score `eval/corpora` and skip the rest. The corpora in
   the repository are gzipped, because the fake credentials in them would otherwise look like real ones to secret

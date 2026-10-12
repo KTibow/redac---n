@@ -15,9 +15,9 @@ const root = join(import.meta.dirname, "..");
 
 test("no test, script or document writes a vendor's token out in full", () => {
 	const files = [
-		...["test", "eval", "scripts", "docs"].flatMap((dir) =>
+		...["test", "eval", "scripts", "docs", "site"].flatMap((dir) =>
 			readdirSync(join(root, dir))
-				.filter((f) => /\.(?:ts|py|md)$/.test(f) && !/holdout/.test(f))
+				.filter((f) => /\.(?:ts|py|md|html)$/.test(f) && !/holdout/.test(f))
 				.map((f) => join(dir, f)),
 		),
 		"README.md",

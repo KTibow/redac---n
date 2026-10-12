@@ -4,6 +4,7 @@ src/*-data.ts
 eval/corpora/
 eval/out/
 dist/
+_site/
 pnpm-lock.yaml
 # Prose: prettier would pad every Markdown table to its widest cell.
 *.md

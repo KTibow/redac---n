@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>redac---n demo</title>
+		<link rel="icon" href="data:," />
+		<meta
+			name="description"
+			content="Paste agent output and see redac---n hide the secrets in it, in your browser: nothing you paste leaves the page."
+		/>
+		<style>
+			:root {
+				color-scheme: light dark;
+				--bg: #fafaf9;
+				--panel: #ffffff;
+				--fg: #1c1c1e;
+				--muted: #66666d;
+				--border: #d9d9de;
+				--accent: #2b59c3;
+				--mark-bg: #fde4e1;
+				--mark-fg: #9a1b1b;
+				--mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--bg: #131315;
+					--panel: #1b1b1e;
+					--fg: #e7e7ea;
+					--muted: #9c9ca4;
+					--border: #2f2f35;
+					--accent: #8eabff;
+					--mark-bg: #4b1f1f;
+					--mark-fg: #ffb3aa;
+				}
+			}
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				background: var(--bg);
+				color: var(--fg);
+				font:
+					16px/1.5 system-ui,
+					-apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
+			.page {
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 32px 16px 48px;
+			}
+			a {
+				color: var(--accent);
+			}
+			h1 {
+				margin: 0 0 4px;
+				font-size: 1.75rem;
+				font-family: var(--mono);
+				letter-spacing: -0.02em;
+			}
+			header p {
+				margin: 4px 0;
+				max-width: 70ch;
+			}
+			.private {
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+			.controls {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 12px 16px;
+				align-items: end;
+				margin: 16px 0;
+			}
+			label,
+			legend {
+				display: block;
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+			.controls label {
+				flex: 1 1 200px;
+			}
+			input[type="text"] {
+				display: block;
+				width: 100%;
+				margin-top: 4px;
+				padding: 6px 8px;
+				font: 0.9rem var(--mono);
+				color: var(--fg);
+				background: var(--panel);
+				border: 1px solid var(--border);
+				border-radius: 6px;
+			}
+			fieldset {
+				margin: 0;
+				padding: 0;
+				border: 0;
+			}
+			.segmented {
+				display: flex;
+				margin-top: 4px;
+				border: 1px solid var(--border);
+				border-radius: 6px;
+				overflow: hidden;
+			}
+			.segmented label {
+				margin: 0;
+				padding: 6px 12px;
+				font-size: 0.9rem;
+				color: var(--fg);
+				background: var(--panel);
+				cursor: pointer;
+			}
+			.segmented label + label {
+				border-left: 1px solid var(--border);
+			}
+			.segmented input {
+				position: absolute;
+				opacity: 0;
+				pointer-events: none;
+			}
+			.segmented label:has(input:checked) {
+				background: var(--accent);
+				color: var(--panel);
+			}
+			.segmented label:has(input:focus-visible) {
+				outline: 2px solid var(--accent);
+				outline-offset: -4px;
+			}
+			.explain {
+				margin: -8px 0 16px;
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+			.examples {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+				align-items: center;
+				margin-top: 24px;
+				font-size: 0.9rem;
+				color: var(--muted);
+			}
+			button {
+				padding: 4px 10px;
+				font: inherit;
+				font-size: 0.85rem;
+				color: var(--fg);
+				background: var(--panel);
+				border: 1px solid var(--border);
+				border-radius: 999px;
+				cursor: pointer;
+			}
+			button:hover {
+				border-color: var(--accent);
+			}
+			.panes {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 16px;
+			}
+			.pane {
+				display: flex;
+				flex-direction: column;
+				min-width: 0;
+			}
+			.pane-head {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 8px;
+				min-height: 2.25rem;
+			}
+			#status {
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+			textarea,
+			#output {
+				flex: 1;
+				min-height: 22rem;
+				margin: 0;
+				padding: 12px;
+				font: 0.85rem/1.55 var(--mono);
+				color: var(--fg);
+				background: var(--panel);
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+				tab-size: 4;
+			}
+			textarea {
+				resize: vertical;
+			}
+			#output {
+				overflow: auto;
+			}
+			mark {
+				padding: 0 2px;
+				border-radius: 3px;
+				background: var(--mark-bg);
+				color: var(--mark-fg);
+			}
+			#findings {
+				margin: 12px 0 0;
+				padding: 0;
+				list-style: none;
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+			#findings code {
+				font-family: var(--mono);
+			}
+			@media (max-width: 800px) {
+				.panes {
+					grid-template-columns: 1fr;
+				}
+				textarea,
+				#output {
+					min-height: 14rem;
+				}
+			}
+			footer {
+				margin-top: 40px;
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+		</style>
+		<script type="module" src="main.js"></script>
+	</head>
+	<body>
+		<div class="page">
+			<header>
+				<h1>redac---n</h1>
+				<p>
+					Hide secrets in what your coding agent sends to a model provider. Paste a tool's output, a file or a
+					transcript, and see what would be sent.
+				</p>
+				<p class="private">
+					This runs the library in your browser: nothing you paste leaves this page, and nothing is stored.
+				</p>
+			</header>
+
+			<main>
+				<div class="examples" id="examples">Try:</div>
+				<div class="controls">
+					<label
+						>Command that printed it
+						<input type="text" id="command" placeholder="cat .env" spellcheck="false" autocomplete="off" />
+					</label>
+					<label
+						>File it was read from
+						<input type="text" id="path" placeholder="config/credentials.json" spellcheck="false" autocomplete="off" />
+					</label>
+					<fieldset>
+						<legend>Guessing</legend>
+						<div class="segmented">
+							<label><input type="radio" name="guessing" value="off" />off</label>
+							<label><input type="radio" name="guessing" value="confident" checked />confident</label>
+							<label><input type="radio" name="guessing" value="eager" />eager</label>
+						</div>
+					</fieldset>
+				</div>
+				<p class="explain" id="explain"></p>
+
+				<div class="panes">
+					<section class="pane">
+						<div class="pane-head">
+							<label for="input">Text</label>
+						</div>
+						<textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+					</section>
+					<section class="pane">
+						<div class="pane-head">
+							<span id="status" aria-live="polite"></span>
+							<button type="button" id="copy">Copy</button>
+						</div>
+						<pre id="output" tabindex="0" aria-label="Redacted text"></pre>
+						<ul id="findings"></ul>
+					</section>
+				</div>
+			</main>
+
+			<footer>
+				<a href="https://github.com/KTibow/redac---n">Source and docs on GitHub</a> ·
+				<a href="https://github.com/KTibow/redac---n#how-well-it-works">How well it works</a> ·
+				<a href="https://github.com/KTibow/redac---n#what-it-misses">What it misses</a> · MIT license
+			</footer>
+		</div>
+	</body>
+</html>
