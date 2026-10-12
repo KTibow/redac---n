@@ -2323,8 +2323,13 @@ function substitutions(text: string, out: Finding[]) {
 	if (!/(?:^|[\s'"])s[/|#,:@]/.test(text)) return;
 	for (const m of text.matchAll(/(?:^|[\s'"])s([/|#,:@])((?:\\.|(?!\1)[^\n\\])*)\1((?:\\.|(?!\1)[^\n\\])*)\1/dg)) {
 		const [from] = m.indices![3]!;
-		// (A replacement that starts with the pattern's group holding the name, `s/^\(API_KEY=\).*/\1<value>/`, `-E 's/(KEY=).*/\1v/'`.)
-		const group = /^\\1/.test(m[3]) ? /\\?\((?:\^)?([A-Za-z_][\w.-]{1,80})[ \t]*[=:][ \t]*\\?\)/.exec(m[2]) : null;
+		// (A replacement that starts with the pattern's group holding the name, `s/^\(API_KEY=\).*/\1<value>/`, `-E 's/(KEY=).*/\1v/'`,
+		// blanks around its `=` written as the pattern's, `(KEY[ ]*=[ ]*)`, `(KEY\s*=\s*)`.)
+		const group = /^\\1/.test(m[3])
+			? /\\?\((?:\^)?([A-Za-z_][\w.-]{1,80})(?:[ \t*+?]|\[[ \t]+\]|\[\[:space:\]\]|\\s)*[=:](?:[ \t*+?]|\[[ \t]+\]|\[\[:space:\]\]|\\s)*\\?\)/.exec(
+					m[2],
+				)
+			: null;
 		if (group) {
 			const value = /^\\1["']?((?:\\.|[^\s"'\\]){3,4096})/.exec(m[3]);
 			if (value)

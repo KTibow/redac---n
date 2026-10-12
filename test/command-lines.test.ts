@@ -139,6 +139,9 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	hidden("sed -i 's/^DB_PASSWORD=.*/DB_PASSWORD=Kx9mQ2vL7pZrTq8Wn3Xc/' .env", "Kx9mQ2vL7pZrTq8Wn3Xc");
 	hidden("perl -pi -e 's/^API_KEY=.*/API_KEY=Harbor2291x/' .env", "Harbor2291x");
 	hidden("sed -E 's/(API_KEY=).*/\\1Kx9mQ2vL7pZrTq8Wn3Xc/' .env", "Kx9mQ2vL7pZrTq8Wn3Xc");
+	// (The group's blanks as the pattern writes them.)
+	hidden("sed -i -E 's/(DB_PASSWORD[ ]*=[ ]*).*/\\1Summer2024!/' .env", "Summer2024!");
+	hidden("sed -i 's/\\(DB_PASSWORD\\s*=\\s*\\).*/\\1Summer2024!/' .env", "Summer2024!");
 	hidden("aws configure set aws_secret_access_key Kx9mQ2vL7pZrTq8Wn3Xc", "Kx9mQ2vL7pZrTq8Wn3Xc");
 	hidden("reg add HKLM\\Software\\App /v Password /t REG_SZ /d Harbor2291x /f", "Harbor2291x");
 	hidden("docker run --rm redis redis-cli -a Xk9mQ2vR7tL4pW8 ping", "Xk9mQ2vR7tL4pW8");
