@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Doc } from "../src/context.ts";
-import { candidates, features, vetoes } from "../src/unnamed.ts";
+import { candidates, features, vetoed, vetoes } from "../src/unnamed.ts";
 
 // Lines of wrapped base64 (`base64 -w 64`, `fold -w 48`), and keys of their own lengths.
 const [W64a, W64b, W44] = [
@@ -77,6 +77,22 @@ const SAMPLES: [reason: string, text: string, token: string][] = [
 		'grpcurl -d \'{"page": "CP///////////wESC2hlbGxvIHdvcmxk"}\'',
 		"CP///////////wESC2hlbGxvIHdvcmxk",
 	],
+	// (A float field is 4 bytes, fixed: field 1, then a string.)
+	["encoded message", 'grpcurl -d \'{"page": "DQAAgD8SC2hlbGxvIHdvcmxk"}\'', "DQAAgD8SC2hlbGxvIHdvcmxk"],
+	[
+		"hashed-host",
+		"|1|JfKTdBh7rNbXkVAQCRp4OQoPfmI=|USECr3SWf1JUPsms5AqfD5QfxkM= ssh-rsa AAAAB3NzaC1yc2E",
+		"USECr3SWf1JUPsms5AqfD5QfxkM=",
+	],
+	[
+		"hashed-host",
+		"|1|+Xk9mQ2vL7pZrTq8Wn3Xc4Yb5Va=|USECr3SWf1JUPsms5AqfD5QfxkM= ssh-rsa",
+		"Xk9mQ2vL7pZrTq8Wn3Xc4Yb5Va=",
+	],
+	["hex", "Thumbprint: 11F6AD8EC52A2984ABAAFD7C3B516503785C2072", "11F6AD8EC52A2984ABAAFD7C3B516503785C2072"],
+	["slug", "see build-cache-x7k2-node for details", "build-cache-x7k2-node"],
+	["identifier-shaped", "see build-cache-x7k2-node for details", "build-cache-x7k2-node"],
+	["uuid", '"sessionId": "6f1c2b9e-3d4a-4e8f-9b7c-2a1d0e5f8c3b"', "6f1c2b9e-3d4a-4e8f-9b7c-2a1d0e5f8c3b"],
 	["data-name", '{"embedding": "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te8S"}', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te8S"],
 	["repeating", "Key = ef012345ef012345ef012345ef012345", "ef012345ef012345ef012345ef012345"],
 	[
@@ -319,6 +335,23 @@ const NOT: [reason: string, text: string, token: string][] = [
 	],
 	// A credential's ID by its phrase: Vault AppRole's secret ID.
 	["id-name", "The secret id: Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te", "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te"],
+	// Only after `|1|` is a value of a SHA-1's size a hashed host.
+	[
+		"hashed-host",
+		"curl -H 'X-Lumen: JfKTdBh7rNbXkVAQCRp4OQoPfmI=' https://api.lumen.dev",
+		"JfKTdBh7rNbXkVAQCRp4OQoPfmI=",
+	],
+	// A credential's name outvotes what a token's shape or its place says.
+	["identifier-shaped", 'api_key: "Kx9-mQ2-vL7-pZr-Tq8-Wn3"', "Kx9-mQ2-vL7-pZr-Tq8-Wn3"],
+	["filename", 'session_token = "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5.Va6Ud7.Te8Sf9Rg0Hh1Ij2Kk3"', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
+	["uuid", '"session_id": "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
+	["cuid2", "secret_id=kx9mq2vl7pzrtq8wn3xc4yb5", "kx9mq2vl7pzrtq8wn3xc4yb5"],
+	["base64-text", "password: dGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVy", "dGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVy"],
+	// Bytes that only start like a message: a field past any schema's numbers, a key that never ends (five bytes with
+	// the high bit), a field of binary bytes (a printable run in random bytes isn't text).
+	["encoded message", 'grpcurl -d \'{"page": "wj4MaGVsbG8gd29ybGQh"}\'', "wj4MaGVsbG8gd29ybGQh"],
+	["encoded message", 'grpcurl -d \'{"page": "//////8ACgxoZWxsbyB3b3JsZCE="}\'', "//////8ACgxoZWxsbyB3b3JsZCE="],
+	["encoded message", 'grpcurl -d \'{"page": "Cg0A//79/Pv6+fhhYmNk"}\'', "Cg0A//79/Pv6+fhhYmNk"],
 ];
 
 test("each veto rules out the samples its comment names", () => {
@@ -348,4 +381,11 @@ test("a veto leaves alone what only looks like its case", () => {
 		if (c && vetoes(features(new Doc(text), c, false)).includes(reason)) wrong.push(`${reason}: ${token}`);
 	}
 	assert.deepEqual(wrong, []);
+});
+
+test("without the statistical vetoes, a token ruled out only by its look is left to the model", () => {
+	const text = "see build-cache-x7k2-node for details";
+	const f = features(new Doc(text), candidates(text)[0], false);
+	assert.ok(vetoed(f));
+	assert.equal(vetoed(f, { statistical: false }), undefined);
 });

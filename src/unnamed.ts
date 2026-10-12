@@ -128,10 +128,11 @@ export function candidates(text: string): Candidate[] {
 			for (const [off, part] of parts) {
 				let lead = part.match(/^[=_+-]*/)![0].length;
 				const dropped = part.slice(0, lead);
-				// The tail of an escape before the run: `\n<token>`, `\u001b[32m<token>`, `ESC[0m<token>`, `%2b<token>`.
+				// The tail of an escape before the run: `\n<token>`, `\u001b[32m<token>`, `ESC[0m<token>`, `%2b<token>`. (A
+				// backslash's tail can be what the token drops: `\_<token>`.)
 				const at = runStart + eqOff + off;
 				const before = text.slice(Math.max(0, at - 12), at);
-				if (backslashesBefore(text, at) % 2) lead += escapeLength(text, at - 1) - 1;
+				if (backslashesBefore(text, at) % 2) lead = Math.max(lead, escapeLength(text, at - 1) - 1);
 				else if (/(?:\x1b|\\u001b|\\x1b|\\e|\\033)\[$/i.test(before))
 					lead += part.match(/^[\d;]*[A-Za-z]/)?.[0].length ?? 0;
 				else if (text[at - 1] === "%" && /^[0-9A-Fa-f]{2}/.test(part)) lead += 2;
@@ -142,12 +143,11 @@ export function candidates(text: string): Candidate[] {
 				if (body.length < MIN_TOKEN) continue;
 				const pad = part.slice(lead + body.length).match(/^={0,2}/)![0];
 				const start = runStart + eqOff + off + lead;
-				// (Not after an escape's tail, `\n_`: the left side is read from the token as it was.)
 				out.push({
 					start,
 					end: start + body.length + pad.length,
 					token: body + pad,
-					...(dropped && lead === dropped.length ? { lead: dropped } : {}),
+					...(dropped ? { lead: dropped } : {}),
 				});
 			}
 		}
@@ -207,15 +207,15 @@ function isHashSize(token: string, alphabet: Alphabet): boolean {
 	return alphaIsHex(alphabet) || /=$/.test(token) || UNPADDED_DIGEST_LENGTHS.includes(token.length);
 }
 
+/** Whether a byte is text's: printable ASCII, a tab or a line break. */
+const isTextByte = (b: number) => (b >= 32 && b < 127) || b === 9 || b === 10 || b === 13;
+
 /** What base64 decodes to: printable text, binary, or not base64 at all. */
 function decodesTo(token: string): "text" | "binary" | "none" {
 	const bin = /^[A-Za-z0-9+/_-]+={0,2}$/.test(token) ? base64Binary(token) : undefined;
 	if (!bin) return "none";
 	let printable = 0;
-	for (let i = 0; i < bin.length; i++) {
-		const c = bin.charCodeAt(i);
-		if ((c >= 32 && c < 127) || c === 9 || c === 10 || c === 13) printable++;
-	}
+	for (let i = 0; i < bin.length; i++) if (isTextByte(bin.charCodeAt(i))) printable++;
 	return printable >= bin.length * 0.95 ? "text" : "binary";
 }
 
@@ -501,9 +501,10 @@ const VETOES: Veto[] = [
 	["build-id", (f) => /\bBuildID=\S*$/.test(f.ctx.left)],
 	["public-id", (f) => inPublicNamespace(f)],
 	// A hashed host in `~/.ssh/known_hosts` (`|1|<salt>|<HMAC-SHA1 of the host name>`, both base64 of 20 bytes): public, as the host names are.
+	// (With the `+` a salt can start with, which the token drops: `|1|+bsj…=|`.)
 	[
 		"hashed-host",
-		(f, t) => /^[A-Za-z0-9+/]{27}=$/.test(t) && /(?:^|[\s,])\|1\|(?:[A-Za-z0-9+/]{27}=\|)?$/.test(f.ctx.left),
+		(f, t) => /^[A-Za-z0-9+/]{27}=$/.test(f.lead + t) && /(?:^|[\s,])\|1\|(?:[A-Za-z0-9+/]{27}=\|)?$/.test(f.ctx.left),
 	],
 	// Facebook post IDs, LVM's PV UUIDs, OpenRouter generations, Cloudflare rays, a Snowflake external ID as a whole token.
 	[
@@ -929,6 +930,11 @@ export function vector(f: Features): number[] {
 	return FEATURES.map(([, value]) => value(f));
 }
 
+/** The model's inputs by name, as vector() gives them. */
+export function namedVector(f: Features): Record<string, number> {
+	return Object.fromEntries(FEATURES.map(([name, value]) => [name, value(f)]));
+}
+
 /** The longest random key in the model's training positives but for standard base64's (scripts/unnamed-data.ts `randomKey`). */
 const LONGEST_TRAINED = 90;
 
@@ -1025,7 +1031,6 @@ const MAX_FIELD_NUMBER = 536;
 /** `true` if bytes[from, to) is a message with a readable string somewhere in it; `false` if it parses without one; `undefined` if it doesn't parse. */
 function parsesAsMessage(bytes: Uint8Array, from: number, to: number, depth: number): boolean | undefined {
 	let i = from;
-	let fields = 0;
 	let readable = false;
 	// (Up to 5 bytes for a key or a length, 10 for a value: a negative int64 takes all 10.)
 	const varint = (longest = 5): number | undefined => {
@@ -1052,12 +1057,11 @@ function parsesAsMessage(bytes: Uint8Array, from: number, to: number, depth: num
 			const len = varint();
 			if (len === undefined || i + len > to) return undefined;
 			const s = bytes.subarray(i, i + len);
-			const printable = s.filter((b) => (b >= 32 && b < 127) || b === 9 || b === 10).length;
+			const printable = s.filter(isTextByte).length;
 			if (len >= 4 && printable >= 0.8 * len && /[ -~]{4}/.test(String.fromCharCode(...s))) readable = true;
 			else if (len >= 2 && depth < 4 && parsesAsMessage(bytes, i, i + len, depth + 1)) readable = true;
 			i += len;
 		} else return undefined;
-		fields++;
 	}
-	return i === to && fields > 0 ? readable : undefined;
+	return i === to ? readable : undefined;
 }

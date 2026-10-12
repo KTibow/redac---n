@@ -8,12 +8,13 @@
  * that secret scanners, GitHub's push protection among them, take for a live key.)
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
 import { naturalness } from "../src/charlm.ts";
 import { type Context, contextOf, Doc } from "../src/context.ts";
 import { redactValue } from "../src/transcript.ts";
-import { findUnnamed } from "../src/unnamed.ts";
+import { candidates, features, findUnnamed, namedVector } from "../src/unnamed.ts";
 import { hidden, kept, r } from "./helpers.ts";
 import { randomBytes } from "./random.ts";
 
@@ -51,13 +52,16 @@ test("resource-id veto: credential names and query parameters", () => {
 	kept(`/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/${t}`, t);
 });
 
-test("ids filter keeps a credential-named occurrence", () => {
+test("ids filter keeps a credential-named occurrence, and takes a token for an ID only where a veto says so", () => {
 	const id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
 	const found = findUnnamed(`GET /api/posts/${id}\nconfig.password = "${id}"\n`, () => false, "confident", false);
 	assert.ok(
 		found.some((f) => f.name === "config.password"),
 		JSON.stringify(found),
 	);
+	// A file named after a key (ID-shaped by its prefix) says nothing of its being an ID.
+	const key = "acme_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5";
+	hidden(`cat ~/.cache/${key}.json\nexport ACME=${key}`, key);
 });
 
 test("protobuf field numbers past 31 bits are not read as small", () => {
@@ -70,6 +74,21 @@ test("protobuf field numbers past 31 bits are not read as small", () => {
 test("hashSize names the digest lengths", () => {
 	const sha256 = randomBytes(32).toString("base64").replace(/=+$/, "");
 	kept(`checksum: ${sha256}`, sha256);
+	const hashSize = (token: string) => features(new Doc(token), candidates(token)[0], false).hashSize;
+	const digest = createHash("sha256").update("x").digest();
+	for (const token of [
+		digest.toString("hex"),
+		createHash("sha1").update("x").digest("hex").toUpperCase(),
+		digest.toString("base64"),
+		digest.toString("base64").replace(/=+$/, ""),
+		digest.toString("base64url"),
+		// (Base64 of the SHA-256 of `x2`, with no `+` or `/`: of base62's alphabet.)
+		"hE7MCBZOLqsnY0qa3uGvplmeWJVw5xl4TggM50f8DkU",
+	])
+		assert.ok(hashSize(token), token);
+	// 33 bytes, and 43 characters that aren't base64 at all.
+	for (const token of [randomBytes(33).toString("base64"), "k3j9x7q2m8p4w6z1v5t0r2ncq8k3j9x7q2m8p4w6z1v"])
+		assert.ok(!hashSize(token), token);
 });
 
 test("inert shapes must match exactly under a credential name", () => {
@@ -171,12 +190,117 @@ test("quoted random tokens and lists of keys are hidden", () => {
 		hidden(s, t.slice(8, 30));
 });
 
-test("an ID-shaped token is hidden in a key's place, and a hash after the word commit is kept", () => {
+test("an ID-shaped token is hidden in a key's place, and a hash is kept where a hash word heads its phrase", () => {
 	// An ID's shape yields to a key's place, and a hash word counts where it heads the phrase, not anywhere on the line.
 	hidden("X-Lumen: k3j9x7q2m8p4w6z1v5t0r2ncq8", "k3j9x7q2m8p4w6z1v5t0r2nc");
 	for (const label of ["for the git server", ", resolved from the vault", "for the parent account"])
 		hidden(`Here's your new API key ${label}:\n9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82`, "9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82");
 	kept("commit 9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82e1d0b9a8", "9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82");
+	const sha256 = "9f3a1c7e5b2d8f4a6c0e9b1d7f3a5c82".repeat(2);
+	kept(`Here's your new key\n${sha256} (sha256)`, sha256);
+	kept(`Your new key, sha256 ${sha256}`, sha256);
+	// A handover, a command's argument after a prompt, a client's constructor: an object ID's prefix, a ULID's shape or
+	// a slug's says nothing there.
+	for (const [text, token] of [
+		["Copy it now, it won't be shown again: tok_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5", "tok_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
+		["Use this one:\n01HX3Q8Z9KJ2M4N6P8R0T2V4W6", "01HX3Q8Z9KJ2M4N6P8R0T2V4W6"],
+		["$ ./notify.sh prod sess_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5", "sess_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
+		['client = AcmeClient("pro_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5")', "pro_Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
+		['sdk.init("01HX3Q8Z9KJ2M4N6P8R0T2V4W6")', "01HX3Q8Z9KJ2M4N6P8R0T2V4W6"],
+		["Use this one: kx9q-tw3v-pz2m-rr8n-lb4c", "kx9q-tw3v-pz2m-rr8n-lb4c"],
+	])
+		hidden(text, token);
+});
+
+test("a token's run starts after the escape before it, and is cut at a path's slashes but not a key's", () => {
+	const key = "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5";
+	for (const [text, token] of [
+		[`printf "100%\\n${key}"`, key],
+		// (A `_` escaped in Markdown is the escape's tail and the separator the token drops, once.)
+		["the key is Kx9mQ2vL\\_7pZrTq8Wn3Xc4Yb5Va6Ud", "7pZrTq8Wn3Xc4Yb5Va6Ud"],
+		[`x=a%20${key}`, key],
+		// (A `%` that starts no escape: a cmd variable's.)
+		[`set "PW=%RANDOM%${key}"`, key],
+		['"Kx9mQ2vL7pZr/qzxw/Tq8Wn3Xc4Yb5Va6U"', "Kx9mQ2vL7pZr/qzxw/Tq8Wn3Xc4Yb5Va6U"],
+	]) {
+		const tokens = candidates(text).map((c) => c.token);
+		assert.ok(tokens.includes(token), `${text}: ${tokens.join(" ")}`);
+	}
+});
+
+test("base64 of text is kept: a sentence, a table, words, a URL, a GraphQL node ID", () => {
+	const b64 = (s: string) => Buffer.from(s).toString("base64");
+	for (const [name, token] of [
+		["note", Buffer.from("the quick brown fox jumps over the lazy dog ???>>>").toString("base64url")],
+		["rows", b64("id\tname\r\n1\tbob\r\n2\tamy\r\n")],
+		["target", b64("my-company-artifacts-bucket")],
+		["returnTo", b64("https://app.acme.io/cb/7f3k2q")],
+		["node", b64("019:AddedToProjectEvent1791766828")],
+	])
+		kept(`  ${name}: ${token}`, token);
+	// Under 24 characters, text is as likely a password: `Winter 2024!`.
+	hidden(`Use this one: ${b64("Winter 2024!")}`, b64("Winter 2024!"));
+});
+
+test("a random key in groups or with underscores is neither a slug nor an identifier", () => {
+	for (const [text, token] of [
+		["Use this one: xk9mq-2vl7p-zrtq8-wn3xc-4yb5v", "xk9mq-2vl7p-zrtq8-wn3xc-4yb5v"],
+		["it printed Kx9m-Q2vL-7pZr-Tq8W-n3Xc and exited", "Kx9m-Q2vL-7pZr-Tq8W-n3Xc"],
+		["it printed kx9mq2vl-pzrtq8w7-n3xc4yb5 and exited", "kx9mq2vl-pzrtq8w7-n3xc4yb5"],
+		["curl -H 'X-Lumen: Kx9mQ2vL7pZrTq8W_N3xc4Yb5Va6U_Te8Sf9Rg0Hh1' https://x.io", "Kx9mQ2vL7pZrTq8W_N3xc4Yb5Va6U"],
+	])
+		hidden(text, token);
+});
+
+test("hex is kept in dashed groups and with a word before it, unless a credential's name or a secret file has it", () => {
+	kept("traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", "4bf92f3577b34da6a3ce929d0e0e4736");
+	kept("X-Amzn-Trace-Id: Root=1-5759e988-bd862e3fe1be46a994272793", "5759e988-bd862e3fe1be46a994272793");
+	const requestId = "7a12d1d6-8c4f-449c-ba47-f1d76432a954";
+	kept(`\treq.Header.Set("X-Api-Key", apiKey)\n\treq.Header.Set("X-Request-ID", "${requestId}")`, requestId);
+	const login = `export VAULT_TOKEN="$(vault write -field=token auth/approle/login role_id=eac2dc73-2323-49d6-bd8b-aa36a28fceab secret_id=0c21e564-58d7-4a13-8ba9-946659ee0849)"`;
+	hidden(login, "0c21e564-58d7-4a13-8ba9-946659ee0849");
+	kept(login, "eac2dc73-2323-49d6-bd8b-aa36a28fceab");
+	hidden("token=acme_9f86d081884c7d65", "9f86d081884c7d65");
+	// In a secret file, a whole value; and a URL's path segment there.
+	hidden("RELEASE=build_9f86d081884c7d659a2f\n", "9f86d081884c7d659a2f", { secretFile: true });
+	hidden("DOWNLOAD_URL=https://files.acme.io/d/kx9mq2vl7pzrtq8wn3xcz\n", "kx9mq2vl7pzrtq8wn3xcz", { secretFile: true });
+});
+
+test("the model's inputs: a neutral name only where there is one, a long token's length where the model saw it", () => {
+	const key = "Q7mZt2Kx9LpV4cW8nR3bY6hF1sD5gJ0a";
+	const featuresOf = (text: string, token: string) =>
+		features(
+			new Doc(text),
+			candidates(text).find((c) => c.token === token)!,
+			false,
+		);
+	const inputs = (text: string, token: string) => namedVector(featuresOf(text, token));
+	assert.equal(inputs(`client = Helix("${key}")`, key).name_neutral, 1);
+	assert.equal(inputs(`Use this one:\n${key}`, key).name_neutral, 0);
+	assert.equal(inputs(`client = Helix("${key}")`, key).neutral_x_long, 1);
+	assert.equal(inputs(`client = Helix("${key.slice(0, 24)}")`, key.slice(0, 24)).neutral_x_long, 0);
+	// (Past the longest key trained on, a URL path's segment keeps its length, and a query's value and a hook's don't.)
+	const long = key.repeat(4);
+	assert.equal(inputs(`GET https://cdn.acme.io/${long}/x`, long).logLength, Math.log2(long.length));
+	for (const url of [`https://acme.io/cb?state=${long}`, `https://hooks.acme.io/hooks/${long}`])
+		assert.equal(inputs(url, long).logLength, Math.log2(90), url);
+	// A vendor's prefix is a word before a random body, not before more words.
+	assert.ok(featuresOf("acme_live_8f7QxK2mZp9LwT4vRn", "acme_live_8f7QxK2mZp9LwT4vRn").vendorPrefix);
+	assert.ok(!featuresOf("get_UserProfileSettings", "get_UserProfileSettings").vendorPrefix);
+});
+
+test("a quoted random value is a key alone, not under a name or inside a larger value", () => {
+	kept(
+		'test_vectors = [\n    "X1AmNsYrAsPFlY1NKDWo7NhyaxA3DzcKJJmOFqyP",\n]',
+		"X1AmNsYrAsPFlY1NKDWo7NhyaxA3DzcKJJmOFqyP",
+	);
+	// Django's signer, and its marker of an unusable password.
+	const signed = "'eyJmb28iOiJiYXIifQ:1stLrZ:_QiOBHafwucBF9FyAr54qEs84ZO1UdsO1XiTJCvvdno'";
+	kept(`    >>> value\n    ${signed}\n`, "QiOBHafwucBF9FyAr54qEs84ZO1UdsO1XiTJCvvdno");
+	kept(
+		'for password in [\n    "invalid",\n    "!b7pk7RNudAXGTNLK6fW5YnBCLVE6UUmeoJJYQHaO",\n]:',
+		"b7pk7RNudAXGTNLK6fW5YnBCLVE6UUmeoJJYQHaO",
+	);
 });
 
 test("a token's case changes its naturalness only at a camelCase break: after a lower-case letter, not a symbol or another script's", () => {
