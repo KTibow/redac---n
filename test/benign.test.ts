@@ -56,6 +56,16 @@ const BENIGN = [
 	"sha512_crypt",
 	"null?password:password2",
 	String.raw`\x2B\x06\x01\x05\x05\x07\x03\x01`,
+	"3.1.6+~cs8.7.18-1",
+	"1:2.3-4.el9",
+	"1:1.2.11.dfsg-2ubuntu9.2",
+	"string (required)",
+	"SecureString",
+	String.raw`\x41`,
+	"*secret*",
+	"Lea5_#{SecureRandom.base58(24)}",
+	"/changePasswd",
+	String.raw`^\S{8,}$`,
 ];
 const NAMES = ["password", "pass", "passwd", "secret", "token", "api_key", "key", "DB_PASSWORD", "apiKey"];
 const SYNTAXES: ((n: string, v: string) => string)[] = [

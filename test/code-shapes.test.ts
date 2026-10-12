@@ -609,3 +609,49 @@ test("found in review, third batch: grep options, key files, quoted passwords, h
 	])
 		kept(text, value);
 });
+
+test("a type is code in a literal context by a type's own ending; a passphrase in title case ends in words", () => {
+	kept("class Settings(BaseSettings):\n    password: SecretStr\n    token: Optional[SecretBytes] = None", "SecretStr");
+	kept("    password: SecretStr", "SecretStr");
+	kept("interface A {\n  clientSecret: ClientSecret;\n}", "ClientSecret");
+	hidden("DB_PASSWORD=LittleSecret", "LittleSecret");
+	hidden("DB_PASSWORD=GoldenString", "GoldenString");
+	hidden("The password is: BlueSecret", "BlueSecret");
+});
+
+test("a path subscripted by a quoted key or a symbol is a reference anywhere; a password's own brackets aren't", () => {
+	kept('password: data["password"]', 'data["password"]');
+	kept("pwd: $row['pwd']", "$row['pwd']");
+	kept("password: params[:password]", "params[:password]");
+	hidden("DB_PASSWORD=Summer[2024]", "Summer[2024]");
+});
+
+test("a password with a code shape's punctuation in it is a password, and code's own shape is code", () => {
+	for (const [text, secret] of [
+		["DB_PASSWORD=Welcome1(abc)", "Welcome1(abc)"],
+		["DB_PASSWORD=Qzx(Wvb)", "Qzx(Wvb)"],
+		["DB_PASSWORD=&k3j9x2m", "&k3j9x2m"],
+		["DB_PASSWORD=pass||Xk9PqZr7Mn", "Xk9PqZr7Mn"],
+		["DB_PASSWORD=user.pass2024", "user.pass2024"],
+		["password = Blue.Sky2024", "Blue.Sky2024"],
+		["password = correcthorsebattery", "correcthorsebattery"],
+		["DB_PASSWORD=Summer#24.pass", "Summer#24.pass"],
+		["DB_PASSWORD=Tr0ub4dor.pw", "Tr0ub4dor.pw"],
+		["DB_PASSWORD=Xk9mP2vQ7Lz4${env.name}", "Xk9mP2vQ7Lz4"],
+	])
+		hidden(text, secret);
+	kept("const pw = cfg?.db2", "cfg?.db2");
+	kept("password=g_pw", "g_pw");
+});
+
+test("what a value under a password's name is instead: a number, an email, a variable's name, a regex, a webhook", () => {
+	for (const [text, value] of [
+		["mysql -u root --password 12345", "12345"],
+		["password: john@example.com", "john@example.com"],
+		["password: MYSQL_ROOT_PW", "MYSQL_ROOT_PW"],
+		["PASSWORD_RE = r'^\\S{8,}$'", "\\S{8,}"],
+	])
+		kept(text, value);
+	hidden("WEBHOOK_SECRET=https://example.com/hooks/8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c", "8f7a6b5c4d3e2f1a");
+	hidden("DB_PASSWORD=!!!!!!", "!!!!!!");
+});

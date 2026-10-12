@@ -16,11 +16,13 @@ import { isDerPublicKey, isDerSignature, isPgpPublicKey, isRsaPublicKey } from "
 import { alphabetOf, shape } from "../src/random.ts";
 import {
 	inertShape,
+	isBalanced,
 	isBenignValue,
 	isCode,
 	isIdentifierShaped,
 	isPasswordHash,
 	isPath,
+	isPodName,
 	isRandomToken,
 	isWordy,
 	looksSecret,
@@ -495,6 +497,50 @@ test("a token's alphabet is the smallest that holds it, and its shape counts eac
 	const { lower, upper, digit, switches } = shape("aB3_:~");
 	assert.deepEqual({ lower, upper, digit, switches }, { lower: 1, upper: 1, digit: 1, switches: 3 / 5 });
 	assert.equal(shape("aaBB").switches, 1 / 3);
+});
+
+test("a stand-in is test words at any length, and a placeholder phrase run together to its `here`", () => {
+	for (const [text, value] of [
+		["password: super-secret-test-password-1234", "super-secret-test-password-1234"],
+		["password: yourpasswordhere", "yourpasswordhere"],
+		["DB_PASSWORD=passwordhere", "passwordhere"],
+		["password: YourJwtSecretHere", "YourJwtSecretHere"],
+		["DB_PASSWORD=password_!!!", "password_!!!"],
+	])
+		kept(text, value);
+	// (A real password's digits are arbitrary, not a count.)
+	hidden("DB_PASSWORD=secret1287", "secret1287");
+});
+
+test("names built from short parts are identifiers; a product key's groups and a generated run are not", () => {
+	for (const v of [
+		"RSA-OAEP-256",
+		"SECP521R1-SHA512",
+		"x86_64-amd64",
+		"ALICE_brainpoolP224r1",
+		"ubuntu2204-x86-64-node18",
+		"py3-gcc-x64",
+		"RHSA-2024:1234",
+		"prod-db01-eu01",
+	])
+		assert.ok(isIdentifierShaped(v), v);
+	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key"])
+		assert.ok(!isIdentifierShaped(v), v);
+	kept("key_curve: ECDH-brainpoolP384r1", "ECDH-brainpoolP384r1");
+	hidden("api_key: qzxvbK9mWpL2-x7", "qzxvbK9mWpL2");
+	assert.ok(isPodName("ledger-api-58d4f7c9b-rbjl3"));
+	assert.ok(!isPodName("x7k2p9-q8w3e4-r5t6y"));
+});
+
+test("words in title case under a key's name are a name; a password rule's digit makes them a password", () => {
+	kept("api_key: Nginx-Plus-Trial", "Nginx-Plus-Trial");
+	hidden("DB_PASSWORD=Maple-Orbit-42", "Maple-Orbit-42");
+});
+
+test("brackets balance by kind, in order", () => {
+	assert.ok(isBalanced("f(a[0], {b})"));
+	assert.ok(!isBalanced("Ssaw(53n9DYc!(l7)"));
+	assert.ok(!isBalanced("(a]"));
 });
 
 test("an empty token has no NaN in its shape, and = is no alphabet", () => {

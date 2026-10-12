@@ -2783,15 +2783,16 @@ function prose(text: string, out: Finding[]) {
 		// (After `=` the sentence is code: `user_password = Arcfour(key).decrypt(…)`; and so it is when code's punctuation
 		// follows, `password: proxyPass);`, or the value ends a literal's last entry (isLastEntry). A template's hole,
 		// `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
-		// (A reference, a member's path or a call, is code wherever it's written: `pass: process.env.SMTP_PASSWORD`,
-		// `password: this.data.password`; a bare name isn't, `The password is: BlueSecret`.)
+		// (A reference, a member's path or a call, or a type is code wherever it's written:
+		// `pass: process.env.SMTP_PASSWORD`, `password: this.data.password`, `password: SecretStr`; a bare name isn't,
+		// `The password is: BlueSecret`.)
 		if (
 			((/=/.test(m[2]) ||
 				/^[);,]/.test(text.slice(m.indices![4]![1])) ||
 				(/^[ \t]*\r?$/.test(text.slice(m.indices![4]![1], lineEndAt(text, m.indices![4]![1]))) &&
 					isLastEntry(text, m.index))) &&
 				isCode(value)) ||
-			(/[.([]/.test(value) && isCode(value, true))
+			isCode(value, true)
 		)
 			continue;
 		if (/\{\{|^\[?:[a-z_]\w*\]?$/.test(value) || (text[m.indices![4]![0] - 1] === "{" && /\}$/.test(value))) continue;

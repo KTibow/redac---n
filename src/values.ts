@@ -797,14 +797,9 @@ const ENV_LOOKUP =
  */
 export function isCode(raw: string, literal = false): boolean {
 	const v = raw.trim().replace(/[;,]$/, "").trim();
-	// A quoted string built from code: `".$password."`, `"${prefix}${key}"`, `"$RANDOM***$RANDOM"`.
-	if (/^["'`]/.test(v))
-		return (
-			(/^"[^"]*"$/.test(v) && isExpansionsOnly(v.slice(1, -1))) ||
-			/^["'`]\s*\.\s*\$[a-z_][a-z0-9_]*(?:\[|->|\s*\.|$)|\$[a-z_][a-z_]{2,}\s*\.\s*["'`$]|["'`]\s*\.\s*\$[A-Za-z_]\w+(?=\s*(?:[.;,)\]]|->|\[|$))|\$\{\w+\}.*\$\{\w+\}/.test(
-				v,
-			)
-		);
+	// A quoted string built from variables alone: `"${prefix}${key}"`, `"$RANDOM***$RANDOM"`. (One spliced into code,
+	// `"…'".$password."'…"`, is the decision stage's to read, by the quotes around it: policy.ts codeShape.)
+	if (/^["'`]/.test(v)) return /^"[^"]*"$/.test(v) && isExpansionsOnly(v.slice(1, -1));
 	if (CODE_SHAPES.some(([, test]) => test(v, literal))) return true;
 	return (literal ? REFERENCES : CODE_ONLY).some(([, test]) => test(v));
 }
@@ -819,9 +814,13 @@ const OPERAND = String.raw`(?:!?${LINK}(?:\([^()"'\n]{0,200}\))?|"[^"\n]{0,200}"
 const OPERATION = new RegExp(String.raw`^\(?${OPERAND}(?:\s(?:\|\||&&|\?\?|!=|==|->|\?|:|or|and)\s${OPERAND})+\)?$`);
 const PY_CONDITIONAL = new RegExp(String.raw`^${OPERAND}\s+if\s+\S[^\n]{0,200}?\s+else\s+${OPERAND}$`);
 
-/** A path subscripted by a string, a name or a number, then more members or subscripts: `parts['password']`, `cfg["db"]["pw"]`. */
-const INDEX = String.raw`\[(?:"[^"\n]{0,80}"|'[^'\n]{0,80}'|:?[\w$.]{1,80}|-?\d{1,6})\]`;
-const SUBSCRIPT = new RegExp(String.raw`^${IDENT_PATH}${INDEX}(?:${MEMBER}|${INDEX})*,?$`);
+/**
+ * A path subscripted by a key in quotes or a symbol, then more members or subscripts: `parts['password']`,
+ * `$row["pwd"]`, `cfg["db"]["pw"]`, `params[:password]`. (Not by a number or a bare word: a password may hold
+ * brackets, `Summer[2024]`.)
+ */
+const KEY_INDEX = String.raw`\[(?:"[\w.-]{1,80}"|'[\w.-]{1,80}'|:[A-Za-z_]\w{0,80})\]`;
+const SUBSCRIPT = new RegExp(String.raw`^${IDENT_PATH}${KEY_INDEX}(?:${MEMBER}|${KEY_INDEX})*,?$`);
 
 /** A keyword and what it takes: a constructor's call, an awaited call or member, a module, a function's parameters and body, a lambda. */
 const KEYWORD_EXPRESSION = new RegExp(
@@ -894,10 +893,14 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 	["expansions only", isExpansionsOnly],
 	// `quote(pw) if pw else None`: code on either side (a call, a member, a literal), so `rain if sun else snow` isn't.
 	["a Python conditional", (v) => PY_CONDITIONAL.test(v) && /[.([\]"']|\b(?:None|True|False)\b/.test(v)],
-	// `password: SecretStr`.
+	// `password: SecretStr`, `token: Optional[SecretBytes]`, `PasswordField`; and where code is written `ClientSecret`,
+	// `SecretString`. (Elsewhere words in title case ending so are a passphrase: `DB_PASSWORD=LittleSecret`.)
 	[
 		"a type name",
-		(v) => /^(?:Optional\[)?[A-Z]\w*(?:Str|String|Bytes|Field|Type|Secret|Model)\]?,?$/.test(v) && readsAsWords(v),
+		(v, literal) =>
+			/^(?:Optional\[)?[A-Z]\w*(?:Str|String|Bytes|Field|Type|Secret|Model)\]?,?$/.test(v) &&
+			!(literal && /(?:String|Secret)\]?,?$/.test(v)) &&
+			readsAsWords(v),
 	],
 	// `@options.password`.
 	["a Ruby member", (v) => /^@[A-Za-z_]\w*(?:\.\w+)+$/.test(v) && isNameLike(v.slice(1))],
@@ -942,10 +945,8 @@ const REFERENCES: [shape: string, test: (v: string) => boolean][] = [
 		"a member path",
 		(v) =>
 			MEMBER_PATH.test(v) &&
-			/^[a-z_$]/.test(v) &&
 			!/\d/.test(v) &&
 			isNameLike(v) &&
-			hasWord(v) &&
 			/^(?:self|this|cls|config|settings|options|opts|params|args|kwargs|request|req|ctx|context|credentials|creds|env|os|process|app|data|user|secrets|auth|form|cfg|conf)\./.test(
 				v,
 			),
@@ -957,6 +958,8 @@ const REFERENCES: [shape: string, test: (v: string) => boolean][] = [
 			isBalanced(v) &&
 			hasWord(v.slice(0, v.indexOf("("))),
 	],
+	// `password: data["password"]`, `pwd: $row['pwd']`, `params[:password]`.
+	["a subscript by key", (v) => SUBSCRIPT.test(v)],
 	// `EnvVar("SNOWFLAKE_PASSWORD")`, `Secret(name)`: a capitalised call of names (`Summer(2024)` is a password).
 	[
 		"a lookup call",
@@ -975,22 +978,6 @@ const CODE_ONLY: [shape: string, test: (v: string) => boolean][] = [
 	[
 		"a negated member",
 		(v) => /^!{1,2}[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/.test(v) && readsAsWords(v.replace(/^!+/, "")),
-	],
-	// `parts['password']`, `config["db"]["password"]`.
-	[
-		"a subscript",
-		(v) =>
-			SUBSCRIPT.test(v) &&
-			isNameLike(v.split("[")[0]) &&
-			isNameLike(
-				v
-					.replace(/"[^"]*"|'[^']*'/g, "")
-					.split("[")
-					.slice(1)
-					.join(" ")
-					.replace(/[\],:]/g, " ")
-					.trim() || "x",
-			),
 	],
 	["a call or a subscript", (v) => new RegExp(String.raw`^${IDENT_PATH}[ \t]*[([]`).test(v)],
 	// `config.password`, `mqttConfig?.password`, `template.users.user2.data.password`.
@@ -1112,10 +1099,10 @@ export function isTestValue(value: string): boolean {
 	// comic writes them, they are as often someone's passphrase in its style: hidden.)
 	if (/^correct[-_.]horse[-_.]battery[-_.]staple$/.test(value)) return true;
 	if (/^(?:open ?sesame|hunter2|swordfish|letmein|trustno1|p@ssw0rd|passw0rd|tr0ub4dor&3)$/i.test(value)) return true;
-	if (value.length > 24) return false;
-	// `mypassword`, `testpass1`, `thePwd`, `StrongPasswordHere`, `secret-key-here`: a placeholder phrase run together.
+	// `mypassword`, `testpass1`, `thePwd`, `yourpasswordhere`, `StrongPasswordHere`, `secret-key-here`: a placeholder
+	// phrase run together.
 	if (
-		(/^(?:my|your|the|some|test|dummy|fake|example|sample|default|secret|super|strong|new|good|real|actual)[-_]?(?:password|passwd|pass|pwd|pw|secret|token|key|apikey|api[-_]?key)(?:\d{1,4})?$/i.test(
+		(/^(?:my|your|the|some|test|dummy|fake|example|sample|default|secret|super|strong|new|good|real|actual)[-_]?(?:password|passwd|pass|pwd|pw|secret|token|key|apikey|api[-_]?key)(?:\d{1,4}|[-_]?here)?$/i.test(
 			value,
 		) &&
 			isCountingDigits(/\d*$/.exec(value)![0])) ||
@@ -1151,7 +1138,6 @@ export function isIdentifierShaped(value: string): boolean {
 	const word = parts.some((p) => p.length >= 3 && /^[A-Za-z]+$/.test(p) && naturalness(p.toLowerCase()) > 0.3);
 	const named = (p: string) =>
 		p.length <= 3 ||
-		/^\d+$/.test(p) ||
 		/^[0-9a-f]+$/.test(p) ||
 		/^[A-Z]{2,5}$/.test(p) ||
 		/^(?:[a-z]+|[A-Z]+)\d+[A-Za-z]?\d*$/.test(p) ||
@@ -1293,7 +1279,6 @@ function isPackagePath(v: string): boolean {
  */
 export function isBenignValue(value: string): boolean {
 	const v = value.trim().replace(/[.,;:!?)]+$/, "");
-	if (!v) return true;
 	return (
 		/^\d+(?:[/.:]\d+)+%?$|^\d+(?:\.\d+)?%$/.test(v) || // 12/12, 98.5%, 10:30, 1.2.3.4
 		/^\d{1,4}-\d{1,4}$/.test(v) || // 8-64
@@ -1304,7 +1289,8 @@ export function isBenignValue(value: string): boolean {
 		/^v?\d+(?:\.\d+){1,3}(?:[-.]?(?:a|b|c|rc|alpha|beta|pre|preview|dev|post)\d*)*(?:-(?:alpha|beta|rc|dev|pre)[.\w]*)?$/i.test(
 			v,
 		) ||
-		/^(?:\d+:)?\d+(?:\.\d+)+(?:[-+~][\w.]*)+$/.test(v) || // Debian and RPM versions: 3.1.6+~cs8.7.18-1, 1:2.3-4.el9
+		// Debian and RPM versions, a repack's suffix among them: 3.1.6+~cs8.7.18-1, 1:2.3-4.el9, 1:1.2.11.dfsg-2ubuntu9.2.
+		/^(?:\d+:)?\d+(?:\.\d+)+(?:\.[a-z]+\d*)?(?:[-+~][\w.]*)+$/.test(v) ||
 		/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(v) || // dates
 		ALGORITHM.test(v) ||
 		/^(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|mod|win|control|command)\+)+\S{1,12}$/i.test(v) || // key chords
@@ -1398,7 +1384,10 @@ export function isBenignValue(value: string): boolean {
 		(/[#$]\{\s*[A-Za-z_@$][\w@$]*(?:\.[A-Za-z_]\w*|\([^(){}]*\)|\[[^\]{}]*\])+\s*\}/.test(v) &&
 			v.replace(/[#$]\{[^}]*\}/g, "").length < 8) ||
 		(/^\/[A-Za-z][A-Za-z_-]{2,40}$/.test(v) && readsAsIdentifier(v.slice(1))) || // a route: `/changePasswd`
-		(/^r["'].*["']$/.test(value.trim()) && (value.match(/\\[dswDSWbB]|[[\]()*+?{}|^]/g)?.length ?? 0) >= 4) || // a Python regex: `r'-?\d+\.?[0-9A-F]*'`
+		// A regular expression, as Python's raw string or read out of its quotes with an escape class quantified among its
+		// anchors and brackets: `r'-?\d+\.?[0-9A-F]*'`, `^\S{8,}$`, `\w{32}\b`.
+		((/^r["'].*["']$/.test(value.trim()) || /\\[dswDSW](?:[*+?]|\{\d+,?\d*\})/.test(v)) &&
+			(value.match(/\\[dswDSWbB]|[[\]()*+?{}|^$]/g)?.length ?? 0) >= 4) ||
 		(/^[#.][A-Za-z][A-Za-z_-]{2,40}$/.test(v) && readsAsIdentifier(v.slice(1))) // a selector: `#lPass`
 	);
 }
@@ -1569,7 +1558,8 @@ const isPasswordLabel = (value: string) => PASSWORD_LABEL.test(value);
 
 /**
  * Whether a value under a credential name is a literal secret worth hiding: not a type, a placeholder,
- * a reference, code, a lone word or a number.
+ * a reference, code, a lone word or a number. (A password hash, and text in another script, are the decision stage's
+ * to keep: policy.ts keepReason, isBenignValue.)
  */
 export function looksSecret(raw: string, literal = false): boolean {
 	const v = cleanValue(raw);
@@ -1579,15 +1569,12 @@ export function looksSecret(raw: string, literal = false): boolean {
 	const ITEM = String.raw`(?:"[^"]*"|'[^']*'|-?\d[\d.]*|[A-Za-z_$][\w$.]*(?:\s*[:=]\s*(?:"[^"]*"|'[^']*'|-?\d[\d.]*|[A-Za-z_$][\w$.]*))?)`;
 	if (
 		/^[[({]/.test(raw.trim()) &&
-		!/^["'`]/.test(raw.trim()) &&
 		isBalanced(raw.trim()) &&
 		new RegExp(String.raw`^[\[({]\s*(?:${ITEM}\s*(?:,\s*${ITEM}\s*)*,?)?\s*[\])}][,;]?$`).test(raw.trim())
 	)
 		return false;
 	if (/^[[({<](?:[A-Z][A-Z0-9_]{2,}|[a-z][a-z_ -]{2,})[\])}>]?$/.test(v)) return false; // `[REPMGR_PASSWORD`, `<your token`: a placeholder cut at its bracket
 	if (v.length >= 8 && isPlaceholder(v)) return false;
-	if (isPasswordHash(v)) return false;
-	if (isForeignText(v)) return false;
 	if (/^\d{1,5}$/.test(v)) return false; // ports, counts, lengths
 	if (/^[\w.+-]+@(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}|[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,4})$/.test(v))
 		return false; // emails (a domain in one case)
