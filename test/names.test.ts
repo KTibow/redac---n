@@ -901,3 +901,135 @@ test("a sibling pair is one block's: a value less indented than its name, or a f
 test("a Gradle project property is read as a Java system property is", () => {
 	hidden("gradle publish -Psigning.password=Kx9mQ2vL7p!", "Kx9mQ2vL7p!");
 });
+
+test("an Authorization value is judged by its credential; a scheme's word before more words is prose", () => {
+	hidden('AUTH_TOKEN="Bearer Xk9mQ2vL8nRt4Wz7Pq3sYb5"', "Xk9mQ2vL8nRt4Wz7Pq3sYb5");
+	hidden("accessToken: 'Bearer Xk9mQ2vL8nRt4Wz7Pq3sYb5'", "Xk9mQ2vL8nRt4Wz7Pq3sYb5");
+	kept(
+		"        Request MUST be sent as a Bearer Token, per OAuth 2.0\n        Bearer Token Usage [RFC6750].\n",
+		"Token Usage [RFC6750].",
+	);
+});
+
+test("a password made of its own name is one, markup around the name a placeholder, a class under it code", () => {
+	hidden('password = "password1!"', "password1!");
+	hidden("password: password@123", "password@123");
+	kept("password: password...", "password...");
+	kept('DB_PASSWORD="${DB_PASSWORD:?}"', "${DB_PASSWORD:?}");
+	kept("        widgets = {'password': PasswordInput}", "PasswordInput");
+	kept("var password = PasswordHasher", "PasswordHasher");
+	// (Accents and a symbol make a password, not a translated label; a salt in digits is a setting.)
+	hidden('DB_PASSWORD="café olé&99"', "café olé&99");
+	kept("PASSWORD_SALT=847362910564738291", "847362910564738291");
+	// (A JSON value starts as JSON does; a password in brackets doesn't.)
+	hidden("DB_PASSWORD='[1qaz@WSX]'", "1qaz@WSX");
+	hidden("DB_PASSWORD='[bZ0{6tfzE&n2q:]'", "bZ0{6tfzE&n2q:");
+	hidden("password: fjqx-vbnm", "fjqx-vbnm");
+	kept("results:\n  pass: 1,024\n  fail: 3\n", "1,024");
+});
+
+test("an ID and a secret under one name: the ID stays when it is a name, an email or words", () => {
+	const token = "Xk9mQ2vL8nRt4Wz7Pq3sYb5";
+	for (const [text, id] of [
+		[`DAGSTER_CLOUD_API_TOKEN=deployment-agent:${token}`, "deployment-agent:"],
+		[`API_CREDENTIALS=svc_x7k2q9@m3x.io:${token}`, "svc_x7k2q9@m3x.io:"],
+	]) {
+		const out = r().redact(text).text;
+		assert.ok(out.includes(id) && !out.includes(token), out);
+	}
+	// (A random ID is part of the key, hidden with it; a cache key and words after a colon are no pair.)
+	assert.match(r().redact('API_KEY="Xk9mQ2vL8nRt4Wz7Pq:Ht6JbN3cV8xZ1aS5dF"').text, /^API_KEY="\[REDACTED key #\w+\]"$/);
+	kept('"key": "users:9f8e7d6c5b4a39281706f5e4d3c2b1a0"', "users:9f8e7d6c5b4a39281706f5e4d3c2b1a0");
+	kept('api_key: "billing:monthly-invoice-report"', "billing:monthly-invoice-report");
+});
+
+test("a hash among words, numbers or names is a content address; a token with a hash beside it is a token", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const value of ["objects/12/9f8e7d6c5b4a39281706f5e4d3c2b1a0.json", "objects/9f8e7d6c5b4a39281706f5e4d3c2b1a0"])
+		kept(`artifact_key: "${value}"`, value);
+	for (const text of [
+		"API_TOKEN=tk7q-9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+		"API_TOKEN=qWxZkLmBtR-9f8e7d6c5b4a39281706f5e4d3c2b1a0",
+	])
+		assert.ok(!off.redact(text).text.includes("9f8e7d6c5b4a"), text);
+	// Under a bare `key`: an object key of names (an S3 one), not a key in base64.
+	kept('{"Bucket": "acme", "Key": "exports/2024/Q3"}', "exports/2024/Q3");
+	kept('"key": "apis/v1beta1/Namespaces"', "apis/v1beta1/Namespaces");
+	hidden('"key": "GbeaKB/qGmA9X/Hk3Lm"', "GbeaKB/qGmA9X/Hk3Lm");
+});
+
+test("a constant's name under a dictionary key is no key, its acronyms read apart", () => {
+	const text = "2024-01-02 12:00:00 Config: brandKey=KSBrandID, regionKey=USWestRegion";
+	kept(text, "brandKey=KSBrandID");
+	kept(text, "regionKey=USWestRegion");
+	hidden('apiKey: "zvCadApKxYVYHo"', "zvCadApKxYVYHo");
+	kept("level-seed=superflatworldgenerationseedvalue", "superflatworldgenerationseedvalue");
+});
+
+test("words, symbols and random letters under a key's name are read by what they make", () => {
+	for (const [text, value] of [
+		['api_secret: "!@#Winter$%^Harbor&*("', "!@#Winter$%^Harbor&*("],
+		['secret_key: ")AM{?NfoSuFiMi.s"', ")AM{?NfoSuFiMi.s"],
+		['jwt_secret: "orangeBANANAapple"', "orangeBANANAapple"],
+		["api_key: 4f9c2a1b8e7d-4c3b-a2f19e8d7c6b-5a4f1a2b3c4d-77", "4f9c2a1b8e7d-4c3b-a2f19e8d7c6b"],
+		['client_secret: "Kodaripefulamesoti"', "Kodaripefulamesoti"],
+		["hmacKey=Xylophonequartzjumping", "Xylophonequartzjumping"],
+		// (Words in a password rule's classes are a password, not a name.)
+		["encryptionKey=WinterHarbor2024", "WinterHarbor2024"],
+	])
+		hidden(text, value);
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	assert.ok(!off.redact('"token": "kWZHhSeBwKLiwfKSCZeJmelQ"').text.includes("kWZHhSeBwKLiwfKSCZeJmelQ"));
+	for (const [text, value] of [
+		[
+			'FIELDS = {"access_key": "AccessKeyId", "secret_key": "SecretAccessKey", "session_token": "SessionToken"}',
+			'"AccessKeyId"',
+		],
+		['"key": "release2024candidate"', "release2024candidate"],
+		['token: "os.Getenv(\\"API_TOKEN_V2\\")"', 'os.Getenv(\\"API_TOKEN_V2\\")'],
+		['                # Prefix in your App ID.\n                "key": "UVNBQTBNJOALLA",', "UVNBQTBNJOALLA"],
+	])
+		kept(text, value);
+});
+
+test("a value is read to its own end: triple quotes, escapes, a template's braces, a comment", () => {
+	const triple = r().redact("password = '''Hx7mQ2pL9vRt'''").text;
+	assert.match(triple, /^password = '''\[REDACTED password #\w+\]'''$/);
+	hidden("PASSWORD=\\$Hx7mQ2pL9vRt", "Hx7mQ2pL9vRt");
+	hidden("const s = 'login(password=\\'Hx7mQ2pL9vRt\\')';", "Hx7mQ2pL9vRt");
+	const escaped = r().redact("PASSWORD=Hx7mQ2pL9vRt\\nNEXT_VAR=1").text;
+	assert.ok(!escaped.includes("Hx7mQ2pL9vRt") && escaped.endsWith("\\nNEXT_VAR=1"), escaped);
+	const comment = r().redact("DB_PASSWORD=Kx9mQ2vL8nRt  # rotated monthly").text;
+	assert.ok(!comment.includes("Kx9mQ2vL8nRt") && comment.endsWith("  # rotated monthly"), comment);
+	// (A template's expression is the value's, blanks, pipes and quotes in it: a path, not a fragment of one.)
+	for (const value of ["/etc/certs/v2/{{ .Values.keyFile }}", '/etc/certs/{{ .Values.keyFile | default "tls.key" }}'])
+		kept(`            - --key=${value} --cert=/etc/certs/tls.crt`, value);
+	const flags = r().redact("--key=/etc/certs/v2/{{ .Values.keyFile }} --password=Hx7mQ2pL9vRt").text;
+	assert.ok(flags.includes("/etc/certs/v2/{{ .Values.keyFile }}") && !flags.includes("Hx7mQ2pL9vRt"), flags);
+});
+
+test("the text around a value: phrases beside it, a URL's words, a row's other columns", () => {
+	hidden(
+		"title: Welcome to the admin console\nsubtitle: Please sign in with your account\nfooter: Copyright Acme Corp all rights reserved\npassword: correct horse battery 42\n",
+		"correct horse battery 42",
+	);
+	const url = r().redact("password: https://example.com/reset/Xk9mQ2vL8nRt4Wz7Pq3sYb5Hx").text;
+	assert.ok(url.includes("https://example.com/reset/") && !url.includes("Xk9mQ2vL8nRt4Wz7"), url);
+	const row = r().redact(
+		"INSERT INTO users (id, email, password) VALUES ('Xk9mQ2vL8nRt4Wz7Pq3s', 'ann@x.io', 'Hx7mQ2pL9vRt');",
+	).text;
+	assert.ok(row.includes("'Xk9mQ2vL8nRt4Wz7Pq3s'") && !row.includes("Hx7mQ2pL9vRt"), row);
+	kept("INSERT INTO users (name, password) VALUES ('ann', 'changeme');", "'changeme'");
+});
+
+test("an operator glued to its value, a quoted name and a code entry are read by their syntax", () => {
+	assert.ok(!r().redact("spring.datasource.password==Hx7mQ2pL9vRt").text.includes("=="));
+	kept("assert DB_PASSWORD==expected_password", "==expected_password");
+	kept('"password"=Hx7mQ2pL9vRt "host"=db.internal', '"host"=db.internal');
+	kept('[db]\n"password" = Hx7mQ2pL9vRt ; rotated\n', "; rotated");
+	// A YAML value runs to its line's end, brackets balanced or not; a code entry's ends before its comma.
+	assert.ok(!r().redact("user:\n  password: Hx7(mQ2)pL9,\n").text.includes(","));
+	assert.ok(!r().redact("user:\n  password: Kx9(mQ2]vL8),\n").text.includes("),"));
+	assert.ok(r().redact("login({\n  password: Hx7mQ2-pL9vRt,\n})").text.endsWith("],\n})"));
+	kept("  password: Secret<String>;", "Secret<String>");
+});

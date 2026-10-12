@@ -1561,7 +1561,7 @@ const PASSWORD_LABEL = new RegExp(
 	String.raw`^(?:${FOREIGN_PASSWORD_SPELLINGS.map((s) => s.replace(/ /g, "\\s*")).join("|")})(?:s|es|er|en|e)?(?:\s+\p{L}+)?(?:\s*\([\p{L} ,.'’/-]{1,30}\))?\*?$`,
 	"iu",
 );
-export const isPasswordLabel = (value: string) => PASSWORD_LABEL.test(value);
+const isPasswordLabel = (value: string) => PASSWORD_LABEL.test(value);
 
 /**
  * Whether a value under a credential name is a literal secret worth hiding: not a type, a placeholder,

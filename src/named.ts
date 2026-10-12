@@ -76,7 +76,6 @@ import {
 	isBalanced,
 	isCode,
 	isGeneratedSegment,
-	isPasswordLabel,
 	isPath,
 	isGroupedDigits,
 	isIdentifierShaped,
@@ -241,7 +240,7 @@ const PARTITION_KEY = /(?:^|[\s{,"'])(?:PK|pk|partitionKey|hashKey)["']?[ \t]*[:
  * `update_password: always`, `password_mechanism: sshpass`, `password_lock: false`) or a hashing scheme's name
  * (PostgreSQL's `password_encryption = 'scram-sha-256'`); or a placeholder that names its own variable, with markup
  * around it (`POSTGRES_PASSWORD=!!!SET POSTGRES_PASSWORD!!!`, `ELASTIC_PASSWORD=$ELASTIC_PASSWORD <1>`; not a token
- * that starts with its name, `API_TOKEN_9fQ2mL…`, nor a password made of it, `DB_PASSWORD1`).
+ * that starts with its name, `API_TOKEN_9fQ2mL…`, nor a password made of it, `password1!`, `password@123`).
  */
 function isSettingOrSelfName(name: string, value: string): boolean {
 	if (
@@ -250,12 +249,12 @@ function isSettingOrSelfName(name: string, value: string): boolean {
 			/^(?:scram|sha|md5|argon2|bcrypt|scrypt|pbkdf2|crypt|ssha|hmac|plain)(?:[_-]?[a-z0-9]+)*$/i.test(value))
 	)
 		return true;
-	// (Not the name assigned again, its own value after it: `s/# DBPassword=/a\DBPassword=<value>/`.)
-	const rest =
-		name.length >= 8 && value.includes(name) && !value.includes(`${name}=`) && !value.includes(`${name}:`)
-			? value.split(name).join("")
-			: undefined;
-	return rest !== undefined && /[^\w]/.test(rest) && (rest.match(/[A-Za-z0-9]/g)?.length ?? 0) < 4;
+	if (name.length < 8 || !value.includes(name)) return false;
+	// (Markup only: a symbol, and fewer than four letters or digits besides the name, none after a name that starts the
+	// value: `password1!` is a password.)
+	const rest = value.split(name).join("");
+	const alnum = rest.match(/[A-Za-z0-9]/g)?.length ?? 0;
+	return /[^\w]/.test(rest) && alnum < 4 && !(value.startsWith(name) && alnum > 0);
 }
 
 /**
@@ -267,8 +266,6 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// A shell's backticks run a command: `PASSWORD=\`openssl rand -hex 16\``.
 	if (/^`[a-z][\w.-]*\s[^`]*`$/.test(raw.trim())) return false;
 	if (isVerdictUnderPass(name, value)) return false;
-	// "Password" in another language: a form's label, not a password (i18n files, string resources).
-	if (isPasswordLabel(value)) return false;
 	// A JSON object or array as a string (`"SecretString": "{\"username\": …}"`): its own pairs are judged by name.
 	// (Starting as JSON does: `{"`, `{key:`, `[1`, `["`, `[{`; `[bZ0{6tfzE&n2q:]` is a password in brackets.)
 	if (
@@ -282,7 +279,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// (Grouped digits too: `4821-7730`.)
 	// (A passcode of letters is a password: judged as one below.)
 	if (isPinName(name) && (/^\d/.test(value) || !isPasswordName(name)))
-		return /^\d{4,8}$|^\d{2,8}(?:[- ]\d{2,8}){1,3}$/.test(value) && !/^[$%{<]/.test(value);
+		return /^\d{4,8}$|^\d{2,8}(?:[- ]\d{2,8}){1,3}$/.test(value);
 	// (Under a password's name, `PurpleRain1984` unquoted in an INI file is a password, not a class name.)
 	const passwordName = takesAnyWord(name);
 	if (isSettingOrSelfName(name, value)) return false;
@@ -303,14 +300,14 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	if (last === "SIGNATURE" || (last === "SIG" && value.length > 64)) return false;
 	if (/^(PREFIX|HINT|LAST4|SUFFIX)$/.test(last)) return false;
 	// A constant's name under a dictionary key (`brandKey=KSBrandID` in a plist log): letters in a name's case, in
-	// words (`zvCadApKxYVYHo` isn't).
+	// words (`zvCadApKxYVYHo` isn't), read apart where a word or an acronym starts (`KS Brand ID`).
 	if (
 		!passwordName &&
 		/[a-z]Key$/.test(name) &&
 		/^[A-Za-z]{4,40}$/.test(value) &&
 		/[A-Z].*[A-Z]/.test(value) &&
 		readsAsWords(value) &&
-		naturalness(value.replace(/([a-z])([A-Z])/g, "$1 $2")) > 0
+		naturalness(value.replace(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g, " ")) > 0
 	)
 		return false;
 	// Seeds, mnemonics and phrases worth hiding are wallet phrases (12+ words) or long random values;
@@ -373,10 +370,14 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// `label:token` under a credential's name (Dagster's `user:<token>`, a catalog's `<client id>:<secret>`): a pair,
 	// not a cache key or a digest (`sha256:…`). The caller hides the part after the colon (credentialPair).
 	if (credentialPair(name, value) > 0) return true;
-	if (isHashWithWords(value) && !/^[A-Za-z0-9+/]+=*$/.test(value)) return false;
+	if (isHashWithWords(value)) return false;
 	if (/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?$/i.test(value)) return false; // numbers: ports, counts, floats, numeric session ids
+	// An Authorization value, a scheme and its credential, is judged by the credential (`Bearer <token>`); a scheme's
+	// word before more words is prose (`Bearer Token Usage [RFC6750].`).
+	const scheme = /^(?:Bearer|Basic|Token) (\S+)$/.exec(value);
+	if (scheme) return isNamedSecret(name, /^\s*["'`]/.test(raw) ? `"${scheme[1]}"` : scheme[1], literal);
 	// Keys and tokens: generated values, not identifiers, words or sentences.
-	if (/\s/.test(value) && !/^(Bearer|Basic|Token) /.test(value)) return false;
+	if (/\s/.test(value)) return false;
 	if (value.length < 8) return false;
 	// A UUID under a credential name is a key (Heroku and others issue them), unless the name says ID.
 	// (A session's ID as a UUID or an object ID names a session, as Claude Code's `sessionId` does; a random one is its cookie.)
@@ -392,11 +393,12 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// Words, and code made of them: `my-signing-config`, `env(DATABASE_URL)`, `CORP\svc_deploy`.
 	// (Mostly letters: on a value mostly of symbols the model reads nothing. And each word one: the model reads
 	// camel-case breaks and symbols as likely word ends, so `JujvAIngWfOqw` and `)AM{?NfoSuFiMi.s` would score as words.)
+	// (A name without symbols is one only outside a password rule's classes, as below: `WinterHarbor2024` is a password.)
 	if (
 		naturalness(value) > 1.0 &&
 		(value.match(/[A-Za-z]/g)?.length ?? 0) >= value.length * 0.6 &&
 		readsAsWords(value) &&
-		(/[^A-Za-z0-9]/.test(value) || isNameLike(value))
+		(/[^A-Za-z0-9]/.test(value) || (isNameLike(value) && !hasThreeClasses(value)))
 	)
 		return false;
 	// (Letters alone can still be generated: `WnDKpEQCbOciskIKhAfdQxFmY` reads as no words.)
@@ -411,7 +413,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	if (/^\p{Ll}+(?:[._-]\p{Ll}+)*$/u.test(value)) return false;
 	if (isGenericName(name.replace(/^[-$@]+/, ""))) {
 		// Cache keys, object keys, content addresses: hashes with words or paths around them.
-		// (Line-shaped base64 passes the test above; under a generic name a hex run with `/` is still a key path.)
+		// (Under a generic name a hex run beside a separator is one, whatever else is in it.)
 		// (Pure hex of 32 or 40 under a bare `secret` or `token` is one: Facebook app secrets, webhook secrets;
 		// 64 is a SHA-256, as Laravel Sanctum stores its tokens.)
 		if (
@@ -425,8 +427,8 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		)
 			return false;
 		// A path or an object key: a path's characters only, with a `.`, `_` or `-` base64 never has (`uploads/<id>.png`,
-		// `_pending/<id>/transit`), or segments that are all words (`config/keys`). Not a key in base64 with a word-like
-		// piece, nor a password with symbols.
+		// `_pending/<id>/transit`), or segments that are all names or words (`config/keys`, S3's `exports/2024/Q3`,
+		// `apis/v1beta1/Namespaces`). Not a key in base64 with a word-like piece, nor a password with symbols.
 		if (
 			/\//.test(value) &&
 			(isPath(value) ||
@@ -435,7 +437,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 						value
 							.split("/")
 							.filter(Boolean)
-							.every((seg) => !isGeneratedSegment(seg) && naturalness(seg.toLowerCase()) > 0.5))))
+							.every((seg) => !isGeneratedSegment(seg) && (isNameLike(seg) || naturalness(seg.toLowerCase()) > 0.5)))))
 		)
 			return false;
 		// `"key": "user.name"`, `token: refresh`: a bare generic name needs a generated-looking value.
@@ -502,9 +504,10 @@ function readValue(
 			1);
 	let i = at;
 	// (A bracket the value opened is its own: `%{K8S_TOKEN}`, `${DB_PASS}`, `Wint(er)2024`; another ends it. Inside a
-	// shell expansion the value starts with, a blank is its own too: `${REDIS_PASSWORD:?set it first}`.)
+	// shell expansion the value starts with, or a template's `{{ }}`, everything is its own until they close:
+	// `${REDIS_PASSWORD:?set it first}`, `--key=/etc/certs/{{ .Values.keyFile | default "tls.key" }}`.)
 	let open = 0;
-	const expansion = text.startsWith("${", at);
+	let expansion = text.startsWith("${", at);
 	while (i < text.length && i - at < UNQUOTED_READ) {
 		const ch = text[i];
 		if (ch === "\n" || ch === "\r") break;
@@ -516,11 +519,12 @@ function readValue(
 			continue;
 		}
 		if (ch === "\\" && isEscapedBreak(text, i)) break;
+		if (ch === "{" && text[i + 1] === "{") expansion = true;
 		if (ch === "(" || ch === "[" || ch === "{") open++;
 		else if ((ch === ")" || ch === "]" || ch === "}") && open > 0) open--;
 		else if (
 			!toEol &&
-			!(expansion && open > 0 && (ch === " " || ch === "\t")) &&
+			!(expansion && open > 0) &&
 			(toBlank ? /[ \t]/ : shell ? SHELL_WORD_END : CODE_VALUE_END).test(ch)
 		)
 			break;
