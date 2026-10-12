@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hidden, kept, r } from "./helpers.ts";
+import { b62, hidden, kept, r } from "./helpers.ts";
 
 test("a psql name/value table hides the value of a credential row and keeps the others", () => {
 	const table =
@@ -187,4 +187,9 @@ test("mysql's tables printed one after another are each read under their own hea
 		"+------+-------------------+",
 	].join("\n");
 	hidden(t, "violet.indigo9079");
+});
+
+test("a random token beside a cookie's name is its value, not a listing's file", () => {
+	const sid = `g.a000${b62(60)}`;
+	hidden(`__Secure-1PSID\t${sid}`, sid);
 });

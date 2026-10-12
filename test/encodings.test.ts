@@ -210,3 +210,7 @@ test("base64 blobs one after another are read apart", () => {
 	const after = r().redact(`${line}\n${wrap(env)}\n`).text;
 	assert.ok(after.startsWith(line) && !after.includes(env.slice(76, 100)), after);
 });
+
+test("a pair's escaped quotes inside a JSON string stay around its hidden value", () => {
+	kept('{"cmd": "PGPASSWORD=\\"Xk9mQ2pLrT\\" psql -h db"}', 'PGPASSWORD=\\"[REDACTED');
+});

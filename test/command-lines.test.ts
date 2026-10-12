@@ -161,3 +161,11 @@ test("a word that looks like a password option is no password", () => {
 		kept(line, line.split(" ").at(-1)!);
 	kept("ncrack -p 22,3389 host", "22,3389");
 });
+
+test("OpenSSL's pass phrase source and helm's --set list: the phrase after pass:, a value to its list's comma", () => {
+	const out = r().redact("openssl enc -aes-256-cbc -pass pass:sunshine -in f").text;
+	assert.ok(out.includes("-pass pass:[REDACTED") && !out.includes("sunshine"), out);
+	kept("openssl enc -aes-256-cbc -pass file:pw.txt -in f", "file:pw.txt");
+	hidden("helm install db bitnami/postgresql --set auth.password=sun\\,shine9X,auth.database=app", "shine9X");
+	hidden("helm install db bitnami/postgresql --set adminPassword='p-NK,fXk9mQ2pLrT'", "fXk9mQ2pLrT");
+});

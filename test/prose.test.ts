@@ -228,3 +228,16 @@ test("a user and a password after a slash in prose: random letters are a passwor
 	hidden("wifi: guest / QwZxKvBnMp", "QwZxKvBnMp");
 	kept("open the account settings/billing page", "settings/billing");
 });
+
+test("a parameter's description is no password, in any comment's syntax or a line of output", () => {
+	for (const t of [
+		"REM db_password: Primary password.",
+		"% password: Master password.",
+		"' password: Master password.",
+		"# keystore_password = Keystore password.",
+		"echo password: Master password.",
+		"Request MUST be sent as a Bearer Token, per Section 2 of OAuth 2.0\nBearer Token Usage [RFC6750].",
+	])
+		assert.equal(r().redact(t).text, t);
+	hidden("# password: Sunshine is the default.", "Sunshine");
+});

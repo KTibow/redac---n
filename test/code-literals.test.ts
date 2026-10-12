@@ -301,3 +301,11 @@ test("a Go import block ends at its `)`, and Python's `import (` within a line o
 	hidden('import (\n\t"fmt"\n)\nstorePassword "violet.indigo9079";', "violet.indigo9079");
 	hidden('from app.models import (User, Token)\nstorePassword "violet.indigo9079";', "violet.indigo9079");
 });
+
+test("an interpolated string's holes are code, in the value's own string or the one its pair stands in", () => {
+	kept('conn = $"Pwd={pw};User={u}"', "{pw};User={u}");
+	kept('dsn = f"host={h} password={pw}xyz"', "{pw}xyz");
+	// (A connection string in quotes: a value ends at the next `;name=`.)
+	hidden('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "Xk9mQ2pLrT");
+	kept('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "User Id=sa");
+});

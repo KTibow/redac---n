@@ -768,3 +768,104 @@ test("code, a store's path or a setting is no credential's value", () => {
 	])
 		assert.ok(!off.redact(text).text.includes(value), text);
 });
+
+test("a pair is data after a blank, in a query string or an option's comma list, in quotes, after an env flag", () => {
+	for (const [text, pw] of [
+		["mount -t cifs //nas/share /mnt -o username=alice,password=sunshine", "sunshine"],
+		["sshfs -o user=alice,password=sunshine nas:/ /mnt", "sunshine"],
+		["http://rt.example.org/Ticket/Display.html?id=2900&user=guest&pass=bcrtg", "bcrtg"],
+		["Set `DB_PASSWORD=sunshine` in your .env", "sunshine"],
+		['args: ["password=sunshine", "--verbose"]', "sunshine"],
+		["out=$(docker run -e db_password=sunshine postgres)", "sunshine"],
+		["if [[ $PASSWORD == sunshine ]]; then", "sunshine"],
+	])
+		hidden(text, pw);
+	// (An env value is a shell word, its commas its own.)
+	hidden("heroku config:set DB_PASSWORD=Xk9m,Q2pLrT", "Q2pLrT");
+	// (A connection string's next key is no part of a placeholder.)
+	kept("Data Source=db;User ID=app;password=PASSWORD;Initial Catalog=test", "PASSWORD;Initial");
+});
+
+test("code's own pairs stay: a sigil's variable, a quoted name, a call's argument, a declaration's list", () => {
+	for (const [text, value] of [
+		["$DB_PASSWORD=sunshine;", "sunshine"],
+		['SELECT id FROM users WHERE "password"=sunshine', "sunshine"],
+		["env=dict(os.environ, PGPASSWORD=sunshine)", "sunshine"],
+		["let user=a,password=input", "input"],
+	])
+		kept(text, value);
+});
+
+test("under an INI section, code is still code: a call's entries, a variable, a statement's later pair, a call", () => {
+	for (const [text, value] of [
+		['[database]\nhost = db\n\nconn = connect(\n    password=DbPass2024,\n    user="app",\n)', "DbPass2024,"],
+		["[server]\n$password=sunshine;\n", "sunshine"],
+		["[server]\nx = 1; password = sunshine\n", "sunshine"],
+		["[server]\npassword = kdf(pw, salt)\n", "kdf(pw, salt)"],
+	])
+		kept(text, value);
+});
+
+test("a name in backticks is a Markdown label or a SQL column; glued to a path, a command substitution", () => {
+	hidden("- `password`: `Kx9mQv2Lp7Rt`", "Kx9mQv2Lp7Rt");
+	hidden("`token`: Summer2024!x", "Summer2024!x");
+	hidden("UPDATE users SET `password` = 'Sunshine99!' WHERE id = 1", "Sunshine99!");
+	kept("docker run -v `pwd`:/workspace -w /workspace node:20", "`pwd`:/workspace");
+	// (A quoted key glued to its value is a key; an unquoted one, a namespace among others.)
+	hidden('{"password":Kx9mQ2pLrT}', "Kx9mQ2pLrT");
+	kept("redis keys: session:abc, token:x9f8e7d6c5b4", "x9f8e7d6c5b4");
+});
+
+test("a spaced pair's value is none when it is an operator, a member or a store's command, and whole otherwise", () => {
+	for (const [text, value] of [
+		["LoginField.PASSWORD -> input.text", "input.text"],
+		["password .length > 8", ".length"],
+		["pass init", "init"],
+	])
+		kept(text, value);
+	for (const [text, pw] of [
+		["requirepass [K9#mQ2!pL]", "K9#mQ2!pL"],
+		["passwd sunshine!", "sunshine!"],
+		["Username Bob\nPassword Sunshine!", "Sunshine!"],
+		["login bob\npass Summer", "Summer"],
+		["login bob\npass qzwxv", "qzwxv"],
+		["password Summer Breeze 2024", "Summer Breeze"],
+	])
+		hidden(text, pw);
+	// (A notebook's last source line is a JSON string without its `\n`.)
+	hidden('{"cells": [{"source": [\n    "import redis\\n",\n    "requirepass Kx9mQ2pLrT"\n]}]}', "Kx9mQ2pLrT");
+});
+
+test("a password in parentheses after its name is hidden whole, and a word after it ends it", () => {
+	assert.match(r().redact("Created user bob (password: sunshine!)").text, /\(password: \[REDACTED[^\]]*\]\)$/);
+	hidden("Rotated it (token: Xk9mQ2pLrT88 expires soon)", "Xk9mQ2pLrT88");
+});
+
+test("a value with brackets is a password unless a call's whole: an unnatural callee, more after the call", () => {
+	hidden("DB_PASSWORD=Kx9q(mQ2L)", "Kx9q(mQ2L)");
+	hidden("DB_PASSWORD=Winter(Sun)2024!", "Winter(Sun)2024!");
+	kept('password = pw.decode("ascii")', '"ascii"');
+});
+
+test("an env line's value is its first word when a command follows, and a YAML line's runs to the end", () => {
+	kept("PASSWORD=sunshine && npm start", "&& npm start");
+	hidden("DB_PASSWORD=Xk9mQ2pLrT && mysql", "Xk9mQ2pLrT");
+	kept("PASSWORD=Sunshine99 FOO=bar ./run.sh", "FOO=bar ./run.sh");
+	kept("PASSWORD=sunshine release 3f9a8b7c6d5e4f3a2b1c", "release 3f9a8b7c6d5e4f3a2b1c");
+	hidden("password: tr0ub4dor & 3horse", "3horse");
+});
+
+test("a block of several lines is hidden whole unless each line is a template, a placeholder or code", () => {
+	kept("secret: |\n  {{ .Values.a }}\n  {{ .Values.b }}\n", "{{ .Values.b }}");
+	kept("token: |\n  TODO\n  TODO\n", "TODO");
+	kept('password = <<EOT\nimport os\nos.getenv("PW")\nEOT', "os.getenv");
+	kept("secret: |\n  stored in vault\n", "stored in vault");
+	hidden("password: |\n  Kx9mQ2pLrT\n  Vb7nW3qZsY\n", "Vb7nW3qZsY");
+});
+
+test("a reference's default under a key's name is judged as any value is, digits or not", () => {
+	hidden("${API_KEY:Kx#mQ!pLzz}", "Kx#mQ!pLzz");
+	hidden("${JWT_SECRET:Kx#mQ!pL}", "Kx#mQ!pL");
+	hidden("${SECRET_KEY:Kx9mQ2pLrTzz}", "Kx9mQ2pLrTzz");
+	for (const value of ["86400000", "changeme", "abc1234", "localhost"]) kept(`\${API_KEY:${value}}`, value);
+});
