@@ -136,6 +136,15 @@ test("rows after a comment between rows are read", () => {
 	]);
 });
 
+test("a dump cut short inside a row has the rows before it read", () => {
+	const cut = "INSERT INTO users (name, password) VALUES ('alice', 'Kx9mQ2pLrTvB7nWz'), ('bob', 'Tq8v";
+	assert.deepEqual(
+		[...insertCells(cut)].map((c) => c.value.text),
+		["'alice'", "'Kx9mQ2pLrTvB7nWz'"],
+	);
+	hidden(cut, "Kx9mQ2pLrTvB7nWz");
+});
+
 test("a call between two contractions is read, a prefixed string isn't one", () => {
 	hidden(`It's odd: set_password(user, "hunter2xyz") isn't called`, "hunter2xyz");
 	hidden(`pattern = re.compile(r'd+'); set_password(user, "plugh7xyzzy")`, "plugh7xyzzy");

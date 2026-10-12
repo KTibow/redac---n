@@ -51,6 +51,20 @@ test("a long run of blanks before a block scalar costs linear time", () => {
 	assertLinear("blanks before a block scalar", (n) => r().redact(`${" ".repeat(n)}k: |`), 20_000);
 });
 
+test("heredocs in heredocs' bodies cost linear time", () => {
+	// (A body is read on its own once; a body inside it is its text.)
+	const nested = (n: number) => {
+		let open = "";
+		let close = "";
+		for (let i = 0; i < n; i++) {
+			open += `cat > f${i}.sh <<'D${i}'\necho 'x${i}' > ~/.vault_pass\n`;
+			close = `D${i}\n${close}`;
+		}
+		return open + close;
+	};
+	assertLinear("nested heredocs", (n) => r().redact(nested(n)), 500);
+});
+
 test("a long camel-case name costs what a short one does", () => {
 	// A name rule that reads a name two ways backtracks exponentially in its parts.
 	assertLinear("a camel-case name", (n) => r().redact(`is${"PasswordStrengthIndicator".repeat(n)}Visible: false`), 2);

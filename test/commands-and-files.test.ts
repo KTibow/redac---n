@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
 import { isSecretFile, printsSecret } from "../src/commands.ts";
-import { findInSecretFile } from "../src/secretfile.ts";
+import { findInSecretFile, openScopes } from "../src/secretfile.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 
 const FILE = { secretFile: true };
@@ -67,6 +67,9 @@ test("a secret file's value that is a sentence is no secret, a passphrase is", (
 	hidden("DB_PASSWORD=correct horse battery staple\n", "battery staple", FILE);
 	hidden("correct horse battery staple\n", "battery staple", FILE);
 	hidden(" Env.Local9x", "Env.Local9x", FILE);
+	const paragraph =
+		"This file is managed by the platform team and the values in it are rotated every month after review. ".repeat(4);
+	kept(paragraph, "rotated every month", FILE);
 });
 
 test("a reference in code under a credential's name is kept in a secret file", () => {
@@ -83,6 +86,13 @@ test("a plain URL under a credential's name is kept, one with a token is not", (
 		FILE,
 	);
 	hidden("    key: https://example.com/keys?token=Kx9mQ2pLrTvB7nWz", "Kx9mQ2pLrTvB7nWz", FILE);
+	// (A query, or more after the URL, is hidden with it; a password or a token in its path alone.)
+	hidden("WEBHOOK_SECRET=https://hooks.acme.io/x?k=Harbor2291!x\n", "Harbor2291!x", { path: ".env" });
+	hidden("BASIC_AUTH=https://acme.io/login Harbor2291!x\n", "Harbor2291!x", { path: ".env" });
+	kept("    key: https://hooks.example.com/t/e8b41f0c7a92d6355bd1c4a09f37e268", "https://hooks.example.com/t/", FILE);
+	const dsn = "webhook_secret: postgres://app:Harbor2291!x@db.internal:5432/app\n";
+	hidden(dsn, "Harbor2291!x", FILE);
+	kept(dsn, "@db.internal:5432/app", FILE);
 });
 
 test("a listing's durations and word lists are settings", () => {
@@ -95,6 +105,11 @@ test("a listing's durations and word lists are settings", () => {
 		"CAESIKq7Zr2mLx9vT4pN8wB3cY6dF1gH5jQ0sRtUeIa",
 		FILE,
 	);
+	const lookup =
+		"Key                 Value\n---                 -----\ntoken_duration      768h\ntoken_renewable     true\n";
+	kept(lookup, "token_duration      768h", { command: "vault token lookup" });
+	kept('token_policies: ["read-only", "default"]\n', '["read-only", "default"]', { path: "secrets.yml" });
+	hidden('passwords: ["tr0ub4dor", "xk9mq2pl"]\n', "tr0ub4dor", { path: "secrets.yml" });
 });
 
 test("a file that holds only secrets hides a generated token under any name", () => {
@@ -106,6 +121,38 @@ test("a file that holds only secrets hides a generated token under any name", ()
 	assert.ok(hides("/run/secrets/algolia"));
 	assert.ok(!hides(".env"));
 	assert.ok(!hides(""));
+	// Not a word and a number, a host, or a cache's key: no generated token, only part of one, a word ahead of one.
+	const settings =
+		"production:\n  build: Release2024\n  cdn: d1a2b3c4e5f6g7h8i9j0k1l2.cloudfront.net\n  cache: gradle-7e2320944e9ecd11dd38f366bad4c32e\n";
+	for (const v of ["build: Release2024", ".cloudfront.net", "cache: gradle-7e2320944e9ecd11dd38f366bad4c32e"])
+		kept(settings, v, { path: "config/secrets.yml" });
+});
+
+test("under a vendor's word a .env's settings are kept by their shape, a password or random letters hidden", () => {
+	const env = (line: string) => `NODE_ENV=production\n${line}\n`;
+	for (const [line, value] of [
+		["DOCKER=acme/api:1.4.2", "acme/api:1.4.2"],
+		["POD=web-5d8gk7c9b-x2x4k", "web-5d8gk7c9b-x2x4k"],
+		["DISCORD=https://discord.com/api/webhooks/1234567890/Kx9mQ2pLrTvB7nWzQ4tYKx9mQ2pL", "discord.com/api/webhooks/"],
+		["SMTP=postmaster@sandbox8f14e45fceea467a95751c6b4d2a8f9e.mailgun.org", "postmaster@sandbox8f14e45f"],
+		["BUILD=v20240601", "v20240601"],
+		["CDN=d1a2b3c4e5f6g7.cloudfront.net", "d1a2b3c4e5f6g7.cloudfront.net"],
+		["PYTHON=4.12.0b2", "4.12.0b2"],
+		['CORS={"origins":["https://app.acme.io","https://admin.acme.io"]}', "https://admin.acme.io"],
+		["SENTRY=ReleaseCandidate", "ReleaseCandidate"],
+		["ENGINE=PostgreSQL", "PostgreSQL"],
+	])
+		kept(env(line), value, { path: ".env" });
+	for (const [line, value] of [
+		[
+			"DISCORD=https://discord.com/api/webhooks/1234567890/Kx9mQ2pLrTvB7nWzQ4tYKx9mQ2pL",
+			"Kx9mQ2pLrTvB7nWzQ4tYKx9mQ2pL",
+		],
+		["STRIPE=Summer2024!", "Summer2024!"],
+		["STRIPE=XGxAdcVIefCUMAVsDhkYhErsQwPz", "XGxAdcVIefCUMAVsDhkYhErsQwPz"],
+		["MY_SECRET_THING=90210!@#", "90210!@#"],
+	])
+		hidden(env(line), value, { path: ".env" });
 });
 
 test("a one-line password file's quotes are the password's unless they are a pair around it", () => {
@@ -159,11 +206,28 @@ test("a secret file in JSON stays JSON, pretty or minified", () => {
 	assert.equal(JSON.parse(out).type, "authorized_user");
 	assert.ok(!out.includes("hunter2"));
 	hidden('{"client_secret":"short1x","refresh_token":"abcdefgh"}', "short1x", { path: "credentials.json" });
+	// (A value that isn't a string ends at its comma; a published example is a placeholder.)
+	const literals = JSON.stringify({ client_id: "acme-cli", password: null, pin: 4821, remember_token: false }, null, 2);
+	const read = JSON.parse(r().redact(literals, { hint: { path: "credentials.json" } }).text);
+	assert.equal(read.password, null);
+	assert.equal(read.remember_token, false);
+	hidden('{"client_id":"acme-cli","secret":"Harbor2291x"}', "Harbor2291x", { path: "credentials.json" });
+	kept('{"aws_secret_access_key":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}', "wJalrXUtnFEMI", {
+		path: "credentials.json",
+	});
+});
+
+test("a .env value's comment and a YAML block's indicator are kept", () => {
+	kept("API_KEY=Kx9mQ2pLrTvB7nWz # rotated monthly\n", "# rotated monthly", { path: ".env" });
+	const yml = "tls:\n  key_password: |\n    Harbor2291x\n";
+	kept(yml, "key_password: |\n", { path: "secrets.yml" });
+	hidden(yml, "Harbor2291x", { path: "secrets.yml" });
 });
 
 test("a short number is a password in a .env only under a credential's name", () => {
 	hidden("PORT=5432\nDB_PASSWORD=12345678\n", "12345678", { path: ".env" });
 	kept("PORT=5432\nTOKEN_TTL=3600\n", "3600", { path: ".env" });
+	hidden("PORT=5432\nSESSION_SECRET=48213977\n", "48213977", { path: ".env" });
 });
 
 test("a remote read of an .env prints a secret file, and env keeps a placeholder", () => {
@@ -197,12 +261,29 @@ test("a file named like a password holds nothing but the password", () => {
 		hidden(v, v.slice(3), { path: "secrets/db_password.txt" });
 });
 
+test("a one-line file of an address, a path or a published example holds no password", () => {
+	for (const [text, value] of [
+		["https://vault.acme.io:8200\n", "vault.acme.io:8200"],
+		["db.internal:5432\n", "db.internal:5432"],
+		["admin:/run/secrets/admin_password\n", "/run/secrets/admin_password"],
+		["AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"],
+	])
+		kept(text, value, FILE);
+	// (A .pgpass line keeps its host, port, database and user, whatever the host is named.)
+	const pgpass = "auth-db.internal:5432:app:app_user:Harbor2291x\n";
+	kept(pgpass, "auth-db.internal:5432:app:app_user:", { path: "~/.pgpass" });
+	hidden(pgpass, "Harbor2291x", { path: "~/.pgpass" });
+});
+
 test("bin/rails credentials:show prints secrets", () => {
-	hidden(
-		"active_record_encryption:\n  primary_key: 2XhEAsfmNvCd8zQu43efeffpWOEa99vu",
+	const keys =
+		"active_record_encryption:\n  primary_key: 2XhEAsfmNvCd8zQu43efeffpWOEa99vu\n  deterministic_key: EGY8WhulUOXixybod7ZWwMIL68R9o5kC\n  key_derivation_salt: xEY0dt6TZcAMg52K7O84wYzkjvbA62Hz\n";
+	for (const key of [
 		"2XhEAsfmNvCd8zQu43efeffpWOEa99vu",
-		{ command: "bin/rails credentials:show" },
-	);
+		"EGY8WhulUOXixybod7ZWwMIL68R9o5kC",
+		"xEY0dt6TZcAMg52K7O84wYzkjvbA62Hz",
+	])
+		hidden(keys, key, { command: "bin/rails credentials:show" });
 });
 
 test("a PASS name in cat .env output is hidden", () => {
@@ -220,8 +301,22 @@ test("a file written by a command or printed by cat is a secret file", () => {
 		["cat > .env <<'EOF'\nSTRIPE=c261be78-a5a0-431d-acb8-d1b29db9b9eb\nEOF", "c261be78-a5a0"],
 		["cat <<EOF > ~/.pgpass\ndb:5432:app:app:Harbor#2291x\nEOF", S],
 		["echo 'Harbor#2291x' > ~/.vault_pass", S],
+		["!cat ~/.vault_pass\ncoral lantern badger comet amber\n", "badger comet"],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+});
+
+test("what a command line writes into a secret file: a script's heredoc in a heredoc, `|&`, printf's format, a group's one echo", () => {
+	for (const t of [
+		"cat > deploy.sh <<'EOF'\n#!/bin/bash\ncat > /srv/app/.env <<ENV\nSTRIPE=Tiger1103#xq\nENV\nEOF\n",
+		"echo 'Tiger1103#xq' |& sudo tee ~/.vault_pass\n",
+		"printf 'coral Tiger1103#xq comet\\n' > ~/.vault_pass\n",
+		"{ echo 'coral lantern Tiger1103#xq'; } > ~/.vault_pass\n",
+	])
+		hidden(t, "Tiger1103#xq");
+	// A heredoc's body ends what is in it; a heredoc to a file that isn't secret leaves the prompt's command open.
+	assert.deepEqual(openScopes("cat > deploy.sh <<'EOF'\ncat > .env <<ENV\nA=1\nEOF\n"), []);
+	assert.deepEqual(openScopes("$ cat .env\nA=1\n$ cat > README.md <<EOF\n# Title\n"), ["$ cat > README.md <<EOF\n"]);
 });
 
 test("a quoted pipe through grep still reads a secret file", () => {
@@ -398,6 +493,9 @@ test("a printed JSON document keeps its host", () => {
 	kept('{"username":"dkim","password":"a*2yu4&IhQ+T","host":"db.example.com"}', "db.example.com", {
 		command: "aws secretsmanager get-secret-value --secret-id x --query SecretString --output text",
 	});
+	kept('{"host":"db.example.com","port":5432}', "db.example.com", {
+		command: "aws secretsmanager get-secret-value --secret-id x --query SecretString --output text",
+	});
 });
 
 test("a secrets download hides its secrets and keeps its public keys", () => {
@@ -429,6 +527,26 @@ test("a command that prints a secret store hides its value, and git credential f
 		"host=github.com",
 		{ command: "git credential fill" },
 	);
+});
+
+test("a secret store's listing keeps its header, its counts and a published example", () => {
+	const listing =
+		"====== Data ======\nKey                      Value\n---                      -----\naws_secret_access_key    wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\ntoken_num_uses           10\nclient_secret            Kx9mQ2pLrTvB7nWz\n";
+	for (const v of ["Key                      Value", "wJalrXUtnFEMI", "token_num_uses           10"])
+		kept(listing, v, { command: "vault kv get secret/aws" });
+	hidden(listing, "Kx9mQ2pLrTvB7nWz", { command: "vault kv get secret/aws" });
+});
+
+test("a secret file's lines that are one token: a password before a certificate or made of words, not a table's rule", () => {
+	const cert =
+		"-----BEGIN CERTIFICATE-----\nMIIBeTCCAR+gAwIBAgIUHeKPK2ltA6P8OoCcZTscsGpeKiQwCgYIKoZIzj0EAwIw\nEjEQMA4GA1UEAwwHYWNtZS5pbzAeFw0yNjEwMTIxMDQ4NTJaFw0yNjEwMTMxMDQ4\n-----END CERTIFICATE-----\n";
+	hidden(`Harbor2291!x\n${cert}`, "Harbor2291!x", FILE);
+	for (const password of ["Maple-Orbit-42", "qwer-tyui-1234"])
+		hidden(`j.doe\n${password}\n`, password, { path: "vpn/auth.txt" });
+	const table =
+		"+----------+--------------+\n| user     | password     |\n+----------+--------------+\n| admin    | Harbor2291x  |\n+----------+--------------+\n";
+	kept(table, "+----------+--------------+\n| admin", FILE);
+	hidden(table, "Harbor2291x", FILE);
 });
 
 test("aws ssm get-parameter output hides the value column", () => {
@@ -471,6 +589,13 @@ test("a record's ID line is not the credential", () => {
 
 test("a CLI's error message is no credential", () => {
 	kept("no oauth token found for github.com", "no oauth token found", { command: "gh auth token" });
+	kept("Warning token will expire in 3 days\n", "Warning token", { command: "gh auth token" });
+});
+
+test("an address a credential command prints, first or under the password, is no credential", () => {
+	kept("bob@acme.io\n", "bob@acme.io", { command: "op read op://Private/GitHub/username" });
+	kept("Kx9mQ2pLrTvB7nWz\nbob@acme.io\n", "bob@acme.io", { command: "pass show web/acme" });
+	hidden("Kx9mQ2pLrTvB7nWz\nbob@acme.io\n", "Kx9mQ2pLrTvB7nWz", { command: "pass show web/acme" });
 });
 
 test("printenv NAME prints that variable: PATH is kept, a key hidden", () => {

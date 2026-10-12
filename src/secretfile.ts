@@ -21,6 +21,7 @@ import { lowerBound } from "./lines.ts";
 import type { Finding } from "./types.ts";
 import {
 	COMMON_WORDS,
+	hasThreeClasses,
 	isBenignValue,
 	isCode,
 	isGeneratedSegment,
@@ -53,7 +54,9 @@ function isOpaqueSetting(name: string, v: string, tokenUnderAnyName: boolean): b
 	if (!(isBareVendorWord(name) || hasCredentialWord(name)))
 		return tokenUnderAnyName && isRandomToken(v, MIN_UNNAMED_TOKEN) && !isSettingShaped(v) && !/^[a-z]{2,}-/i.test(v);
 	if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v)) return true;
-	return !isSettingShaped(v) && /[A-Za-z]/.test(v) && /[\d\W]/.test(v.replace(/[-_.]/g, ""));
+	// (Letters alone are a word, `livemode`, unless random, `XGxAdcVIefCUMAVsDhkYhErsQwPz`. Digits with symbols are a
+	// password, `90210!@#`: a number a setting holds is setting-shaped.)
+	return !isSettingShaped(v) && (/[\d\W]/.test(v.replace(/[-_.]/g, "")) || isRandomToken(v));
 }
 
 /** The shortest generated token taken as a secret under a name that says nothing of one: a 128-bit hex ID is 32; a 96-bit one, 24. */
@@ -64,21 +67,32 @@ function isBareVendorWord(name: string): boolean {
 	return /^[A-Z][A-Z0-9]{2,30}$/.test(name);
 }
 
-/** What settings hold: words, numbers, versions, paths, hosts, emails and URLs without credentials. */
+/**
+ * What settings hold: words, numbers, versions, hosts, emails, URLs without credentials, and a JSON object, whose
+ * pairs jsonPairs reads (`CORS={"origins":[…]}`). (Paths are inert, isNotSecret's.)
+ */
 function isSettingShaped(v: string): boolean {
 	return (
 		v.length < 8 ||
-		v.length > 1000 ||
 		/\s/.test(v) ||
 		isPasswordlessUrl(v) ||
-		isPath(v) ||
 		/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(v) ||
 		/^v?\d+(?:[.:-]\d+)*$/.test(v) ||
 		/^[\w-]+(?:\.[a-z][\w-]*)+(?::\d+)?$/.test(v) ||
-		isWordy(v) ||
+		isWordySetting(v) ||
 		isIdentifierShaped(v) ||
-		isBenignValue(v)
+		isBenignValue(v) ||
+		(v.startsWith("{") && isJsonDocument(v))
 	);
+}
+
+/**
+ * Words and numbers as a setting or a name joins them (values.ts isWordy: `acme-prod-uploads-2024`,
+ * `refs/heads/main`), not a password made of them, which has a password rule's three classes (`Maple-Orbit-42`,
+ * `Summer2024!`).
+ */
+function isWordySetting(v: string): boolean {
+	return isWordy(v) && !hasThreeClasses(v);
 }
 
 /** Words in sentence punctuation, no digits or symbols: `The PORT key is duplicated`, `ASCII text, with CRLF line terminators`. */
@@ -90,23 +104,19 @@ const MIN_SENTENCE_WORDS = 3;
 /** A sentence: a message or a report line, not a passphrase, which is words with none of a sentence's (`correct horse battery staple`). */
 function isProse(value: string): boolean {
 	const words = value.trim().split(/\s+/);
-	return (
-		words.length >= MIN_SENTENCE_WORDS &&
-		words.length <= MAX_SENTENCE_WORDS &&
-		words.every((w) => PROSE_WORD.test(w)) &&
-		words.some(isSentenceWord)
-	);
+	return words.length >= MIN_SENTENCE_WORDS && words.every((w) => PROSE_WORD.test(w)) && words.some(isSentenceWord);
 }
-const MAX_SENTENCE_WORDS = 40;
 
-/** A URL with a scheme that carries no credential: no password, no query or fragment, and no path segment a generator made (`https://packages.microsoft.com/keys/microsoft.asc`). */
+/**
+ * A URL with a scheme that is no credential whole: no query or fragment and no path segment a generator made
+ * (`https://packages.microsoft.com/keys/microsoft.asc`). A password in it, or a token in its path, is hidden on its own,
+ * the URL around it kept: structure.ts reads a URL's password, the name layer a generated segment under a credential's
+ * name (named.ts).
+ */
 function isPlainUrl(value: string): boolean {
 	const url = leadingUrl(value);
-	if (!url || url.end !== value.length || url.password || /[?#]/.test(value)) return false;
-	return url.segments.every((s) => {
-		const segment = value.slice(s.start, s.end);
-		return !isGeneratedSegment(segment) && (segment.length < MIN_UNNAMED_TOKEN || readsAsWords(segment));
-	});
+	if (!url || url.end !== value.length || /[?#]/.test(value)) return false;
+	return url.segments.every((s) => !isGeneratedSegment(value.slice(s.start, s.end)));
 }
 
 /** A duration (`24h`, `90s`, `1h30m`) or a list of words (`["ci" "default"]`): a setting a secret manager's listing shows. */
@@ -152,14 +162,8 @@ function wholeFile(text: string, out: Finding[]) {
 		return;
 	}
 	const pair = /^[\w.@-]{1,64}:(\S{4,4096})$/d.exec(only);
-	if (
-		pair &&
-		!/:\/\//.test(only) &&
-		!PGPASS.test(only) &&
-		!isInert(pair[1]) &&
-		!isPlaceholder(pair[1]) &&
-		!/^\d{1,5}$/.test(pair[1])
-	) {
+	// (A `.pgpass` line's password is pgpassLines', which the whole line gives way to: spans.ts preferNarrower.)
+	if (pair && !/:\/\//.test(only) && !isInert(pair[1]) && !isPlaceholder(pair[1]) && !/^\d{1,5}$/.test(pair[1])) {
 		out.push({
 			start: start + at(pair, 1)[0],
 			end: start + at(pair, 1)[1],
@@ -200,9 +204,8 @@ function pgpassLines(text: string, out: Finding[]) {
 
 /**
  * `NAME=value`, `name: value`, `"name": "value",` lines, and `+` lines of a patch that adds the file: the value under
- * a credential's name, or an opaque one under any name that says nothing of a secret (isOpaqueSetting). (Published examples, `AKIAIOSFODNN7EXAMPLE`,
- * are placeholders even in a secret file. Rails' Active Record encryption keys are named `primary_key`,
- * `deterministic_key` and `key_derivation_salt`.)
+ * a credential's name, or an opaque one under any name that says nothing of a secret (isOpaqueSetting). (Published
+ * examples, `AKIAIOSFODNN7EXAMPLE`, are placeholders even in a secret file.)
  */
 function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 	for (const m of text.matchAll(
@@ -234,11 +237,7 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 			isSettingNumber(name, value)
 		)
 			continue;
-		const credential =
-			isCredentialName(name) ||
-			/^pass$/i.test(name) ||
-			(/^(?:primary_key|deterministic_key|key_derivation_salt)$/.test(name) &&
-				text.includes("active_record_encryption"));
+		const credential = isCredentialName(name) || /^pass$/i.test(name);
 		if (!credential && !isOpaqueSetting(name, value, tokenUnderAnyName)) continue;
 		const start = at(m, 4)[0] + (quoted ? 1 : 0);
 		out.push({
@@ -354,8 +353,9 @@ function bareTokens(text: string, out: Finding[]) {
 		)
 			continue;
 		// (A name and `=` or `:`; not padded base64, whose `=` pads: `Zm9vYmFyYg==`.)
-		if (/^[A-Za-z_][\w.-]{0,80}[ \t]*(?::|=(?!=$))/.test(t) || /^#|^\[|^-{3}/.test(t)) continue;
-		if (isInert(t) || (isWordy(t) && naturalness(t) > 0.5) || /^-+$|^=+$|^#|^[+|][-+=|]+$/.test(t)) continue;
+		if (/^[A-Za-z_][\w.-]{0,80}[ \t]*(?::|=(?!=$))/.test(t)) continue;
+		// (A comment, `#…`, or a rule: `-----+-----` under psql's header, `+----+` around MySQL's, `|---|` in Markdown.)
+		if (isInert(t) || (isWordySetting(t) && naturalness(t) > 0.5) || /^#|^-{3}|^=+$|^[+|][-+=|]+$/.test(t)) continue;
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "secret", rule: "file:bare", confidence: 0.9 });
 	}
 }
@@ -412,8 +412,8 @@ function firstLine(text: string): { start: number; value: string; end: number } 
  * The credential in the output of a command that prints one: its first line, whole (a passphrase of words, a PIN, a
  * password that starts with `[`), unless the line is a message (`Error: …`), a record's field (`ID:  …`), a reference a
  * variable holds instead (`op://vault/item/field`), a plain URL or address, or a JSON document whole (its pairs'
- * readers judge it); and later
- * lines that are one token, as `pass show` prints its metadata under the password. `--output text` rows of AWS's.
+ * readers judge it); and later lines that are one token, as `pass show` prints its metadata under the password.
+ * `--output text` rows of AWS's.
  */
 export function findPrintedSecret(text: string): Finding[] {
 	const out: Finding[] = [];
@@ -427,13 +427,10 @@ export function findPrintedSecret(text: string): Finding[] {
 		add(start, end);
 	}
 	if (out.length) return out;
-	// (A `Name: value` line is a record's field, `op item get`'s `ID:  …`: its fields are read by name.)
 	// (A path is where a credential is, not one: `GOOGLE_APPLICATION_CREDENTIALS=/workspace/secrets/sa.json`.)
 	const notSecret = (line: string) =>
 		isInert(line) ||
 		isPath(line.replace(/^[A-Za-z_][\w.-]*=/, "")) ||
-		/^[A-Za-z][\w .-]{0,30}:[ \t]/.test(line) ||
-		/^(?:error|warning|usage|fatal|note|hint)\b/i.test(line) ||
 		/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(line) ||
 		isPasswordlessUrl(line) ||
 		isJsonDocument(line);
@@ -456,12 +453,12 @@ export function findPrintedSecret(text: string): Finding[] {
 
 /**
  * The shape of a CLI's message rather than a value: it opens with a message's word (`no oauth token found`, `Error …`,
- * `Please run …`), says something isn't (`You are not logged into …`, `token does not exist`), or ends on what
- * happened (`Permission denied`, `An error occurred`). A message word elsewhere in the line is just a word:
- * `correct horse no battery staple` is a passphrase.
+ * `Please run …`, `Warning token expires in 3 days`), says something isn't (`You are not logged into …`, `token does
+ * not exist`), or ends on what happened (`Permission denied`, `An error occurred`). A message word elsewhere in the
+ * line is just a word: `correct horse no battery staple` is a passphrase.
  */
 const MESSAGE_SHAPE =
-	/^(?:no|not|error|errors|failed|failure|invalid|unable|cannot|can't|couldn't|please|run|missing|unauthorized|forbidden)\b|\b(?:is|are|was|were|do|does|did|has|have|can|could|will|must)(?:n't| not)\b|\b(?:found|denied|expired|occurred|exists?|failed)$/i;
+	/^(?:no|not|error|errors|warning|fatal|usage|note|hint|failed|failure|invalid|unable|cannot|can't|couldn't|please|run|missing|unauthorized|forbidden)\b|\b(?:is|are|was|were|do|does|did|has|have|can|could|will|must)(?:n't| not)\b|\b(?:found|denied|expired|occurred|exists?|failed)$/i;
 
 /**
  * One token that is a message's, not a value: a label (`Error:`), a status word with its stop (`Done.`, `Saved!`), or
@@ -477,7 +474,8 @@ const isMessageToken = (token: string): boolean =>
 
 /**
  * Whether a credential command's first line reads as the value it prints, not a sentence about it: one token, or a
- * passphrase's words (up to 24, no sentence punctuation, not a message's shape).
+ * passphrase's words (up to 24, no sentence punctuation, not a message's shape). A record's field, `op item get`'s
+ * `ID:  …`, has a label's colon: its fields are read by name.
  */
 function readsAsValue(line: string): boolean {
 	if (!/\s/.test(line)) return !isMessageToken(line);
@@ -594,7 +592,7 @@ interface OpenHeredoc {
 }
 
 /** The secret files' sections of a text (secretFileSections), and the heredocs open at its end that write one. */
-function readWrites(text: string): { sections: FileSection[]; open: OpenHeredoc[]; diff?: string } {
+function readWrites(text: string, inBody = false): { sections: FileSection[]; open: OpenHeredoc[]; diff?: string } {
 	const sections: FileSection[] = [];
 	// (Where a `sops:` line starts, found once: a heredoc that never ends reaches the text's end, and slicing to it per line is quadratic.)
 	let sops: number[] | undefined;
@@ -630,8 +628,15 @@ function readWrites(text: string): { sections: FileSection[]; open: OpenHeredoc[
 			const writes = writtenToSecretFile(commands);
 			for (const w of writes.sections) add(w);
 			const heredocs = commands.flatMap((c) => c.heredocs);
-			// (A finished heredoc's body is text, whatever the heredoc writes to; one that never ends is read as text.)
-			for (const h of heredocs) if (h.terminated) body = Math.max(body, h.end);
+			// (A finished heredoc's body is text, whatever the heredoc writes to. In a text that isn't a body itself it is
+			// also read on its own, a heredoc in it that doesn't end ending with it: a script a heredoc writes may write a
+			// secret file. A body in that script is the script's text. A heredoc that never ends is read as text.)
+			for (const h of heredocs.filter((h) => h.terminated)) {
+				body = Math.max(body, h.end);
+				if (!inBody)
+					for (const s of readWrites(text.slice(h.start, h.end), true).sections)
+						add({ ...s, start: s.start + h.start, end: s.end + h.start });
+			}
 			if (heredocs.some((h) => !h.terminated && writes.files.has(h)))
 				open = heredocs.filter((h) => !h.terminated).map((h) => ({ heredoc: h, file: writes.files.get(h) }));
 		}
@@ -669,9 +674,6 @@ export function openScopes(text: string): string[] {
 	return out;
 }
 
-/** Descriptor targets of a redirection (`2>&1`, `>&-`): not files. */
-const DESCRIPTOR = /^(?:\d+|-)$/;
-
 /**
  * What the pipelines of a command line write into a secret file: their heredocs' bodies and here-strings, or what
  * they echo; and the file each heredoc writes.
@@ -685,13 +687,12 @@ function writtenToSecretFile(commands: CommandRun[]): { sections: FileSection[];
 		pipeline.push(c);
 		if ((c.then === "|" || c.then === "|&") && commands[k + 1]?.host === c.host) continue;
 		// Where it writes: a redirection's file (`>`, `>>`, `>|`, `&>`, `>&`), its groups' included, and `tee`'s.
+		// (A descriptor, `2>&1`, `>&-`, is no secret file's name.)
 		const targets = pipeline.flatMap((p) => {
 			const words = simpleCommand(p.words);
 			const tee = programName(words[0]) === "tee" ? words.slice(1) : [];
 			const append = tee.some((w) => /^-\w*a|^--append$/.test(w.text));
-			const redirected = allRedirects(p).filter(
-				(r) => r.target && (/^(?:>|>>|>\||&>|&>>)$/.test(r.op) || (r.op === ">&" && !DESCRIPTOR.test(r.target.text))),
-			);
+			const redirected = allRedirects(p).filter((r) => r.target && /^(?:>|>>|>\||&>|&>>|>&)$/.test(r.op));
 			return [
 				...redirected.map((r) => ({ file: r.target!.text, append: r.op.endsWith(">>") })),
 				...tee.filter((w) => !w.text.startsWith("-")).map((w) => ({ file: w.text, append })),

@@ -54,9 +54,10 @@ export function* insertCells(text: string, wants?: (table: string, columns: stri
 /** The cells of the rows that start at `at` (`(…), (…)`), each value under its column. */
 function* rowCells(text: string, at: number, table: string, columns: string[]): Generator<SqlCell> {
 	for (let row = 0; row < 10_000 && text[at] === "("; row++) {
+		// (A row cut short, a dump's `head`, ends the rows. callArguments reads to the bracket closingBracket finds.)
 		const values = callArguments(text, at + 1);
+		if (!values) break;
 		const close = closingBracket(text, at + 1);
-		if (!values || close < 0) break;
 		for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], value };
 		BETWEEN_ROWS.lastIndex = close + 1;
 		at = close + 1 + BETWEEN_ROWS.exec(text)![0].length;
