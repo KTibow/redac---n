@@ -3619,15 +3619,6 @@ function passwordShaped(text: string, out: Finding[]) {
 			m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:]+$/, ""),
 		).replace(/[.,;:]+$/, "");
 		const [start] = m.indices![k]!;
-		// (Unquoted, the code a value opens runs on to its brackets' close, and is judged whole with the keyword before
-		// it: `password: await getSecret(names[0])`, `password: new Buffer(parts[1], "base64")`.)
-		const code =
-			k === 5 &&
-			isCode(
-				/(?:\b(?:await|new)[ \t]+)?$/.exec(text.slice(Math.max(0, start - 12), start))![0] +
-					text.slice(start, throughBrackets(text, start, start + m[k].length)),
-				true,
-			);
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
 		// `["Summer2024!",`, the readers' of those.)
@@ -3638,6 +3629,16 @@ function passwordShaped(text: string, out: Finding[]) {
 			)
 		)
 			continue;
+		// (Unquoted, the code a value opens runs on to its brackets' close, and is judged whole with the keyword before
+		// it: `password: await getSecret(names[0])`, `password: new Buffer(parts[1], "base64")`. Read only for a value
+		// the checks above left: a line of unclosed brackets would have each match read to the bound.)
+		const code =
+			k === 5 &&
+			isCode(
+				/(?:\b(?:await|new)[ \t]+)?$/.exec(text.slice(Math.max(0, start - 12), start))![0] +
+					text.slice(start, throughBrackets(text, start, start + m[k].length)),
+				true,
+			);
 		if (code || isCode(value, true)) {
 			// (Code holds the password when a converter is given it: `New SecureString("Kx9mQv2Lp7Rt")`.)
 			const literal = k === 5 ? convertedLiteral(text, start) : undefined;

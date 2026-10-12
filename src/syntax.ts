@@ -157,19 +157,22 @@ export function withoutUnopenedClosers(value: string, closers = ")]}"): string {
 	return run < 0 ? value : value.slice(0, run);
 }
 
+/** How far past a cut value a bracket it opened may close: a call's arguments, an expression's index. */
+const BRACKET_REACH = 256;
+
 /**
  * Where a value that a reader cut (`start`–`end`) inside a bracket it opened ends: at that bracket's close on the same
  * line, read over the strings and blanks within it (`0x#{key.unpack('H*')[0]}`, `Buffer.from(pw, "base64")`) and a
  * quote that closes nothing (Rust's lifetime, `Option<&'static str>`; a `<` opens a bracket after a name, a generic's).
  * Then the value is judged whole, as the code it is, not as the fragment before the cut; and a password with a
  * bracket, `Xy(z, 9)`, is hidden whole. `end` when the value opened no bracket it didn't close, or nothing closes it on
- * the line.
+ * the line within BRACKET_REACH of the cut (a line of brackets left open would have each value read to the bound).
  */
 export function throughBrackets(text: string, start: number, end: number): number {
 	const close: Record<string, string> = { "(": ")", "[": "]", "{": "}", "<": ">" };
 	const open: string[] = [];
 	const lineEnd = text.indexOf("\n", end);
-	const stop = Math.min(lineEnd < 0 ? text.length : lineEnd, start + UNQUOTED_READ);
+	const stop = Math.min(lineEnd < 0 ? text.length : lineEnd, start + UNQUOTED_READ, end + BRACKET_REACH);
 	for (let i = start; i < stop; i++) {
 		const c = text[i];
 		if (i >= end && open.length === 0) return end;
