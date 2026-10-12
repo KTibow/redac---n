@@ -576,6 +576,7 @@ const RULES: ((text: string, out: Finding[]) => void)[] = [
 	cDefines,
 	referenceDefaults,
 	envFallbacks,
+	conditionalBranches,
 	xmlNamedValues,
 	dotLeaders,
 	setterCalls,
@@ -1330,6 +1331,52 @@ function envFallbacks(text: string, out: Finding[]) {
 	}
 }
 
+/** A ternary's `?`: not a query string's (`?schema=public`), optional chaining's `?.` nor a fallback's `??`. */
+const TERNARY = String.raw`(?<!\?)\?(?![?.=]|[\w-]+=)`;
+/** A ternary, a Python conditional, or a fallback. */
+const CONDITIONAL = new RegExp(String.raw`${TERNARY}[^\n]*:|[ \t]if[ \t][^\n]*[ \t]else[ \t]|\|\||\?\?|[ \t]or[ \t]`);
+/** A credential's name and what gives it a value: `pw =`, `password:`, `setPassword(`. */
+const CONDITIONAL_HEAD = /(?<![\w$])([A-Za-z_$][\w$.]{0,80}?)(?:["']?[ \t]*(?:=|:)(?![=:])|[ \t]*\()[ \t]*/dg;
+/** Where a literal branch stands in the expression after it. */
+const BRANCHES = [
+	// A ternary's: `? "…" :` and, after its `?`, `: "…"` closing the expression.
+	new RegExp(String.raw`${TERNARY}[ \t]*${quoted(1, 1, "\"'`")}[ \t]*:`, "dg"),
+	new RegExp(String.raw`${TERNARY}[^\n]*?:[ \t]*${quoted(1, 1, "\"'`")}[ \t]*(?:[;,)]|$)`, "dg"),
+	// A fallback's, after `or`, `||` or `??`: `os.getenv("PW") or "…"`.
+	new RegExp(String.raw`(?:\|\||\?\?|[ \t]or)[ \t]+${quoted(1, 1, "\"'`")}[ \t]*(?:[;,)]|$)`, "dg"),
+	// Python's: `"…" if … else …` and `… if … else "…"`.
+	new RegExp(String.raw`^${quoted(1, 1, "\"'")}[ \t]+if[ \t]`, "dg"),
+	new RegExp(String.raw`[ \t]if[ \t][^\n]*?[ \t]else[ \t]+${quoted(1, 1, "\"'")}[ \t]*(?:[;,)]|$)`, "dg"),
+];
+/**
+ * A conditional's string branches under a credential's name, assigned or passed: `pw = cfg == null ? "…" : cfg.pw;`,
+ * `setPassword(p == null ? "…" : p)`, Python's `password = os.environ.get("PW") if env else "…"`, a fallback's
+ * `token = os.getenv("T") or "…"`. (The expression is code, which the readers of a value leave whole; a literal branch
+ * is a value all the same.)
+ */
+function conditionalBranches(text: string, out: Finding[]) {
+	// (A cheap gate on the whole text; CONDITIONAL itself only on an expression, at most 300 characters.)
+	if (!/[?|]|[ \t](?:or|if)[ \t]/.test(text)) return;
+	CONDITIONAL_HEAD.lastIndex = 0;
+	for (const m of text.matchAll(CONDITIONAL_HEAD)) {
+		const name = m[1].split(".").at(-1)!;
+		if (!isCredentialName(name)) continue;
+		// The expression: the rest of its line, up to a statement's `;`.
+		const from = m.index + m[0].length;
+		const line = text.slice(from, lineEndAt(text, from));
+		const expr = line.slice(0, Math.min(300, /;/.exec(line)?.index ?? line.length));
+		// (Quotes escaped are a string's inside a string, a level the JSON pass decodes and reads again.)
+		if (!CONDITIONAL.test(expr) || /\\["']/.test(expr)) continue;
+		for (const branch of BRANCHES) {
+			branch.lastIndex = 0;
+			for (const b of expr.matchAll(branch)) {
+				const [start, end] = b.indices![2]!;
+				namedValue(out, name, { value: b[2], start: from + start, end: from + end }, "named:conditional");
+			}
+		}
+	}
+}
+
 /** Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`. */
 function xmlNamedValues(text: string, out: Finding[]) {
 	if (!text.includes('name="')) return;
@@ -1497,30 +1544,47 @@ function setterCalls(text: string, out: Finding[]) {
 	// (Any callee that holds a credential word, `set_db_password`, `withApiKey`; isCredentialName decides.)
 	for (const { match, args } of calls(text, SETTER_CALL)) {
 		const callee = match[1];
-		if (LOOKUP.test(callee)) {
+		const hasher = HASHER.exec(callee.split(".").at(-1)!);
+		if (!hasher && LOOKUP.test(callee)) {
 			for (const a of args)
 				if (a.literal && a.keyword && /^(?:default|fallback|default_value|defaultValue)$/.test(a.keyword))
 					namedValue(out, callee, a.literal, "named:fallback", { judgedAs: "password" });
 			continue;
 		}
-		// (`pass` alone is the verb: picobox's `@box.pass_("database_session")`.)
-		if (!isCredentialName(callee) || /^pass_*$/i.test(callee)) continue;
-		// (With keyword arguments the call names its slots: only one named for a credential, `password="…"`, is read.)
+		// (`pass` alone is the verb: picobox's `@box.pass_("database_session")`. A hasher's name says what it's given, though
+		// it reads as a hash's: `password_hash`.)
+		if (!hasher && (!isCredentialName(callee) || /^pass_*$/i.test(callee))) continue;
+		// (With keyword arguments the call names its slots: only one named for a credential, `password="…"`, is read; and a
+		// hasher's first argument, whatever follows it, `generate_password_hash("…", method="scrypt")`.)
 		if (args.some((a) => a.keyword)) {
 			for (const a of args)
-				if (a.keyword && a.literal && isCredentialName(a.keyword)) namedValue(out, callee, a.literal, "named:setter");
-			continue;
+				if (a.keyword && a.literal && isCredentialName(a.keyword))
+					namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
+			if (!hasher?.[1]) continue;
 		}
 		// The secret is the last argument, after a service and a user (`keyring.set_password("pgcli", key, passwd)` passes
 		// a variable); flags after it don't count (`setPassword("…", true)`). A credentials call takes a user, then the
 		// secret: `setCredentials("admin", "…", "realm")`.
 		const positional = args.filter(
-			(a) => !/^(?:true|false|True|False|None|null|nil|undefined|-?\d+(?:\.\d+)?)$/.test(a.text),
+			(a) => !a.keyword && !/^(?:true|false|True|False|None|null|nil|undefined|-?\d+(?:\.\d+)?)$/.test(a.text),
 		);
-		const secret = /credentials?$/i.test(callee) && positional.length >= 2 ? positional[1] : positional.at(-1);
-		if (secret?.literal) namedValue(out, callee, secret.literal, "named:setter");
+		// A hasher or a checker takes the password first, its salt or its hash after; werkzeug's checker, last (HASHER).
+		let secret = positional.at(-1);
+		if (hasher?.[1]) secret = positional[0];
+		else if (!hasher && /credentials?$/i.test(callee) && positional.length >= 2) secret = positional[1];
+		// (Judged as the password a hasher is given, whatever its name reads as.)
+		if (secret?.literal) namedValue(out, hasher ? "password" : callee, secret.literal, "named:setter");
 	}
 }
+
+/**
+ * Calls that hash or check a password. Given first (the group): Django's `make_password("…", salt, hasher)` and
+ * `check_password("…", encoded)`, bcrypt's `hashpw(b"…", salt)` and `checkpw`, PHP's `password_hash("…",
+ * PASSWORD_DEFAULT)` and `password_verify`, werkzeug's `generate_password_hash`; given last, werkzeug's
+ * `check_password_hash(hash, "…")`.
+ */
+const HASHER =
+	/^((?:make|hash|check|verify)_?password|generate_password_hash|(?:hash|check)pw|password_(?:hash|verify))$|^check_password_hash$/i;
 
 /**
  * Positional credentials of connect and credential calls: `mysqli_connect(host, user, pw, db)`,

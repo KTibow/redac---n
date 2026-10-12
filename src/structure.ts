@@ -13,7 +13,7 @@ import { blockLines, siblingValue, yamlLines } from "./yaml.ts";
 import { isUrl, queryParams, readUserinfo, urls } from "./urls.ts";
 import { naturalness } from "./charlm.ts";
 import { bip39, isNamedSecret } from "./named.ts";
-import { isCredentialName, isSettingName, nameClass, namesPasswordOrPin } from "./names.ts";
+import { FILE_EXTENSION, isCredentialName, isSettingName, nameClass, namesPasswordOrPin } from "./names.ts";
 import {
 	ANALYTICS_COOKIE,
 	COMMON_WORDS,
@@ -679,10 +679,13 @@ function* secretDataEntries(text: string): Generator<{ key: string; value: Span 
 function isKubeSecretKey(key: string): boolean {
 	// Certificates and public keys stored next to the key: `tls.crt`, `ca.crt`, `ca-bundle.pem`.
 	if (/\.(?:crt|cer|pub)$|^(?:ca|ca[-_.]bundle(?:\.pem)?|tls\.crt|cert|certificate)$/i.test(key)) return false;
-	const cls = nameClass(key);
+	// (A file's name is judged by its stem: what the file holds is mounted as the key, `password.txt`; `checksums.txt` is
+	// still a hash's.)
+	const stem = key.replace(FILE_EXTENSION, "");
+	const cls = nameClass(stem);
 	return !(
 		/^(?:user(?:name)?|login|host(?:name)?|port|database|db|dbname|region|namespace|email|bucket|cluster|server|address|account)$/i.test(
-			key,
+			stem,
 		) ||
 		cls === "public" ||
 		cls === "hash"

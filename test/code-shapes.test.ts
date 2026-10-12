@@ -468,3 +468,27 @@ test("a password word's password-shaped value isn't a flag with its value; SQL i
 	hidden('cur.execute("CREATE USER app IDENTIFIED BY Hx7mQ2pL9vRt")', "Hx7mQ2pL9vRt");
 	hidden("CREATE USER app IDENTIFIED BY Hx7mQ2pL9vRt;", "Hx7mQ2pL9vRt");
 });
+
+test("a credential given through code: a conditional's branch, a hasher's argument, a Secret's file, SQL in a string", () => {
+	for (const [text, secret] of [
+		['dataSource.setPassword(password2==null?"Hx7mQ2pL9vRt4":password2);', "Hx7mQ2pL9vRt4"],
+		['String pw = cfg == null ? "Hx7mQ2pL9vRt4" : cfg.password;', "Hx7mQ2pL9vRt4"],
+		['password = os.environ.get("PW") if env else "Hx7mQ2pL9vRt4"', "Hx7mQ2pL9vRt4"],
+		['token = os.getenv("API_TOKEN") or "Hx7mQ2pL9vRt4"', "Hx7mQ2pL9vRt4"],
+		["encoded = make_password('Hx7mQ2pL9vRt4', 'iodizedsalt', 'pbkdf2_sha256')", "Hx7mQ2pL9vRt4"],
+		["hashed = bcrypt.hashpw(b'Hx7mQ2pL9vRt4', bcrypt.gensalt())", "Hx7mQ2pL9vRt4"],
+		['$h = password_hash("Hx7mQ2pL9vRt4", PASSWORD_DEFAULT);', "Hx7mQ2pL9vRt4"],
+		['h = generate_password_hash("Hx7mQ2pL9vRt4", method="scrypt")', "Hx7mQ2pL9vRt4"],
+		['ok = check_password_hash(stored, "Hx7mQ2pL9vRt4")', "Hx7mQ2pL9vRt4"],
+		["kind: Secret\nstringData:\n  password.txt: Hx7mQ2pL9vRt4", "Hx7mQ2pL9vRt4"],
+		["cur.execute(\"INSERT INTO users (email, password) VALUES ('bob@x.io', 'Hx7mQ2pL9vRt4')\")", "Hx7mQ2pL9vRt4"],
+	])
+		hidden(text, secret);
+	// What isn't a credential there is kept.
+	kept('type = show ? "text" : "password";', '"text"');
+	kept('label: isAdmin ? "Admin password" : "User password"', "Admin password");
+	kept('token = header or "Bearer"', '"Bearer"');
+	kept("h = make_password(password, hasher='pbkdf2_sha256')", "pbkdf2_sha256");
+	kept("kind: Secret\ndata:\n  checksums.txt: 3f2a9c1b4d5e6f708192a3b4c5d6e7f8", "3f2a9c1b4d5e6f708192a3b4c5d6e7f8");
+	kept("cur.execute(\"INSERT INTO users (email, password) VALUES ('bob@x.io', %s)\", (pw,))", "bob@x.io");
+});

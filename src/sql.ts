@@ -39,14 +39,36 @@ export function* insertCells(text: string, wants?: (table: string, columns: stri
 		const table = unquote(m[1].split(".").at(-1)!);
 		const columns = delimitedCells(m[2], ",").map((c) => unquote(c.text));
 		if (wants && !wants(table, columns)) continue;
-		let at = m.index + m[0].length;
-		for (let row = 0; row < 10_000 && text[at] === "("; row++) {
-			const values = callArguments(text, at + 1);
-			const close = closingBracket(text, at + 1);
-			if (!values || close < 0) break;
-			for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], value };
-			BETWEEN_ROWS.lastIndex = close + 1;
-			at = close + 1 + BETWEEN_ROWS.exec(text)![0].length;
-		}
+		const at = m.index + m[0].length;
+		// (A statement a program holds in a string, `cur.execute("INSERT … VALUES ('…')")`: the string's brackets aren't
+		// read as brackets, so its line is read as the statement on its own.)
+		if (text[at] === "(" && closingBracket(text, at + 1) < 0) {
+			const end = text.indexOf("\n", at);
+			const line = text.slice(m.index, end < 0 ? undefined : end);
+			for (const cell of rowCells(line, at - m.index, table, columns))
+				yield { ...cell, value: shifted(cell.value, m.index) };
+		} else yield* rowCells(text, at, table, columns);
 	}
+}
+
+/** The cells of the rows that start at `at` (`(…), (…)`), each value under its column. */
+function* rowCells(text: string, at: number, table: string, columns: string[]): Generator<SqlCell> {
+	for (let row = 0; row < 10_000 && text[at] === "("; row++) {
+		const values = callArguments(text, at + 1);
+		const close = closingBracket(text, at + 1);
+		if (!values || close < 0) break;
+		for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], value };
+		BETWEEN_ROWS.lastIndex = close + 1;
+		at = close + 1 + BETWEEN_ROWS.exec(text)![0].length;
+	}
+}
+
+/** An argument read from a piece of a text, placed where the piece starts in it. */
+function shifted(a: Argument, by: number): Argument {
+	return {
+		...a,
+		start: a.start + by,
+		end: a.end + by,
+		...(a.literal ? { literal: { ...a.literal, start: a.literal.start + by, end: a.literal.end + by } } : {}),
+	};
 }
