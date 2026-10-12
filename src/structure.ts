@@ -1377,8 +1377,9 @@ function sqlPasswords(text: string, out: Finding[]) {
 	if (!/IDENTIFIED|PASSWORD/i.test(text)) return;
 	const forms = [
 		/\bIDENTIFIED\s+(?:WITH\s+['"`]?\w+['"`]?\s+)?BY\s+(?!PASSWORD\b)(?:'((?:[^'\n]|'')+)'|"([^"\n]+)")/gi,
-		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too.
-		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:;|$|\s))/gim,
+		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too. (Up to a
+		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.)
+		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
 		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?'((?:[^'\n]|'')+)'/gi,
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*'((?:[^'\n]|'')+)'/gi,
 	];

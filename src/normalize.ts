@@ -74,6 +74,24 @@ const ENTITIES = lookup<string>({
 });
 /** An entity that decodes: a number, or a name of ENTITIES. */
 const ENTITY = new RegExp(String.raw`&(?:#\d{1,6}|#x[0-9a-f]{1,5}|${Object.keys(ENTITIES).join("|")});`, "i");
+/** An entity's shape, its number (decimal or hex) or its name in a group: entityChar decodes it. */
+const ENTITY_SHAPE = String.raw`&(?:#(\d{1,6})|#[xX]([0-9a-fA-F]{1,5})|([a-zA-Z]{2,8}));`;
+const ENTITY_AT = new RegExp(`^${ENTITY_SHAPE}`);
+
+/** The character an entity (ENTITY_SHAPE's match) stands for: one UTF-16 unit, and a character, not NUL nor half of a surrogate pair. */
+function entityChar(m: RegExpExecArray | string[]): string | undefined {
+	const ch = m[1]
+		? String.fromCodePoint(Number(m[1]))
+		: m[2]
+			? String.fromCodePoint(parseInt(m[2], 16))
+			: ENTITIES[m[3].toLowerCase()];
+	return ch !== undefined && ch.length === 1 && ch !== "\0" && !(ch >= "\ud800" && ch <= "\udfff") ? ch : undefined;
+}
+
+/** A text with its HTML entities decoded as normalize decodes them: `&lt;redacted&gt;` is `<redacted>`. */
+export function decodeEntities(text: string): string {
+	return text.replace(new RegExp(ENTITY_SHAPE, "g"), (...m: string[]) => entityChar(m) ?? m[0]);
+}
 
 /** An ANSI colour code written as an escape in a JSON log or a string literal: `\u001b[32m`, `\x1b[0m`, `\033[1;31m`, `\e[0m`. */
 const ESCAPED_CSI = /\\{1,3}(?:u001[bB]|x1[bB]|033|e)\[[0-9;:]{0,20}[A-HJKSTfmsu]/;
@@ -450,16 +468,9 @@ function unspell(text: string): Normalized {
 			}
 		}
 		if (c === 38) {
-			const m = /^&(?:#(\d{1,6})|#[xX]([0-9a-fA-F]{1,5})|([a-zA-Z]{2,8}));/.exec(text.slice(i, i + 12));
-			const ch = !m
-				? undefined
-				: m[1]
-					? String.fromCodePoint(Number(m[1]))
-					: m[2]
-						? String.fromCodePoint(parseInt(m[2], 16))
-						: ENTITIES[m[3].toLowerCase()];
-			// (One UTF-16 unit, and a character: not NUL nor half of a surrogate pair.)
-			if (m && ch !== undefined && ch.length === 1 && ch !== "\0" && !(ch >= "\ud800" && ch <= "\udfff")) {
+			const m = ENTITY_AT.exec(text.slice(i, i + 12));
+			const ch = m ? entityChar(m) : undefined;
+			if (m && ch !== undefined) {
 				w.emit(ch, i, i + m[0].length);
 				i += m[0].length;
 				continue;

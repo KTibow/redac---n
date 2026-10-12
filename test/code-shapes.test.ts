@@ -390,3 +390,81 @@ test("a query string's value ends at its next pair, percent-encoded too; a passw
 	hidden(`API_KEY=${key}&foo=bar`, key);
 	hidden("DB_PASSWORD=Tr0ub4dor&3horse", "Tr0ub4dor&3horse");
 });
+
+test("words that label or describe a credential: a translation, an option's own name, a parameter's doc, a stand-in", () => {
+	for (const [text, value] of [
+		["  email:\n    confirmation:\n      confirm_password: Bevestig mijn account", "Bevestig mijn account"],
+		["      confirm_password: Confirmar minha conta", "Confirmar minha conta"],
+		["  dpl bintray --user user --key key --file file --passphrase phrase --cleanup", "--passphrase phrase"],
+		["  --passphrase PHRASE      Passphrase as configured on Bintray (type: string)", "--passphrase PHRASE"],
+		["      .with(body: { passphrase: 'phrase' }) }", "'phrase'"],
+		["  #   keystore_path: Path to keystore.\n  #   keystore_password: Keystore password.", "Keystore password."],
+		['  proxy.ClientCredentials.UserName.Password = "thePwd";', '"thePwd"'],
+		["        u.set_password('testpw')", "'testpw'"],
+	])
+		kept(text, value);
+	// The same places with a credential in them are read as before.
+	hidden("      confirm_password: Correct horse battery staple", "Correct horse battery staple");
+	hidden("  dpl bintray --user user --key key --passphrase Hx7mQ2pL9vRt --cleanup", "Hx7mQ2pL9vRt");
+	hidden("      .with(body: { passphrase: 'Hx7mQ2pL9vRt' }) }", "Hx7mQ2pL9vRt");
+	hidden("  #   keystore_password: Sunshine is the default.", "Sunshine");
+	hidden("  # keystore_password: Sunshine", "Sunshine");
+	hidden('  proxy.ClientCredentials.UserName.Password = "thePwd7391";', "thePwd7391");
+});
+
+test("references and code: an environment variable, a variable the script sets, a literal's entries, escaped markup", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, value] of [
+		[
+			'    Write-Host "##vso[task.setvariable variable=Helix_JobToken;issecret=true;]$env:Helix_JobToken"',
+			"$env:Helix_JobToken",
+		],
+		['    local P12Pass="$2"\n\n    certutil ca --days=5000 --out ${PWD}/$P12File --pass="$P12Pass"', "$P12Pass"],
+		['read -rsp "Password: " DbPass\npsql --password="$DbPass"', "$DbPass"],
+		["        data: {\n          email: result.email,\n          password: hash\n        },", "password: hash"],
+		[
+			"export default (getApp: () => App, {\n  provider, email, password\n}: { provider: string, email: string, password: string }) => {",
+			"password: string }) => {",
+		],
+		["Authorization: bearer &lt;redacted&gt;\nHost: demo.docusign.net", "&lt;redacted&gt;"],
+		['{"body":"Authorization: bearer \\u0026lt;redacted\\u0026gt;\\nHost: x"}', "\\u0026lt;redacted\\u0026gt;"],
+		['password = "&lt;your password&gt;"', "&lt;your password&gt;"],
+	])
+		assert.ok(off.redact(text).text.includes(value), text);
+	// The same places with a credential in them are read as before.
+	const token = b62(24);
+	hidden(`Write-Host "##vso[task.setvariable variable=Helix_JobToken;issecret=true;]${token}"`, token);
+	hidden('certutil ca --out x --pass="$Secr3t9"', "$Secr3t9");
+	hidden(
+		"        data: {\n          email: result.email,\n          password: Hx7mQ2pL9vRt\n        },",
+		"Hx7mQ2pL9vRt",
+	);
+	hidden("authorization {\n  user: derek\n  password: hunter\n}", "hunter");
+	hidden("email,password\nbob@example.com,Hx7mQ2pL9vRt", "Hx7mQ2pL9vRt");
+	hidden(`Authorization: bearer &lt;${token}&gt;`, token);
+	hidden(`password = "&lt;${token}"`, token);
+});
+
+test("a JWT shown cut short before its claims is its header alone, the same in every token signed so", () => {
+	for (const header of [
+		"eyJhbGciOiJIUzI1NiI...",
+		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.…",
+		"eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ…",
+	])
+		kept(`\`Authorization: Bearer ${header}\``, header);
+	// Base64 of other JSON, a header shown whole (a token mangled, or made up), and a token with its claims, are
+	// credentials.
+	const json = Buffer.from(`{"password":"${b62(16)}"}`).toString("base64url");
+	hidden(`Authorization: Bearer ${json}...`, json);
+	hidden('"Authorization": []string{"Bearer eyJhbGciOiJHUzI3MSJ9"},', "eyJhbGciOiJHUzI3MSJ9");
+	const claims = Buffer.from(`{"sub":"${b62(12)}","iat":1700000000}`).toString("base64url");
+	hidden(`Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${claims}...`, claims);
+});
+
+test("a password word's password-shaped value isn't a flag with its value; SQL in a program's string is read", () => {
+	// (`PWD` is a password word: the flag after it is password-shaped, and the flag's reader's.)
+	kept('local P12Pass="$2"\ncertutil ca --out ${PWD}/$P12File --pass="$P12Pass"', '--pass="$P12Pass"');
+	hidden("the password is --pass=Kx9#mPq2Lw", "Kx9#mPq2Lw");
+	hidden('cur.execute("CREATE USER app IDENTIFIED BY Hx7mQ2pL9vRt")', "Hx7mQ2pL9vRt");
+	hidden("CREATE USER app IDENTIFIED BY Hx7mQ2pL9vRt;", "Hx7mQ2pL9vRt");
+});

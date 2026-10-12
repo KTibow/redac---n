@@ -216,6 +216,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 		)
 			return "never a secret";
 		if (namesCredential(value)) return "names a credential";
+		if (isVariableSetIn(text, value)) return "a variable the text sets";
 		// A Twilio resource's SID (`AccountSid`, `streamSid`: two letters and 32 hex), an ID; its auth token is the secret.
 		if (/sid$/i.test(name) && /^[A-Z]{2}[0-9a-f]{32}$/.test(value)) return "a Twilio SID";
 		// A service account's Secrets by their generated names: `kubectl describe sa`'s `Image pull secrets:  <sa>-dockercfg-4qz9g`.
@@ -282,6 +283,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// is treated as the key it's named; `anon key:` in `supabase status` is what it says.
 	if (/^eyJ/.test(word) && isPublicJwt(word, layerOf(f.rule) === "named" && !/anon|public|publishable/i.test(name)))
 		return "public JWT";
+	if (isJwtHeader(word)) return "a JWT's header";
 	// The ID half of an `id:secret` value under a name (`credential: <client id>:<secret>`): the secret half is
 	// hidden on its own (named.ts credentialPair).
 	// (Not Basic auth's user info, where both halves are the credential: `basic.auth.user.info=<key>:<secret>`.)
@@ -360,6 +362,37 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	)
 		return "site verification token";
 	return undefined;
+}
+
+/**
+ * Whether `value` is a variable (`$P12Pass`, `${P12Pass}`) that the text sets: a shell's `P12Pass=…` (`local P12Pass=…`,
+ * `export …`), PHP's, Perl's or PowerShell's `$P12Pass = …`, a shell's `read -rsp "Password: " P12Pass`. Then it is a
+ * reference, however its name is spelled: `$Secr3t` alone reads as a password.
+ */
+function isVariableSetIn(text: string, value: string): boolean {
+	const m = /^\$(\{?)([A-Za-z_]\w{0,80})(\}?)$/.exec(value);
+	if (!m || m[1].length !== m[3].length) return false;
+	return new RegExp(
+		String.raw`(?:^|[\s;&|(])${m[2]}=|\$${m[2]}[ \t]*=(?!=)|\bread(?:[ \t]+-\w+(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?)*[ \t]+${m[2]}[ \t]*$`,
+		"m",
+	).test(text);
+}
+
+/** A JOSE header's parameters (RFC 7515, 7516): what a JWT's first part may say. */
+const JOSE_HEADER = /^(?:alg|typ|cty|kid|jku|jwk|x5u|x5c|x5t|x5t#S256|crit|enc|zip|b64)$/;
+
+/**
+ * A JWT shown cut short before its claims, its header alone and an ellipsis (`Bearer eyJhbGciOiJIUzI1NiI...` in docs): the
+ * header names an algorithm and a type, the same in every token signed so; the claims and the signature are the
+ * credential, and they aren't there. (Base64 of any other JSON, `{"password":…}`, isn't a header; and a header without
+ * the ellipsis may be a whole token mangled, or one a test makes up, and is judged as one.)
+ */
+function isJwtHeader(word: string): boolean {
+	const m = /^(eyJ[A-Za-z0-9_-]{4,200})\.?(?:\.\.\.|…)$/.exec(word);
+	if (!m) return false;
+	const json = new TextDecoder().decode(base64Prefix(m[1]) ?? new Uint8Array());
+	const keys = [...json.matchAll(/"([^"]*)"\s*:/g)].map((k) => k[1]);
+	return /^\{\s*"/.test(json) && keys.length > 0 && keys.every((k) => JOSE_HEADER.test(k)) && !/\}./s.test(json);
 }
 
 /** An identifier path: `pw`, `this.old_pwd`, `StrTools::unMagic`, `FS->Pass`, `$sql_passwd`, `{$secrets`. */

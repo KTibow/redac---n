@@ -13,6 +13,7 @@ import { isPlaceholder, isTruncated } from "./public.ts";
 import { isDerPublicKey, isDerSignature, isRsaPublicKey } from "./publickeys.ts";
 import { isPasswordlessUrl } from "./urls.ts";
 import { MAX_VALUE } from "./syntax.ts";
+import { decodeEntities } from "./normalize.ts";
 
 /**
  * An identifier, and a member of one as the languages write it: `.`, `?.` (TypeScript, C#, Kotlin), `->` (PHP, C), `::`
@@ -568,9 +569,10 @@ function isSshPublicKey(v: string): boolean {
 	return opening !== undefined && expected.startsWith(opening.slice(0, expected.length));
 }
 
-/** Which inert shape a value has (INERT_SHAPES), if any. */
+/** Which inert shape a value has (INERT_SHAPES), if any. (Written in markup's escapes, a shape is that shape: `&lt;redacted&gt;`.) */
 export function inertShape(value: string): string | undefined {
-	return INERT_SHAPES.find(([, test]) => test(value))?.[0];
+	const decoded = value.includes("&") ? decodeEntities(value) : value;
+	return INERT_SHAPES.find(([, test]) => test(value) || (decoded !== value && test(decoded)))?.[0];
 }
 
 /** A value that can't be a credential: empty, a boolean, a path, a placeholder or a reference to one held elsewhere. */
@@ -1107,9 +1109,9 @@ export function isTestValue(value: string): boolean {
 	if (/^correct[-_.]horse[-_.]battery[-_.]staple$/.test(value)) return true;
 	if (/^(?:open ?sesame|hunter2|swordfish|letmein|trustno1|p@ssw0rd|passw0rd|tr0ub4dor&3)$/i.test(value)) return true;
 	if (value.length > 24) return false;
-	// `mypassword`, `testpass1`, `StrongPasswordHere`, `secret-key-here`: a placeholder phrase run together.
+	// `mypassword`, `testpass1`, `thePwd`, `StrongPasswordHere`, `secret-key-here`: a placeholder phrase run together.
 	if (
-		(/^(?:my|your|the|some|test|dummy|fake|example|sample|default|secret|super|strong|new|good|real|actual)[-_]?(?:password|passwd|pass|secret|token|key|apikey|api[-_]?key)(?:\d{1,4})?$/i.test(
+		(/^(?:my|your|the|some|test|dummy|fake|example|sample|default|secret|super|strong|new|good|real|actual)[-_]?(?:password|passwd|pass|pwd|pw|secret|token|key|apikey|api[-_]?key)(?:\d{1,4})?$/i.test(
 			value,
 		) &&
 			isCountingDigits(/\d*$/.exec(value)![0])) ||

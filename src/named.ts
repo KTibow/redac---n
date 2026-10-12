@@ -131,7 +131,12 @@ function isLabel(value: string, name: string): boolean {
 	// Title Case words. (One capitalised word is a password as much as a label, `Sunshine`, `Großmutter`: a label of one
 	// word is "password" in some language, isPasswordLabel's. Words with no sentence's word among them are a passphrase:
 	// `Correct horse battery staple`.)
-	if (/^\p{Lu}\p{Ll}+(?: \p{L}\p{Ll}*)+[.:!?]?$/u.test(value) && !isPassphrase(value.split(" "))) return true;
+	// (Or with another language's grammar among them, a translated label: `Bevestig mijn account`.)
+	if (
+		/^\p{Lu}\p{Ll}+(?: \p{L}\p{Ll}*)+[.:!?]?$/u.test(value) &&
+		(!isPassphrase(value.split(" ")) || value.split(" ").some((w) => FOREIGN_FUNCTION_WORDS.has(w.toLowerCase())))
+	)
+		return true;
 	if (/[^\x00-\x7f]/.test(value) && /^[\p{L}\p{M}\d .,!?'’()-]+$/u.test(value) && / \p{L}/u.test(value)) return true;
 	// A sentence; but a passphrase is words by design, and only its UI text says "enter" or "your".
 	const phrase = /PHRASE|MNEMONIC|SEED/.test(lastWord(name));
@@ -144,7 +149,12 @@ function isLabel(value: string, name: string): boolean {
 	)
 		return true;
 	const flat = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-	return flat(value) === flat(name) || (/^[\p{L} _.-]+$/u.test(value) && flat(value).endsWith(flat(lastWord(name))));
+	// (Or the name's own end, as docs fill each option with its name: `--user user --key key --passphrase phrase`.)
+	return (
+		flat(value) === flat(name) ||
+		(/^[\p{L} _.-]+$/u.test(value) &&
+			(flat(value).endsWith(flat(lastWord(name))) || (flat(value).length >= 4 && flat(name).endsWith(flat(value)))))
+	);
 }
 
 /** Names about how a credential is handled, not the credential: `update_password`, `password_mechanism`, `pin_mode`. */
@@ -760,14 +770,16 @@ function assignments(text: string, out: Finding[]) {
 		// escaped as it was (`\"NAME=value\"` inside a JSON string).
 		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
 		// An entry of a call or a literal written over several lines, the line before opening a bracket or ending an entry
-		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`): code, its value read as code is,
-		// not a whole-line env, YAML or INI value nor a log's pair. (Its value may open a call of its own, its arguments
-		// on the lines below: `),\n  MasterUserPassword=Join(`; a callee in words, as a password ending in `(` is not.)
+		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`), or its last entry (isLastEntry):
+		// code, its value read as code is, not a whole-line env, YAML or INI value nor a log's pair. (Its value may open a
+		// call of its own, its arguments on the lines below: `),\n  MasterUserPassword=Join(`; a callee in words, as a
+		// password ending in `(` is not.)
 		const opensCall = /^([A-Za-z_$][\w$.]*)\([ \t]*\r?$/.exec(text.slice(at, lineEndAt(text, at)))?.[1];
 		const continued =
-			(entry !== undefined || (opensCall !== undefined && readsAsWords(opensCall))) &&
 			pairQuote < 0 &&
-			/[,([{][ \t]*\r?\n$/.test(text.slice(Math.max(0, lineStart - 400), lineStart));
+			(((entry !== undefined || (opensCall !== undefined && readsAsWords(opensCall))) &&
+				/[,([{][ \t]*\r?\n$/.test(text.slice(Math.max(0, lineStart - 400), lineStart))) ||
+				isLastEntry(text, at));
 		// A whole-line `NAME=value` (env, export) or YAML `key: value` runs to the end of the line, spaces included.
 		// (A sigil makes the name code's variable, not an environment's or an INI file's: Perl's `@key=map(…);`.)
 		const sigil = /^[$@]/.test(m[2]);
@@ -864,6 +876,23 @@ function assignments(text: string, out: Finding[]) {
 		// `readPassword("password: ")).thenReturn(…)`: the name was inside a string, and what follows its
 		// closing quote is code.
 		if (quoted && m[1] === "" && /["'`]/.test(text[m.index - 1] ?? "") && /^\)[).;]/.test(raw)) continue;
+		// A parameter's description in a comment, a sentence to the line's end that names what the parameter holds:
+		// `#   keystore_password: Keystore password.`, `// db_password: Primary password of the database.` (Not a password
+		// that opens a sentence, `# password: Sunshine is the default.`: the sentence names no credential.)
+		if (!quoted && op === ":" && /^[ \t]*(?:#+|\/\/+|\*|--|;+)[ \t]*$/.test(before) && /^\p{Lu}\p{Ll}+$/u.test(raw)) {
+			const rest = /^(?:[ \t]+[\p{L}'’(),-]+)+\.[ \t]*\r?$/u.exec(text.slice(span[1], lineEndAt(text, span[1])))?.[0];
+			const sentence = `${raw}${rest}`.trim();
+			const credential = lastWord(name).toLowerCase();
+			if (
+				rest &&
+				isLabel(sentence, name) &&
+				sentence
+					.toLowerCase()
+					.split(/[^\p{L}]+/u)
+					.includes(credential)
+			)
+				continue;
+		}
 		// Resume after this value: a value isn't also the start of the next pair (`a=b=c…` stays linear). An
 		// object or a list is read inside instead: its pairs are values of their own (`auth: { user, pass: '…' }`).
 		ASSIGN.lastIndex = Math.max(ASSIGN.lastIndex, /^[{[]/.test(raw) ? span[0] + 1 : span[1]);
@@ -882,6 +911,21 @@ function assignments(text: string, out: Finding[]) {
 		namedFinding(out, colon > 0 ? span[0] + colon : span[0], span[1], name, "named:assign");
 		if (literal) out[out.length - 1].literal = true;
 	}
+}
+
+/**
+ * Whether the line `at` is on is the last entry of a literal or a call written over several lines: the entry before it
+ * ends with a comma, and the next line closes the bracket (`  email: user.email,` / `  password: hash` / `},`). There a
+ * bare word is a variable, as before a comma. (A config file's braces, `authorization {` / `  password: hunter2` /
+ * `}`, separate no entries with commas.)
+ */
+function isLastEntry(text: string, at: number): boolean {
+	const start = lineStartAt(text, at);
+	const end = lineEndAt(text, at);
+	return (
+		/,[ \t]*\r?\n$/.test(text.slice(Math.max(0, start - 400), start)) &&
+		/^\r?\n[ \t]*[)\]}]/.test(text.slice(end, end + 202))
+	);
 }
 
 /** JavaScript's `typeof` before a name and its object's path: `typeof this.`. */
@@ -2136,11 +2180,13 @@ function columnTables(text: string, out: Finding[]) {
 		const delim = header.length < 2000 ? (/[\t,;]/.exec(header)?.[0] ?? "") : "";
 		const names = delim ? delimitedCells(header.replace(/\r$/, ""), delim).map((c) => c.text.trim()) : [];
 		// (Names of a few words each: a wrapped sentence, `password, the authorization server MUST protect the
-		// endpoint`, or a line of code, `from picobox import Stack, pass_`, has commas but no columns.)
+		// endpoint`, or a line of code, `from picobox import Stack, pass_`, has commas but no columns. Nor names inside a
+		// bracket the line above opens, a parameter list or a destructuring: `({` / `  email, password` / `}: {…}) => {`.)
 		if (
 			names.length >= 2 &&
 			names.every((n) => /^[\p{L}_][\p{L}\w ./,-]{0,60}$/u.test(n) && (n.match(/\p{L}+/gu)?.length ?? 0) <= 4) &&
-			!/^[ \t]*(?:from|import|def|class|return|if|for|while|let|const|var|use)\b/.test(header)
+			!/^[ \t]*(?:from|import|def|class|return|if|for|while|let|const|var|use)\b/.test(header) &&
+			!/[([{][ \t]*\r?$/.test(lines[i - 1] ?? "")
 		) {
 			const credIdx = names.map((n, k) => (isCredentialName(n) ? k : -1)).filter((k) => k >= 0);
 			// A name column and a value column (DevTools cookie tables, exports of settings): each row names its value.
@@ -2611,11 +2657,16 @@ function prose(text: string, out: Finding[]) {
 		)
 			continue;
 		// (After `=` the sentence is code: `user_password = Arcfour(key).decrypt(…)`; and so it is when code's punctuation
-		// follows, `password: proxyPass);`. A template's hole, `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
+		// follows, `password: proxyPass);`, or the value ends a literal's last entry (isLastEntry). A template's hole,
+		// `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
 		// (A reference, a member's path or a call, is code wherever it's written: `pass: process.env.SMTP_PASSWORD`,
 		// `password: this.data.password`; a bare name isn't, `The password is: BlueSecret`.)
 		if (
-			((/=/.test(m[2]) || /^[);,]/.test(text.slice(m.indices![4]![1]))) && isCode(value)) ||
+			((/=/.test(m[2]) ||
+				/^[);,]/.test(text.slice(m.indices![4]![1])) ||
+				(/^[ \t]*\r?$/.test(text.slice(m.indices![4]![1], lineEndAt(text, m.indices![4]![1]))) &&
+					isLastEntry(text, m.index))) &&
+				isCode(value)) ||
 			(/[.([]/.test(value) && isCode(value, true))
 		)
 			continue;
@@ -2919,6 +2970,104 @@ const FUNCTION_WORDS = new Set([
 	"everywhere",
 	"nowhere",
 ]);
+/**
+ * The grammar of the languages UI text is most often translated into (Dutch, German, French, Spanish, Portuguese,
+ * Italian): articles, possessives, prepositions and conjunctions that are no English word nor BIP39's. Among a label's
+ * capitalised words they make it a translation (`Bevestig mijn account`, `Confirmar minha conta`), not a passphrase.
+ * (Only there: in lower case, `t la xk zmtwvhw`, a short one is as likely a passphrase's.)
+ */
+const FOREIGN_FUNCTION_WORDS = new Set([
+	"mijn",
+	"uw",
+	"jouw",
+	"het",
+	"een",
+	"voor",
+	"niet",
+	"naar",
+	"bij",
+	"wordt",
+	"deze",
+	"ons",
+	"onze",
+	"mein",
+	"meine",
+	"dein",
+	"deine",
+	"ihr",
+	"ihre",
+	"und",
+	"der",
+	"das",
+	"ist",
+	"nicht",
+	"mit",
+	"für",
+	"zu",
+	"ein",
+	"eine",
+	"einen",
+	"bitte",
+	"oder",
+	"wird",
+	"sie",
+	"mon",
+	"mes",
+	"votre",
+	"vos",
+	"le",
+	"la",
+	"les",
+	"des",
+	"du",
+	"et",
+	"est",
+	"avec",
+	"une",
+	"vous",
+	"nous",
+	"de",
+	"au",
+	"aux",
+	"ce",
+	"cette",
+	"mi",
+	"mis",
+	"tu",
+	"tus",
+	"su",
+	"sus",
+	"el",
+	"los",
+	"las",
+	"del",
+	"para",
+	"una",
+	"es",
+	"por",
+	"minha",
+	"meu",
+	"sua",
+	"seu",
+	"você",
+	"voce",
+	"uma",
+	"não",
+	"nao",
+	"da",
+	"dos",
+	"ao",
+	"il",
+	"gli",
+	"della",
+	"di",
+	"è",
+	"tuo",
+	"tua",
+	"mio",
+	"mia",
+	"non",
+]);
 /** nsswitch.conf's sources: `passwd: files cache ldap` lists where the system looks users up. */
 const NSS_SOURCES = new Set([
 	"files",
@@ -3128,10 +3277,10 @@ function passwordShaped(text: string, out: Finding[]) {
 		const k = m[2] !== undefined ? 2 : 3;
 		const value = withoutUnopenedClosers(m[k].replace(/[.,;:)]+$/, ""));
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
-		// code's or an encoding's.)
+		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, the readers' of those.)
 		if (
 			!PASSWORD_SHAPE.test(value) ||
-			/:\/\/|^[\w.-]+@|^[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]/.test(value) ||
+			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]/.test(value) ||
 			isCode(value, true) ||
 			!looksSecret(`"${value}"`, true)
 		)
