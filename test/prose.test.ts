@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("a key=value pair inside a sentence is hidden under a credential word and kept under a cache key", () => {
@@ -240,4 +241,54 @@ test("a parameter's description is no password, in any comment's syntax or a lin
 	])
 		assert.equal(r().redact(t).text, t);
 	hidden("# password: Sunshine is the default.", "Sunshine");
+});
+
+test("a quoted passphrase after its label is words or a generated value, not a placeholder or an instruction", () => {
+	hidden('Your passphrase (between double-quotes): "Xk9mQ2vL7pRt"', "Xk9mQ2vL7pRt");
+	for (const [t, v] of [
+		['Passphrase (optional): "Leave blank for none"', "Leave blank for none"],
+		['Passphrase: "replace me later"', "replace me later"],
+		['Passphrase: "your-secret-passphrase"', "your-secret-passphrase"],
+		['Passphrase: "${PASSPHRASE}"', "${PASSPHRASE}"],
+		['Mnemonic: "{{ mnemonic }}"', "{{ mnemonic }}"],
+	])
+		kept(t, v);
+});
+
+test("prose's words around a credential: pass, a verb, a test value, a code reference, a repeated word", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const t of ["the wifi pass is Kx9mQ2vL7p!", "my pass is Kx9mQ2vL7p!"])
+		assert.ok(!off.redact(t).text.includes("Kx9mQ2vL7p"), t);
+	for (const [t, v] of [
+		["The password was guessed.", "guessed"],
+		["Your passcode is [hidden]", "[hidden]"],
+		["{user: svc, password: apple}", "apple"],
+		["The password is blah blah blah", "blah blah blah"],
+		["user is ro_analytics, password changeme1, host db", "changeme1"],
+		["user is admin, password os.environ.PW1, host db", "os.environ.PW1"],
+		["Where's the password hashed? It's `hashPassword2` in auth.ts", "hashPassword2"],
+		['password: os.getenv("Ab1!xYz")', 'os.getenv("Ab1!xYz")'],
+		["set the password (self.pw1) first", "(self.pw1)"],
+		["Enter your password (case-sensitive)", "case-sensitive"],
+		["the voicemail PIN (482134567) is too long", "482134567"],
+	])
+		kept(t, v);
+	// (An object that closes after the value: a word no sentence or test uses is its password.)
+	hidden("{user: svc, password: acez}", "acez");
+	hidden("user is ro_analytics, password hunter22, host db", "hunter22");
+	hidden("The wifi password is 'correct horse battery staple'", "battery staple");
+});
+
+test("a rotated credential after `it's`, a PIN in parentheses or after 's, a mixed-case label value; a format's colon", () => {
+	hidden("ops rotated the db password yesterday, it's Thund3r55 now", "Thund3r55");
+	hidden("rotate the passwd (Kx-mQvL!) before Friday", "Kx-mQvL!");
+	hidden("Your new card PIN (4821) has been set", "4821");
+	hidden("my bank PIN's 4821, don't tell anyone", "4821");
+	hidden("**PIN:** 4821", "4821");
+	hidden("**Password:** BlueSecret", "BlueSecret");
+	hidden("Set the webhook secret to MapleSyrup", "MapleSyrup");
+	// (A word a colon joins to the one before is a format's: a .pgpass header, not a sentence about its next line.)
+	kept("# hostname:port:database:username:password\nlocalhost:5432:*:postgres:Kx9mQ2vL7p", "localhost:5432");
+	// (Under a token's or a key's name a short value with no symbol is a placeholder's shape.)
+	kept("The token: AbCdEf123456", "AbCdEf123456");
 });

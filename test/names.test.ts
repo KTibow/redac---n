@@ -869,3 +869,35 @@ test("a reference's default under a key's name is judged as any value is, digits
 	hidden("${SECRET_KEY:Kx9mQ2pLrTzz}", "Kx9mQ2pLrTzz");
 	for (const value of ["86400000", "changeme", "abc1234", "localhost"]) kept(`\${API_KEY:${value}}`, value);
 });
+
+test("a sibling pair's value is read under any value key, past the block's other attributes, to its comment", () => {
+	hidden("- name: DB_PASSWORD\n  data: Kx9mQ2vL7p!", "Kx9mQ2vL7p!");
+	hidden("- key: api_key\n  val: Kx9mQ2vL7pRt4Nw8", "Kx9mQ2vL7pRt4Nw8");
+	// (Only the name and value attributes are a pair's: a description, a flag and a tier between them aren't neighbours.)
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const t of [
+		'resource "aws_ssm_parameter" "db" {\n  name        = "db_password"\n  description = "Database password"\n  overwrite   = true\n  tier        = "Standard"\n  value       = "Kx9mQ2vL7p!"\n}',
+		"- name: DB_PASSWORD\n  description: Database password for the app\n  sensitive: true\n  required: true\n  value: Kx9mQ2vL7p!",
+	])
+		assert.ok(!off.redact(t).text.includes("Kx9mQ2vL7p!"), t);
+	// (A YAML line is read as yaml.ts reads it: its comment isn't the value's.)
+	kept("- name: DB_PASSWORD\n  value: Kx9mQ2vL7p! # rotate monthly", "# rotate monthly");
+	hidden('<input class="form-control" type="text" name="password"\n  value="Kx9mQ2vL7p!">', "Kx9mQ2vL7p!");
+});
+
+test("a sibling pair is one block's: a value less indented than its name, or a form's other input, isn't its", () => {
+	// (grep's lines from two files: the value is another block's.)
+	kept(
+		'k8s/base/deployment.yaml:41:            - name: DB_PASSWORD\nk8s/overlays/dev/flags.yaml:12:          value: "release-2024"\n',
+		"release-2024",
+	);
+	// (OAuth's password grant names a grant type, not a credential.)
+	kept(
+		'<form><input type="hidden" name="grant_type" value="password"><input type="hidden" name="client_id" value="web-app-prod"></form>',
+		"web-app-prod",
+	);
+});
+
+test("a Gradle project property is read as a Java system property is", () => {
+	hidden("gradle publish -Psigning.password=Kx9mQ2vL7p!", "Kx9mQ2vL7p!");
+});

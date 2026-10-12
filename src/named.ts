@@ -75,7 +75,6 @@ import {
 	cleanValue,
 	isBalanced,
 	isCode,
-	isTestValue,
 	isGeneratedSegment,
 	isPasswordLabel,
 	isPath,
@@ -2274,8 +2273,15 @@ const CREDENTIAL_COLUMN = new RegExp(`${CREDENTIAL_WORD}|remember`, "i");
 /** What prose needs in a text to have a credential's name to read: any of names.ts's words (`psk`, `salt`, `unseal`), or `code` (`PIN code`). */
 const CREDENTIAL_SENTENCE = new RegExp(`${CREDENTIAL_WORD}|code`, "i");
 
-/** A header of a fixed-width table: column names apart by two or more blanks or a box-drawing bar (`NAME  DIGEST  CREATED`). */
-const FIXED_WIDTH_HEADER = /^[ \t|│]*[A-Za-z_][\w.-]*(?:(?:[ \t]{2,}|[ \t]*[|│][ \t]*)[A-Za-z_][\w.-]*)+[ \t|│]*\r?$/;
+/** A header of a fixed-width table: column names apart by two or more blanks or a bar (`NAME  DIGEST  CREATED`, `┃ User ┃ Password ┃`). */
+const FIXED_WIDTH_HEADER =
+	/^[ \t|│┃║]*[A-Za-z_][\w.-]*(?:(?:[ \t]{2,}|[ \t]*[|│┃║][ \t]*)[A-Za-z_][\w.-]*)+[ \t|│┃║]*\r?$/;
+
+/** A table's rule line: dashes, equals signs, pluses, bars and box drawing (`----  ----`, `+----+`, `├────┼────┤`, `╚═══╩═══╝`). */
+const TABLE_RULE = /^[ \t]*[-+=|\u2500-\u257f][-+=|\u2500-\u257f \t]*\r?$/;
+
+/** A fixed-width table's cells: runs of words with single blanks between, apart from the next by two blanks or a bar. */
+const TABLE_CELL = /[^\s|│┃║]+(?:[ \t][^\s|│┃║]+)*/g;
 
 /**
  * Tables with a credential column: `psql` output, pandas DataFrames, `docker ps`-style listings. The
@@ -2345,17 +2351,15 @@ function columnTables(text: string, out: Finding[]) {
 		}
 		// A header is only column names, separated by two or more spaces or by box-drawing bars (`|` tables are pipeTables').
 		if (header.length > 2000 || header.includes("|") || !FIXED_WIDTH_HEADER.test(header)) continue;
-		if (isListingLine(header) && !/^[ \t]*[A-Z][A-Z_ ]+$/.test(header)) continue;
+		if (isListingLine(header)) continue;
 		const cols: [number, number, string][] = [];
 		for (const c of header.matchAll(/[A-Za-z_][\w.-]{0,60}/g)) cols.push([c.index, c.index + c[0].length, c[0]]);
 		// A declaration, not a header: a struct's field and its type (`Password       string`, gofmt's alignment).
 		if (cols.length >= 2 && cols.slice(1).every(([, , n]) => DECLARED_TYPE.test(n))) continue;
 		const credCols = cols.filter(([, , n]) => isCredentialName(n));
-		// A name/value table (`SELECT name, value FROM settings`, `vault kv get`'s `Key  Value`): each row names its own value.
-		const pairs =
-			cols.length === 2 &&
-			/^(?:name|key|setting|variable|var|parameter|param|option|field|property)$/i.test(cols[0][2]) &&
-			/^(?:value|val|setting)$/i.test(cols[1][2]);
+		// A name/value table (`SELECT name, value FROM settings`, `vault kv get`'s `Key  Value`): each row names its own value,
+		// whatever the first column's header calls the names (`Header  Value`, `SECRET  VALUE`).
+		const pairs = cols.length === 2 && /^(?:value|val|setting)$/i.test(cols[1][2]);
 		if (pairs || !credCols.length) {
 			// Its rows aren't headers of their own: skip past them.
 			let j = i + 1;
@@ -2368,8 +2372,9 @@ function columnTables(text: string, out: Finding[]) {
 				)
 					break;
 				if (!pairs) continue;
-				const cells = [...lines[j].matchAll(/[^\s|│]+(?:[ \t][^\s|│]+)*/g)];
-				if (cells.length !== 2 || /^[-+=─━┼]+$/.test(cells[0][0])) continue;
+				// (A rule's dashes name no credential.)
+				const cells = [...lines[j].matchAll(TABLE_CELL)];
+				if (cells.length !== 2) continue;
 				const [name, value] = [cells[0][0], cells[1][0]];
 				if (!isCredentialName(name) || !isNamedSecret(name, `"${value}"`, true)) continue;
 				namedFinding(
@@ -2390,11 +2395,11 @@ function columnTables(text: string, out: Finding[]) {
 			const row = lines[j];
 			// (A blank line or a prompt ends the table: the next command's output is another's.)
 			if (!row.trim() || PROMPT.test(row)) break;
-			if (/^[ \t]*[-+=|─━┼]+[ \t]*$/.test(row) || /^[-+|=─ ]+$/.test(row)) continue; // separator
-			if ((row.match(/[^\s|│]+/g) ?? []).length < 2) break;
+			if (TABLE_RULE.test(row)) continue;
+			if ((row.match(/[^\s|│┃║]+/g) ?? []).length < 2) break;
 			// A row with a cell for each column (cells apart by two or more blanks) is read by index: a cell wider than its
 			// header (`doctl`'s URI) shifts the others off their headers' columns.
-			const cells = [...row.matchAll(/[^\s|│]+(?:[ \t][^\s|│]+)*/g)];
+			const cells = [...row.matchAll(TABLE_CELL)];
 			if (cells.length === cols.length) {
 				for (const [hs, , name] of credCols) {
 					const cell = cells[cols.findIndex(([s]) => s === hs)];
@@ -2414,7 +2419,7 @@ function columnTables(text: string, out: Finding[]) {
 			}
 			for (const [hs, he, name] of credCols) {
 				// The cell is the run of non-space characters overlapping the header's columns.
-				for (const cell of row.matchAll(/[^\s|│]+/g)) {
+				for (const cell of row.matchAll(/[^\s|│┃║]+/g)) {
 					const cs = cell.index;
 					const ce = cs + cell[0].length;
 					if (ce <= hs - 2 || cs >= he + 2) continue;
@@ -2444,6 +2449,9 @@ function columnTables(text: string, out: Finding[]) {
 	}
 }
 
+/** A value key as a word (`value:`, `data =`, `content="…"`): what siblingPairs needs in a text to have anything to read. */
+const PAIR_VALUE_WORD = new RegExp(String.raw`\b${PAIR_VALUE.source.slice(1, -1)}\b`, "i");
+
 /** A type as a declaration writes it after a field's name (Go's built-in types, a package's type: `time.Duration`). */
 const DECLARED_TYPE =
 	/^(?:string|bool|byte|rune|error|any|int(?:8|16|32|64)?|uint(?:8|16|32|64|ptr)?|float(?:32|64)|complex(?:64|128)|func|map|chan|interface|struct|[a-z][a-z0-9]*\.[A-Z]\w*)$/;
@@ -2470,7 +2478,7 @@ function javaProperties(text: string, out: Finding[]) {
  * the same way wherever it is written.)
  */
 function siblingPairs(text: string, out: Finding[]) {
-	if (!/value|SecretString/i.test(text)) return;
+	if (!PAIR_VALUE_WORD.test(text)) return;
 	type Attr = { key: string; value: string; start: number; quoted: boolean; line: number; indent: number };
 	const attrs: Attr[] = [];
 	let line = 0;
@@ -2506,8 +2514,9 @@ function siblingPairs(text: string, out: Finding[]) {
 	attrs.sort((a, b) => a.start - b.start);
 	for (let i = 0; i < attrs.length; i++) {
 		const named = attrs[i];
-		// (An HTML input's `type="password"` names its value as `name=` does: `<input type="password" value="…">`.)
-		const passwordInput = /^type$/i.test(named.key) && /^password$/i.test(named.value);
+		// (An HTML input's `type="password"` names its value as `name=` does: `<input type="password" value="…">`. A `type`
+		// is read only when it is `password`.)
+		const passwordInput = /^type$/i.test(named.key);
 		if (!PAIR_NAME.test(named.key) && !passwordInput) continue;
 		const credential = passwordInput
 			? "password"
@@ -2764,7 +2773,6 @@ function prose(text: string, out: Finding[]) {
 			(/\?$/.test(value) ||
 				/^[a-z]+ed(?:\/[a-z]+ed)*$/.test(bare) ||
 				/^[[(<{].*[\])>}]$/.test(value) ||
-				/^\d+-\d+$|^(?:min|max)\.?$/i.test(value) ||
 				!isProseValue(value))
 		)
 			continue;
@@ -2797,7 +2805,7 @@ function prose(text: string, out: Finding[]) {
 			const after = text.slice(start + value.length, start + value.length + 40);
 			// (A digit or a symbol makes it one; a letter outside ASCII doesn't: `confirm_password: Potwierdź moje konto`.)
 			// (Or the object around it closes after it, `{user: svc, password: acez}`, and it's no test word or ordinary word.)
-			const closed = /^[ \t]*[)\]}]/.test(after) && !isTestValue(value) && naturalness(value) < 0.5;
+			const closed = /^[ \t]*[)\]}]/.test(after) && naturalness(value) < 0.5;
 			if (!(
 				m[3] ||
 				closed ||
@@ -2823,15 +2831,19 @@ function prose(text: string, out: Finding[]) {
 		const k = m[2] !== undefined ? 2 : 4;
 		const value = m[k];
 		const noun = (m[1] ?? m[3]).toLowerCase();
-		// (`it is …` only for a credential just rotated: `rotated the password, new one is …`.)
+		// (`it is …` only for a credential just rotated, whichever side of its noun the verb is: `rotated the password, new
+		// one is …`, `ops reset the db password, it's … now`.)
 		// (Or a quoted value that reads as a password: ``the password instead? It's `Apple2007!` ``.)
 		if (
 			k === 4 &&
-			!/rotat|chang|reset|regenerat|replac|updat|new one/i.test(m[0]) &&
+			!/rotat|chang|reset|regenerat|replac|updat|new one/i.test(
+				text.slice(lineStartAt(text, m.index), m.indices![4]![0]),
+			) &&
 			!(/["'`*]$/.test(text.slice(m.index, m.indices![4]![0])) && /\d/.test(value) && /[^\w]/.test(value))
 		)
 			continue;
-		// (A label before the word, `Password: …`, is the label rules'.)
+		// (A word a colon joins to the one before it is a key's or a format's, not a sentence's: pulumi's `db:pw`, the
+		// `username:password` of a .pgpass header, whose next line `\s+` would read as the value.)
 		if (
 			!value ||
 			/:\/\/|\\/.test(value) ||
@@ -2863,7 +2875,7 @@ function prose(text: string, out: Finding[]) {
 			/^pass(?:es|ed)?$/i.test(name) ||
 			(!/\p{L}/u.test(value) && !digits) ||
 			!isCredentialName(name) ||
-			!isProseValue(value) ||
+			(!digits && !isProseValue(value)) ||
 			isCode(value, true) ||
 			/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2,}$/.test(value)
 		)
@@ -2885,19 +2897,14 @@ function prose(text: string, out: Finding[]) {
 
 /**
  * Whether a value a sentence gives (`the password is …`, `pass (…)`, `**Password:** …`, `密码：…`) can be a secret: not a
- * word a sentence goes on with or a common one, an algorithm's name, code that prose names (PROSE_CODE), or anything
- * else a literal secret never looks like. Sentence punctuation after it isn't part of it. Each rule adds its own terms.
+ * word a sentence goes on with or a common one, code that prose names (PROSE_CODE), or anything else a literal secret
+ * never looks like. Sentence punctuation after it isn't part of it. Each rule adds its own terms. (Values never secret
+ * whatever names them, an algorithm's name, a range, a count, are policy.ts's, for every rule that reads by name.)
  */
 function isProseValue(value: string): boolean {
 	const v = value.replace(/[.,;:!?)]+$/, "");
 	const lower = v.toLowerCase();
-	return (
-		!PROSE_WORDS.has(lower) &&
-		!COMMON_WORDS.has(lower) &&
-		!ALGORITHM.test(v) &&
-		!PROSE_CODE.test(v) &&
-		looksSecret(`"${v}"`, true)
-	);
+	return !PROSE_WORDS.has(lower) && !COMMON_WORDS.has(lower) && !PROSE_CODE.test(v) && looksSecret(`"${v}"`, true);
 }
 
 /**
@@ -3259,9 +3266,10 @@ function passphraseEnd(text: string, start: number, end: number): number {
 
 /**
  * A value as prose writes it: no spaces, up to its closing quote or emphasis, sentence punctuation, a blank, a closing
- * tag (`is **X**.`, `<p>… is X.</p>`) or an escaped line break (`… if -force is specified\n\` in a string).
+ * tag (`is **X**.`, `<p>… is X.</p>`) or an escaped line break (`… if -force is specified\n\` in a string). Not one in
+ * parentheses, `set the password (self.pw) first`, `the password (required*)`: that is prose's own reading of `name (value)`.
  */
-const PROSE_VALUE = String.raw`["'\x60*]{0,2}${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:\s|$|<\/[a-zA-Z]|\\[nrt])`)}["'\x60*]{0,2}`;
+const PROSE_VALUE = String.raw`["'\x60*]{0,2}(?!\()${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:\s|$|<\/[a-zA-Z]|\\[nrt])`)}["'\x60*]{0,2}`;
 
 /**
  * Credentials named in prose with words in between, and in Markdown labels:

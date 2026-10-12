@@ -341,6 +341,12 @@ test("a Cisco type-5 hash is kept", () => {
 	assert.equal(r().redact(t).text, t);
 });
 
+test("a client SDK's key written as prose writes a pair is the SDK's public key", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	const t = "mixpanel.init(token: Kx9mQ2vL7pRt4Nw8Yz3aBcDe)";
+	assert.equal(off.redact(t).text, t);
+});
+
 test("a value in an encryption wrapper is ciphertext, under any name", () => {
 	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
 	for (const value of [

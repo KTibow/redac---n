@@ -193,3 +193,40 @@ test("a random token beside a cookie's name is its value, not a listing's file",
 	const sid = `g.a000${b62(60)}`;
 	hidden(`__Secure-1PSID\t${sid}`, sid);
 });
+
+test("a box-drawn table's rules and bars are a table's, in every style", () => {
+	for (const t of [
+		"┌───────┬──────────────┐\n│ User  │ Password     │\n├───────┼──────────────┤\n│ alice │ Kx9mQ2vL7p!  │\n├───────┼──────────────┤\n│ bob   │ Hq3#mQ2vL9z  │\n└───────┴──────────────┘",
+		"┏━━━━━━━┳━━━━━━━━━━━━━━┓\n┃ User  ┃ Password     ┃\n┡━━━━━━━╇━━━━━━━━━━━━━━┩\n│ alice │ Kx9mQ2vL7p!  │\n│ bob   │ Hq3#mQ2vL9z  │\n└───────┴──────────────┘",
+		"╔═══════╦══════════════╗\n║ User  ║ Password     ║\n╠═══════╬══════════════╣\n║ alice ║ Kx9mQ2vL7p!  ║\n║ bob   ║ Hq3#mQ2vL9z  ║\n╚═══════╩══════════════╝",
+	]) {
+		hidden(t, "Kx9mQ2vL7p!");
+		hidden(t, "Hq3#mQ2vL9z");
+	}
+});
+
+test("a fixed-width table ends at a blank line or a prompt, and the next header starts its own", () => {
+	// (`kubectl get serviceaccounts`: a count under SECRETS; the next command's token names under another's TOKEN.)
+	kept("NAME      SECRETS   AGE\ndefault   1         13d\nbuilder   2         13d", "default   1         13d");
+	kept(
+		"NAME        TOKEN\nci-bot      Kx9mQ2vL7pRt4Nw8Yz3a\n$ kubectl get secrets\nNAME                   TYPE   DATA   AGE\ndefault-token-6wnx5    kubernetes.io/service-account-token   3      44m",
+		"default-token-6wnx5",
+	);
+	hidden("NAME      STATUS\nweb       running\nUSER      PASSWORD\nalice     Kx9mQ2vL7p!", "Kx9mQ2vL7p!");
+	// (A cell wider than its header, `doctl`'s URI, leaves the cells after it off their headers' columns: read by index.)
+	hidden(
+		"ID    Name    URI                                         Password\n1     web     postgresql://db-postgresql-nyc1-12345.b.db.ondigitalocean.com:25060/defaultdb   Harbor-2291.x",
+		"Harbor-2291.x",
+	);
+});
+
+test("delimited tables end at a blank line, and a cookie table's flags are no session", () => {
+	hidden("Name,Value\ntheme,dark\n\nusername,password\nalice,Kx9mQ2vL7p!", "Kx9mQ2vL7p!");
+	kept("user,password\nalice,Kx9mQ2vL7p!\n\nregion,bucket\nus-east-1,my-app-assets-2024", "my-app-assets-2024");
+	kept("Name,Value,Domain\nremember_web,true,example.com\ntheme,dark,example.com", "remember_web,true,");
+});
+
+test("a dotted setting and its value apart by blanks are no listing of file names", () => {
+	hidden("auth.password    Tr0ub-4dor&3", "Tr0ub-4dor&3");
+	kept("cron.daily  passwd-  sudo.conf", "passwd-");
+});
