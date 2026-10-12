@@ -466,16 +466,22 @@ def main():
             spans = 0
             chars = 0
             damage = 0
+            # Each redaction's value and the text before it on its line, for report.ts to sort by what was redacted.
+            redactions = []
             for fid in files:
                 ss = [x for r in sp if fid in r for x in r[fid].spans]
                 m = merge(ss)
                 spans += len(m)
                 chars += sum(b - a for a, b in m)
+                text = files[fid][1]
+                for x, y in m:
+                    line_start = text.rfind("\n", 0, x) + 1
+                    redactions.append([text[x:y][:500], text[max(line_start, x - 200):x]])
             for r in sp:
                 for s in r.values():
                     damage += sum(shape_of(v) != "other" for v in s.values)
             log(f"{name:34s} {nf / mb:12.2f} {spans / mb:10.2f} {100 * chars / nchars:7.3f}% {damage / mb:19.3f}")
-            summary["real"][name] = {"mb": mb, "findings": nf, "spans": spans, "chars": chars, "damage": damage}
+            summary["real"][name] = {"mb": mb, "findings": nf, "spans": spans, "chars": chars, "damage": damage, "redactions": redactions}
 
     log("\n## runtime (wall seconds, includes process start and result parsing)")
     cols = sorted({k for v in runtimes.values() for k in v})

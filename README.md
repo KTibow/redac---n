@@ -39,12 +39,15 @@ look-alikes.
 | all seven scanners combined | 84.2% | 28.6% | 51.4 |
 | CredSweeper, the best single scanner | 70.1% | 15.2% | 11.6 |
 
-![Redactions per million characters of ordinary text, redac---n against the same scanners](docs/real-text.svg)
+![Redactions per million characters of ordinary text, redac---n against the same scanners, each bar split into credential-shaped values, hashes and IDs, words and placeholders, and the rest](docs/real-text.svg)
 
 On ordinary text with almost no secrets in it (agent trajectories and repositories it never saw), it redacts less
 than Betterleaks, CredSweeper, Nosey Parker and detect-secrets; the scanners that redact less catch 39–55% of
-secrets. It can also do something they can't: told which command or file the text came from, it reads what
-`cat .env` printed as a secret file, and knows that `cat .env | wc -l` printed only a number.
+secrets. Each bar is split by what was redacted, every tool's redactions sorted by one rule
+([eval/shapes.ts](eval/shapes.ts)): most of what Betterleaks and Nosey Parker hide is ordinary words, most of what
+detect-secrets and CredSweeper hide is hashes and IDs, and about half of redac---n's is credential-shaped. It can also
+do something they can't: told which command or file the text came from, it reads what `cat .env` printed as a secret
+file, and knows that `cat .env | wc -l` printed only a number.
 
 It isn't a guarantee: about one secret in fourteen still gets through, mostly short values with no name or format
 next to them. See [what it misses](#what-it-misses).

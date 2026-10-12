@@ -16,7 +16,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } 
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Redactor, type Guessing } from "../src/index.ts";
-import { DAMAGE, shapeOf } from "./shapes.ts";
+import { DAMAGE, REDACTION_KINDS, redactionKind, shapeOf } from "./shapes.ts";
 import { loadCases, scoreCase, summarize, type CaseResult } from "./score.ts";
 import { CORPORA } from "./data-root.ts";
 import { Args } from "./args.ts";
@@ -62,6 +62,15 @@ interface Bar {
 	perMB: number;
 	damagePerMB: number;
 	ours: boolean;
+	/** Redactions per MB of each kind (shapes.ts REDACTION_KINDS), when the redactions are known. */
+	kinds?: number[];
+}
+
+/** How many of `redactions` ([value, the text before it on its line]) are of each kind, per MB. */
+function kindsPerMB(redactions: [string, string][], mb: number): number[] {
+	const n = REDACTION_KINDS.map(() => 0);
+	for (const [value, before] of redactions) n[REDACTION_KINDS.indexOf(redactionKind(value, before))]++;
+	return n.map((k) => k / mb);
 }
 
 // ---------------------------------------------------------------- numbers
@@ -95,17 +104,26 @@ if (args.flag("cached") && existsSync(cacheFile)) {
 		let chars = 0;
 		let spans = 0;
 		let damage = 0;
+		const redactions: [string, string][] = [];
 		for await (const line of createInterface({ input: createReadStream(realFile) })) {
 			const { text } = JSON.parse(line) as { text: string };
 			chars += text.length;
 			for (const f of r.detect(text)) {
 				spans++;
 				if (DAMAGE.has(shapeOf(text.slice(f.start, f.end)))) damage++;
+				const lineStart = text.lastIndexOf("\n", f.start - 1) + 1;
+				redactions.push([text.slice(f.start, f.end), text.slice(Math.max(lineStart, f.start - 200), f.start)]);
 			}
 		}
 		const mb = chars / 1e6;
 		oursReal[guessing] = { mb, spans, damage };
-		bars.push({ name: `redac---n guessing ${guessing}`, perMB: spans / mb, damagePerMB: damage / mb, ours: true });
+		bars.push({
+			name: `redac---n guessing ${guessing}`,
+			perMB: spans / mb,
+			damagePerMB: damage / mb,
+			ours: true,
+			kinds: kindsPerMB(redactions, mb),
+		});
 	}
 }
 
@@ -114,7 +132,10 @@ interface Baselines {
 		string,
 		Record<string, Record<string, { caught: number; secrets: number; lost: number; keeps: number }>>
 	>;
-	real: Record<string, { mb: number; findings: number; spans: number; chars: number; damage: number }>;
+	real: Record<
+		string,
+		{ mb: number; findings: number; spans: number; chars: number; damage: number; redactions?: [string, string][] }
+	>;
 }
 const baselines: Baselines | undefined = existsSync(baselinesFile)
 	? JSON.parse(readFileSync(baselinesFile, "utf8"))
@@ -136,7 +157,13 @@ if (baselines) {
 		);
 	}
 	for (const [name, v] of Object.entries(baselines.real))
-		bars.push({ name, perMB: v.spans / v.mb, damagePerMB: v.damage / v.mb, ours: false });
+		bars.push({
+			name,
+			perMB: v.spans / v.mb,
+			damagePerMB: v.damage / v.mb,
+			ours: false,
+			kinds: v.redactions ? kindsPerMB(v.redactions, v.mb) : undefined,
+		});
 }
 
 function pct(x: number, digits = 1) {
@@ -149,6 +176,7 @@ const FONT = `system-ui, -apple-system, "Segoe UI", sans-serif`;
 // Plain class rules (no CSS variables, which some SVG renderers ignore); dark mode by media query.
 const STYLE = `<style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
 .ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
 text { font-family: ${FONT}; fill: #52514e; font-size: 12px; }
 .title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
@@ -156,6 +184,7 @@ text { font-family: ${FONT}; fill: #52514e; font-size: 12px; }
 .ours { fill: #0b0b0b; font-weight: 600; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .k0 { fill: #3987e5; } .k1 { fill: #d95926; } .k2 { fill: #199e70; } .k3 { fill: #5e5d58; } .gap { stroke: #1a1a19; }
   .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
   text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
 }
@@ -288,9 +317,11 @@ function scatter(points: Point[], title: string, sub: string): string {
 	return out.join("\n");
 }
 
-/** Redactions per MB on real text, one horizontal bar per scanner, sorted. */
+/** Redactions per MB on real text, one horizontal bar per scanner, sorted, each split by what it redacted when known. */
 function barChart(bars: Bar[], title: string, sub: string): string {
 	const sorted = [...bars].sort((a, b) => a.perMB - b.perMB);
+	// (Split by kind when every bar's redactions are known.)
+	const split = sorted.every((b) => b.kinds);
 	const W = 760;
 	const rowH = 26;
 	const labelW = Math.max(...sorted.map((b) => textWidth(labelOf(b.name, b.ours)))) + 16;
@@ -328,21 +359,43 @@ function barChart(bars: Bar[], title: string, sub: string): string {
 		// Bar anchored square on the baseline, 4px rounding on the data end only.
 		const h = rowH - 10;
 		const r = Math.min(4, w);
-		out.push(
-			`<path d="M${m.l},${cy - h / 2} h${w - r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 -${r},${r} h-${w - r} z" class="${fill}"><title>${esc(`${b.name}: ${b.perMB.toFixed(2)} per MB`)}</title></path>`,
-		);
+		const end = (x0: number, wd: number, cls: string, tip: string) =>
+			`<path d="M${x0},${cy - h / 2} h${wd - r} a${r},${r} 0 0 1 ${r},${r} v${h - 2 * r} a${r},${r} 0 0 1 -${r},${r} h-${wd - r} z" class="${cls}"><title>${esc(tip)}</title></path>`;
+		if (!split || !b.kinds) out.push(end(m.l, w, fill, `${b.name}: ${b.perMB.toFixed(2)} per MB`));
+		else {
+			// Each kind a segment, in REDACTION_KINDS's order, a 2px gap of the surface between them.
+			let at = 0;
+			const last = b.kinds.findLastIndex((k) => k > 0);
+			b.kinds.forEach((k, i) => {
+				if (k <= 0) return;
+				const x0 = x(at);
+				const wd = Math.max(1, x(at + k) - x0);
+				const tip = `${b.name}: ${REDACTION_KINDS[i]}, ${k.toFixed(2)} per MB`;
+				out.push(
+					i === last && wd > r
+						? end(x0, wd, `k${i} gap`, tip)
+						: `<rect x="${x0}" y="${cy - h / 2}" width="${wd}" height="${h}" class="k${i} gap"><title>${esc(tip)}</title></rect>`,
+				);
+				at += k;
+			});
+		}
 		out.push(
 			`<text class="tick" x="${m.l + w + 6}" y="${cy + 4}">${b.perMB < 10 ? b.perMB.toFixed(1) : Math.round(b.perMB)}</text>`,
 		);
 	});
 	out.push(`<line class="axis" x1="${m.l}" x2="${m.l}" y1="${m.t - 4}" y2="${m.t + sorted.length * rowH}"/>`);
-	// The legend, top right: the shortest bars come first, so that corner is empty.
-	const legendW = Math.max(...LEGEND.map(([, n]) => textWidth(n))) + 22;
-	LEGEND.forEach(([cls, n], i) => {
+	// The legend, top right: the shortest bars come first, so that corner is empty. Split bars: the kinds, and the
+	// bold labels for redac---n.
+	const legend: readonly (readonly [string, string])[] = split
+		? [...REDACTION_KINDS.map((k, i) => [`k${i}`, k] as const), ["", "bold: redac---n"]]
+		: LEGEND;
+	const legendW = Math.max(...legend.map(([, n]) => textWidth(n))) + 22;
+	legend.forEach(([cls, n], i) => {
 		const lx = W - m.r - legendW;
 		const ly = m.t + 14 + i * 20;
 		out.push(
-			`<rect x="${lx}" y="${ly - 10}" width="12" height="12" rx="3" class="${cls}"/><text x="${lx + 18}" y="${ly}"${cls === "accent" ? ` class="ours"` : ""}>${n}</text>`,
+			(cls ? `<rect x="${lx}" y="${ly - 10}" width="12" height="12" rx="3" class="${cls}"/>` : "") +
+				`<text x="${lx + 18}" y="${ly}"${cls === "accent" || !cls ? ` class="ours"` : ""}>${n}</text>`,
 		);
 	});
 	out.push(`</svg>`);
