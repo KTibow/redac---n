@@ -338,3 +338,55 @@ test("a key's label above its PEM block, a placeholder naming its variable, a ha
 	hidden("ENCRYPTION_KEY=Hx7mQ2pL9vRt4wZkLq8s", "Hx7mQ2pL9vRt4wZkLq8s");
 	hidden("password_encryption = Hx7mQ2pL9vRt", "Hx7mQ2pL9vRt");
 });
+
+test("references in other languages' syntax are kept: PowerShell's environment, PHP's variables run together", () => {
+	kept("#      arguments: -ConfigFile $(Build.SourcesDirectory)/NuGet.config -Password $Env:Token", "$Env:Token");
+	kept('      $accessTokenParameter="?access_token=$($env:HelixApiAccessToken)"', "$($env:HelixApiAccessToken)");
+	kept("token=${env:API_TOKEN}", "${env:API_TOKEN}");
+	const php =
+		'  $nvpreq = "METHOD=$methodName_&PWD=$API_Password&USER=$API_UserName&SIGNATURE=$API_Signature$nvpStr_";';
+	kept(php, "$API_Password");
+	kept(php, "$API_Signature$nvpStr_");
+	// The same places with a credential in them are read as before.
+	hidden("-Password Hx7mQ2pL9vRt4", "Hx7mQ2pL9vRt4");
+	hidden('$env:DB_PASSWORD = "Hx7mQ2pL9vRt4"', "Hx7mQ2pL9vRt4");
+	hidden('$nvpreq = "METHOD=$methodName_&PWD=$Hx7mQ2pLvRtq&USER=$API_UserName";', "$Hx7mQ2pLvRtq");
+	hidden('$nvpreq = "METHOD=$methodName_&PWD=Hx7m$Q2pL9vRt4&USER=$API_UserName";', "Hx7m$Q2pL9vRt4");
+});
+
+test("code around a credential's name: a subexpression, a sigil's variable, a call over lines, a null compared", () => {
+	kept(
+		"Set-ADAccountPassword -Identity $u -NewPassword (ConvertTo-SecureString $pw -AsPlainText -Force)",
+		"(ConvertTo",
+	);
+	kept('@key=map("%ymm$_",(16..31));', 'map("%ymm$_",(16..31));');
+	kept('            ],\n        ),\n        MasterUserPassword=Join(\n            "",', "Join(");
+	kept("        dataSource.setPassword(password2==null?password:password2);", "null?password:password2");
+	// The same places with a credential in them are read as before.
+	hidden("New-MachineAccount -Password $(ConvertTo-SecureString 'Hx7mQ2pL9vRt4' -AsPlainText -Force)", "Hx7mQ2pL9vRt4");
+	hidden('$password = "Hx7mQ2pL9vRt4";', "Hx7mQ2pL9vRt4");
+	hidden("$DB_PASSWORD=Hx7mQ2pL9vRt4", "Hx7mQ2pL9vRt4");
+	hidden('        ),\n        MasterUserPassword="Hx7mQ2pL9vRt4",', "Hx7mQ2pL9vRt4");
+	hidden("        ),\n        MasterUserPassword=Hx7mQ2pL9vRt4(", "Hx7mQ2pL9vRt4");
+	hidden('if (password == "Hx7mQ2pL9vRt4") {', "Hx7mQ2pL9vRt4");
+});
+
+test("a password hasher's name and a word in any script are no credentials", () => {
+	kept("        encoded_weak_salt = make_password('lètmein', 'iodizedsalt', 'pbkdf2_sha256')", "pbkdf2_sha256");
+	kept("hasher: sha512_crypt", "sha512_crypt");
+	const tr = "Tam güvenlik için, Aria2'yi başlatırken (--rpc-secret bayrağını kullanın) ve bir yetkilendirme";
+	kept(`"${tr}",`, "bayrağını");
+	// The same places with a credential in them are read as before.
+	hidden("user.set_password('Hx7mQ2pL9vRt4')", "Hx7mQ2pL9vRt4");
+	hidden("aria2c --rpc-secret Hx7mQ2pL9vRt4wZk", "Hx7mQ2pL9vRt4wZk");
+});
+
+test("a query string's value ends at its next pair, percent-encoded too; a password's own & doesn't end it", () => {
+	const base =
+		'\t\tString baseString = "POST&http%3A%2F%2Flocalhost%3A8080%2Fsparklr%2Fphoto%2F1&oauth_consumer_key%3Dtonr-consumer-key%26oauth_nonce%3D0df9f35f%26oauth_timestamp%3D1204899002%26oauth_version%3D1.0";';
+	kept(base, "oauth_nonce%3D0df9f35f%26oauth_timestamp%3D1204899002%26oauth_version%3D1.0");
+	const key = b62(24);
+	hidden(`oauth_consumer_key=tonr-consumer-key&oauth_nonce=0df9f35f&oauth_token=${key}`, key);
+	hidden(`API_KEY=${key}&foo=bar`, key);
+	hidden("DB_PASSWORD=Tr0ub4dor&3horse", "Tr0ub4dor&3horse");
+});

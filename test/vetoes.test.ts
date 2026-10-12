@@ -91,6 +91,11 @@ const SAMPLES: [reason: string, text: string, token: string][] = [
 	["model-name", "ollama pull diffusiongemma-26B-A4B-it-GGUF", "diffusiongemma-26B-A4B-it-GGUF"],
 	["number", "#define SEED 0x1f911b719147c712ull", "0x1f911b719147c712ull"],
 	["local-part", "Message-ID: <CAOSkx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud@mail.gmail.com>", "CAOSkx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud"],
+	[
+		"local-part",
+		"https://public-inbox.org/git/CAPig+kx9mQ2vL7pZrTq8Wn3Xc4Y=b5Va6UdTe8Sf9Rg@mail.gmail.com/t/",
+		"CAPig+kx9mQ2vL7pZrTq8Wn3Xc4Y",
+	],
 	["local-part", '"to": "ExponentPushToken[Kx9mQ2vL7pZrTq8Wn3Xc4Y]"', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	[
 		"sql-row",
@@ -134,6 +139,7 @@ const NOT: [reason: string, text: string, token: string][] = [
 	// A URL's userinfo is a password or a token, not an email's local part.
 	["local-part", "git clone https://oauth2:kT9xQ2mZpL4vRw8nBc3JeH7s@gitlab.com/x.git", "kT9xQ2mZpL4vRw8nBc3JeH7s"],
 	["local-part", "git push https://kT9xQ2mZpL4vRw8nBc3JeH7s@github.com/o/r.git", "kT9xQ2mZpL4vRw8nBc3JeH7s"],
+	["local-part", "git push https://kT9xQ2mZpL4vRw8nBc3JeH7s=x9@github.com/o/r.git", "kT9xQ2mZpL4vRw8nBc3JeH7s"],
 	// Only a bare `key` names an object or a cache key; a `token` or a `secret` names a credential.
 	["bare-key-hash", "token=acme_9f86d081884c7d659a2feaa0c55ad015", "acme_9f86d081884c7d659a2feaa0c55ad015"],
 	[

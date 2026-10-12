@@ -706,12 +706,13 @@ const VETOES: Veto[] = [
 		"test-output",
 		(f) => /::test\w*\[$/.test(f.ctx.left) || /\b(?:Expected|Received)(?: value)?:[ \t]*["']?$/.test(f.ctx.left),
 	],
-	// The local part of an email address or Message-ID (`<CAOS…@mail.gmail.com>`), a push token's body. (Not a URL's
-	// userinfo, `https://<token>@host`: a password or a token there.)
+	// The local part of an email address or Message-ID (`<CAOS…@mail.gmail.com>`, its first piece when an `=` in it
+	// split it, `CAPig+…=JtAj…@mail.gmail.com`), a push token's body. (Not a URL's userinfo, `https://<token>@host`: a
+	// password or a token there.)
 	[
 		"local-part",
 		(f) =>
-			(/^@/.test(f.ctx.right) && !/:\/\/[^\s/@]*$/.test(f.ctx.left)) ||
+			(/^(?:=[\w+=.-]*)?@/.test(f.ctx.right) && !/:\/\/[^\s/@]*$/.test(f.ctx.left)) ||
 			/ExponentPushToken\[$|ExpoPushToken\[$/.test(f.ctx.left),
 	],
 	// An Android app's signature hash in MSAL's redirect URI (`msauth://com.contoso.app/<base64 SHA-1>`, encoded or in

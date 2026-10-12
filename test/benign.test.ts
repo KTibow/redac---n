@@ -52,6 +52,9 @@ const BENIGN = [
 	"md5$$",
 	"github.com/hashicorp/go-secure-stdlib/password",
 	"bcrypt$",
+	"pbkdf2_sha256",
+	"sha512_crypt",
+	"null?password:password2",
 	String.raw`\x2B\x06\x01\x05\x05\x07\x03\x01`,
 ];
 const NAMES = ["password", "pass", "passwd", "secret", "token", "api_key", "key", "DB_PASSWORD", "apiKey"];

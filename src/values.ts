@@ -230,6 +230,21 @@ const PLACEHOLDER_MARKERS = new Set([
 	"fill",
 ]);
 
+/**
+ * A PHP variable's name, without its `$`: it reads as words, its capitals few (`loginPass`) or each of its parts in a
+ * word's case (`API_Password`); `XkPqWm` is random.
+ */
+function isPhpVariableName(name: string): boolean {
+	return (
+		naturalness(name) > 0 &&
+		((name.slice(1).match(/[A-Z]/g)?.length ?? 0) <= 2 ||
+			name
+				.split("_")
+				.filter(Boolean)
+				.every((part) => WORD_CASE.test(part)))
+	);
+}
+
 /** A name as a template or a tool writes one: an identifier path whose parts read as names (`db.password`, `DB_PASS`). */
 const isRefName = (name: string) => /^[A-Za-z_][\w.:-]*$/.test(name) && isNameLike(name);
 
@@ -272,17 +287,19 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			),
 	],
 	["path", isPath],
-	// `${NAME}`, `${NAME:-default}`, Spring's `${NAME:default}`, `%{NAME}`, `@{NAME}`, `$NAME`, `%NAME%`. (A default
-	// is a value of its own, read by named.ts.)
+	// `${NAME}`, `${NAME:-default}`, Spring's `${NAME:default}`, `%{NAME}`, `@{NAME}`, `$NAME`, `%NAME%`; PowerShell's
+	// environment, `$env:NAME`, `${env:NAME}`, `$($env:NAME)`. (A default is a value of its own, read by named.ts.)
 	[
 		"variable",
 		(v) => {
 			const m = /^[$%@&]\{([\w.-]{1,80})(?:(?::?[-?=+]|:)[^}]{0,80})?\}$/.exec(v);
+			const ps = /^\$(?:env:([A-Za-z_]\w{0,80})|\{env:([A-Za-z_]\w{0,80})\}|\(\$env:([A-Za-z_]\w{0,80})\))$/i.exec(v);
 			// (A long name reads as words: `$rqcy7duhdjbjv` is a password.)
 			const reads = (name: string) => name.length <= 8 || naturalness(name.replace(/[_.-]+/g, " ")) > 0;
 			// (Lower case with digits closing it reads as a password: `$summer2024`, not `$db_pass2`.)
 			return (
 				(!!m && isRefName(m[1])) ||
+				(!!ps && isRefName(ps[1] ?? ps[2] ?? ps[3])) ||
 				(/^\$(?:[A-Z_][A-Z0-9_]{0,80}|[a-z_][a-z0-9_]{0,80}|\d)$/.test(v) &&
 					reads(v.slice(1)) &&
 					!/^\$[a-z]+\d{2,}$/.test(v)) ||
@@ -291,13 +308,12 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			);
 		},
 	],
-	// `$loginPass`, `{$pwd}`, `$this->passwd`, `$cfg['db']['pass']` (mixed case only without digits: `$Secr3t` is a password).
+	// `$loginPass`, `$API_Password`, `{$pwd}`, `$this->passwd`, `$cfg['db']['pass']` (mixed case only without digits:
+	// `$Secr3t` is a password); run together, as PHP interpolates them: `SIGNATURE=$API_Signature$nvpStr_`.
 	[
 		"PHP variable",
 		(v) =>
-			(/^\$[A-Za-z_][A-Za-z_]{0,80}$/.test(v) &&
-				naturalness(v.slice(1)) > 0 &&
-				(v.slice(2).match(/[A-Z]/g)?.length ?? 0) <= 2) ||
+			(/^(?:\$[A-Za-z_][A-Za-z_]{0,80}){1,4}$/.test(v) && v.split("$").slice(1).every(isPhpVariableName)) ||
 			/^\{\$\w+(?:->\w+|\[[^\]]{1,40}\])*\}$|^\$\w+(?:->\w+)+$/.test(v),
 	],
 	// `$(cat f)`, `$((pass+1))`, `$$(cat f)` (Make), `` `cmd` ``; or opening with a command's name, read up to an inner
@@ -831,15 +847,17 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 			),
 	],
 	// `Get-Content .\\secrets.txt`, `ConvertTo-SecureString $pw -AsPlainText`: the cmdlet, before its arguments (alone,
-	// only where code is written: `DB_PASSWORD=Copy-Paste` is a password).
+	// only where code is written: `DB_PASSWORD=Copy-Paste` is a password), or opening a subexpression, which says code
+	// anywhere: `-Password (ConvertTo-SecureString`, as a flag's value is cut at its blank.
 	[
 		"a PowerShell cmdlet",
-		(v, literal) =>
-			/^(?:Get|Set|New|Remove|ConvertTo|ConvertFrom|Invoke|Start|Stop|Write|Read|Test|Add|Import|Export|Out|Select|Where|ForEach|Format|Join|Split|Resolve|Enter|Exit|Measure|Sort|Group|Update|Register|Enable|Disable|Install|Restart|Wait|Clear|Copy|Move|Rename|Compare|Find|Save|Send|Receive|Connect|Protect|Unprotect)-[A-Z][A-Za-z]+(?:$|[ \t]+[-$.\\"'A-Za-z])/.test(
-				v,
-			) &&
-			(!literal || /[ \t]/.test(v)) &&
-			readsAsWords(v.split(/[ \t]/)[0]),
+		(v, literal) => {
+			const m =
+				/^(\$?\()?((?:Get|Set|New|Remove|ConvertTo|ConvertFrom|Invoke|Start|Stop|Write|Read|Test|Add|Import|Export|Out|Select|Where|ForEach|Format|Join|Split|Resolve|Enter|Exit|Measure|Sort|Group|Update|Register|Enable|Disable|Install|Restart|Wait|Clear|Copy|Move|Rename|Compare|Find|Save|Send|Receive|Connect|Protect|Unprotect)-[A-Z][A-Za-z]+)(?:$|[ \t]+[-$.\\"'A-Za-z])/.exec(
+					v,
+				);
+			return !!m && (!literal || !!m[1] || /[ \t]/.test(v)) && readsAsWords(m[2]);
+		},
 	],
 	// `user != null ? user.password : ""`, `cfg.pw == nil`, `$this -> password` (`or` and `and` only where code is written).
 	[
@@ -1174,9 +1192,12 @@ export function characterClasses(value: string): number {
 	return [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9\s]/].filter((r) => r.test(value)).length;
 }
 
-/** Names of algorithms, encodings and formats that sentences about credentials mention: `password (UTF-8)`, `SHA-256`. */
+/**
+ * Names of algorithms, encodings and formats that sentences about credentials mention: `password (UTF-8)`, `SHA-256`;
+ * and password hashers as libraries name them: Django's `pbkdf2_sha256`, `bcrypt_sha256`, passlib's `sha512_crypt`.
+ */
 export const ALGORITHM =
-	/^(?:SHA-?(?:1|224|256|384|512)(?:\/\d{3})?|SHA3-\d{3}|AES-?(?:128|192|256)(?:-[A-Z]{2,4})?|RSA-?(?:1024|2048|3072|4096)|MD[245]|3?DES|HMAC-SHA-?(?:1|256|384|512)|PBKDF2|ECDSA|Ed(?:25519|448)|X(?:25519|448|509)|UTF-?(?:8|16|32)(?:LE|BE)?|UCS-?[24]|PKCS#?(?:1|5|7|8|11|12)|IPv[46]|ChaCha20(?:-Poly1305)?|TLSv?1\.[0-3]|SSLv[23]|ISO-8859-\d{1,2}|Windows-125\d|Latin-?\d|CP\d{3,4}|RFC-?\d{3,5}|base(?:32|58|64)(?:url)?|hex|bcrypt|argon2(?:id|i|d)?|scrypt|\d+-(?:stellig|chiffres|caracteres|digits?|characters?))(?:-(?:encoded|decoded|encrypted))?$/i;
+	/^(?:SHA-?(?:1|224|256|384|512)(?:\/\d{3})?|SHA3-\d{3}|AES-?(?:128|192|256)(?:-[A-Z]{2,4})?|RSA-?(?:1024|2048|3072|4096)|MD[245]|3?DES|HMAC-SHA-?(?:1|256|384|512)|PBKDF2(?:[-_](?:HMAC[-_])?SHA-?(?:1|224|256|384|512))?|(?:md5|sha1|sha256|sha512)_crypt|ECDSA|Ed(?:25519|448)|X(?:25519|448|509)|UTF-?(?:8|16|32)(?:LE|BE)?|UCS-?[24]|PKCS#?(?:1|5|7|8|11|12)|IPv[46]|ChaCha20(?:-Poly1305)?|TLSv?1\.[0-3]|SSLv[23]|ISO-8859-\d{1,2}|Windows-125\d|Latin-?\d|CP\d{3,4}|RFC-?\d{3,5}|base(?:32|58|64)(?:url)?|hex|bcrypt(?:_sha256)?|argon2(?:id|i|d)?|scrypt|\d+-(?:stellig|chiffres|caracteres|digits?|characters?))(?:-(?:encoded|decoded|encrypted))?$/i;
 /** A format string's hole: `%d`, `%1$s`, `{0}`, `{{count}}`, `%{n}`. */
 const FORMAT_HOLE = /%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[sdifuxXc@]|\{\{?\s*\w*\s*\}?\}|%\{\w+\}/;
 
@@ -1291,8 +1312,11 @@ export function isBenignValue(value: string): boolean {
 				v,
 			)) ||
 		/^\[[A-Z][A-Z0-9]{1,9}-\d{1,6}\]$/.test(v) || // a ticket, `[GH-784]`, `[PROJ-1234]`
-		// A constant and the brackets that close its call or literal, read past the value: `password=None):`, `True))[:-2]`.
-		/^(?:None|True|False|null|nil|undefined)[)\]}][)\]},;:[\]\d-]*$/.test(value.trim()) ||
+		// A constant and the brackets that close its call or literal, read past the value: `password=None):`, `True))[:-2]`;
+		// or compared, a ternary's branches after it: `password2==null?password:password2`.
+		/^(?:None|True|False|null|nil|undefined)(?:[)\]}][)\]},;:[\]\d-]*|\?[\w$.]+:[\w$.]+[)\]},;]*)$/.test(
+			value.trim(),
+		) ||
 		// A regular expression: a group's construct or a character range, `(?:%s)`, `[a-zA-Z_][a-zA-Z0-9_-]*`.
 		/\(\?(?:[:=!]|<[=!])|\[\^?(?:a-z|A-Z|0-9|a-f|A-F|\\[dwsDWS])/.test(v) ||
 		/^\{[!-]?[A-Za-z_$][\w$.]*\}\/?>$/.test(value.trim()) || // a JSX attribute's expression with its tag's end, `key={idx}>`

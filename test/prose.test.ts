@@ -196,3 +196,11 @@ test("a syntax highlighter's spans between a name and its value do not hide it",
 test("password=Mot de passe* is a label", () => {
 	kept("password=Mot de passe*", "Mot de passe*");
 });
+
+test("a note after 'password' in another language, and a sentence before an escaped line break, are prose", () => {
+	kept('        "Enter the password (optional)": "Zadejte heslo (volitelné)",', "volitelné");
+	kept("\t\t\t-password (required) Optional if -force is specified\\n\\", "specified");
+	// The same places with a credential in them are read as before.
+	hidden('"Zadejte heslo (Pivo2024!)"', "Pivo2024!");
+	hidden('"The password is Hx7mQ2pL9vRt4\\nNext line"', "Hx7mQ2pL9vRt4");
+});

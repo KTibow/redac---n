@@ -391,7 +391,8 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		!(/^[A-Za-z]{16,}$/.test(value) && naturalness(value) < 1.2)
 	)
 		return false;
-	if (/^[a-z]+(?:[._-][a-z]+)*$/.test(value)) return false; // dotted.config.keys, kebab-names
+	// dotted.config.keys, kebab-names, a word in any script (`--rpc-secret bayrağını kullanın`, Turkish for "use the flag").
+	if (/^\p{Ll}+(?:[._-]\p{Ll}+)*$/u.test(value)) return false;
 	if (isGenericName(name.replace(/^[-$@]+/, ""))) {
 		// Cache keys, object keys, content addresses: hashes with words or paths around them.
 		// (Line-shaped base64 passes the test above; under a generic name a hex run with `/` is still a key path.)
@@ -760,13 +761,17 @@ function assignments(text: string, out: Finding[]) {
 		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
 		// An entry of a call or a literal written over several lines, the line before opening a bracket or ending an entry
 		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`): code, its value read as code is,
-		// not a whole-line env, YAML or INI value nor a log's pair.
+		// not a whole-line env, YAML or INI value nor a log's pair. (Its value may open a call of its own, its arguments
+		// on the lines below: `),\n  MasterUserPassword=Join(`; a callee in words, as a password ending in `(` is not.)
+		const opensCall = /^([A-Za-z_$][\w$.]*)\([ \t]*\r?$/.exec(text.slice(at, lineEndAt(text, at)))?.[1];
 		const continued =
-			entry !== undefined &&
+			(entry !== undefined || (opensCall !== undefined && readsAsWords(opensCall))) &&
 			pairQuote < 0 &&
 			/[,([{][ \t]*\r?\n$/.test(text.slice(Math.max(0, lineStart - 400), lineStart));
 		// A whole-line `NAME=value` (env, export) or YAML `key: value` runs to the end of the line, spaces included.
-		const envLine = op === "=" && m[1] === "" && tight && !continued && ENV_LINE_START.test(before);
+		// (A sigil makes the name code's variable, not an environment's or an INI file's: Perl's `@key=map(…);`.)
+		const sigil = /^[$@]/.test(m[2]);
+		const envLine = op === "=" && m[1] === "" && tight && !continued && !sigil && ENV_LINE_START.test(before);
 		const yamlLine =
 			op === ":" &&
 			!continued &&
@@ -782,6 +787,7 @@ function assignments(text: string, out: Finding[]) {
 			op === "=" &&
 			m[1] === "" &&
 			!continued &&
+			!sigil &&
 			/^[ \t]*$/.test(before) &&
 			unquoted &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
@@ -794,7 +800,7 @@ function assignments(text: string, out: Finding[]) {
 		const openParens = inLiteral ? 0 : (before.match(/\(/g)?.length ?? 0) - (before.match(/\)/g)?.length ?? 0);
 		// `SMTP_PASSWORD=x` anywhere (`heroku config:set …`, `API_KEY=x npm start`) is an env var, so a literal; and
 		// `user=root password=x` in a log line, a query string or a CLI is data.
-		const envName = op === "=" && /^[A-Z][A-Z0-9_]*$/.test(name) && tight && openParens <= 0;
+		const envName = op === "=" && /^[A-Z][A-Z0-9_]*$/.test(name) && !sigil && tight && openParens <= 0;
 		const logPair = op === "=" && m[1] === "" && tight && /[ \t]$/.test(before) && openParens <= 0;
 		const shellTest = /^===?$/.test(op) && /(?:^|\s)(?:\[\[?|test)\s/.test(before);
 		const literal =
@@ -1024,8 +1030,15 @@ function assignedValue(
 		if (comma) return [span[0], span[0] + comma.index];
 	}
 	// An unquoted env value runs to the end of the line only as words (a dotenv passphrase); on a shell line it is one
-	// shell word (`PGPASSWORD=… psql -h db`, `export MYSQL_PWD=… && mysql`).
-	return span && envLine && wholeLine ? shellWordValue(text, span) : span;
+	// shell word (`PGPASSWORD=… psql -h db`, `export MYSQL_PWD=… && mysql`). A query string's value ends at its next
+	// pair, every `&` starting one (`oauth_consumer_key=…&oauth_nonce=…`, a percent-encoded one decoded; a password's
+	// own `&` starts none, `Tr0ub4dor&3horse`).
+	if (span && envLine && wholeLine) {
+		const value = text.slice(span[0], span[1]);
+		if (/^[^&\s]+(?:&[A-Za-z_][\w.-]{1,60}=[^&\s]*)+$/.test(value)) return [span[0], span[0] + value.indexOf("&")];
+		return shellWordValue(text, span);
+	}
+	return span;
 }
 
 /** Inside a `--set` argument (helm, helmfile), after a key and its `=`: the pairs before it, then this one's key. */
@@ -2689,12 +2702,13 @@ function prose(text: string, out: Finding[]) {
 			/^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2,}$/.test(value)
 		)
 			continue;
-		// (Under a password's name a word with a digit or a symbol; under another, what that name takes.)
+		// (Under a password's name a word with a digit or a symbol, not a letter outside ASCII: Czech `heslo (volitelné)`,
+		// "password (optional)"; under another, what that name takes.)
 		const password = takesAnyWord(name);
 		const accepted =
 			digits ||
 			(password
-				? (/\d/.test(value) || /[^\w]/.test(value)) &&
+				? (/\d/.test(value) || /[^\p{L}\p{N}_]/u.test(value)) &&
 					!isLabel(value, name) &&
 					isNamedSecret("password", `"${value}"`, true)
 				: isNamedSecret(name, `"${value}"`, true));
@@ -2978,8 +2992,11 @@ function passphraseEnd(text: string, start: number, end: number): number {
 	return rest && isPassphrase([text.slice(start, end), ...rest[0].trim().split(/\s+/)]) ? end + rest[0].length : end;
 }
 
-/** A value as prose writes it: no spaces, up to its closing quote or emphasis, sentence punctuation, a blank or a closing tag (`is **X**.`, `<p>… is X.</p>`). */
-const PROSE_VALUE = String.raw`["'\x60*]{0,2}${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:\s|$|<\/[a-zA-Z])`)}["'\x60*]{0,2}`;
+/**
+ * A value as prose writes it: no spaces, up to its closing quote or emphasis, sentence punctuation, a blank, a closing
+ * tag (`is **X**.`, `<p>… is X.</p>`) or an escaped line break (`… if -force is specified\n\` in a string).
+ */
+const PROSE_VALUE = String.raw`["'\x60*]{0,2}${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:\s|$|<\/[a-zA-Z]|\\[nrt])`)}["'\x60*]{0,2}`;
 
 /**
  * Credentials named in prose with words in between, and in Markdown labels:
