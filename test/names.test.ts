@@ -17,8 +17,13 @@ import {
 	attributes,
 	continuesToken,
 	delimitedCells,
+	escapedLineStart,
+	isContraction,
+	isEscapedBreak,
 	PAIR_NAME,
 	pipeCells,
+	siblingName,
+	stringEnd,
 	withoutUnopenedClosers,
 } from "../src/syntax.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
@@ -46,6 +51,63 @@ test("NAME and VALUE sibling pairs are read in any case", () => {
 	assert.ok(PAIR_NAME.test("NAME") && PAIR_NAME.test("Name") && PAIR_NAME.test("parameterkey"));
 	const secret = `Tq${b62(14)}9!`;
 	hidden(`{"NAME": "DB_PASSWORD", "VALUE": "${secret}"}`, secret);
+});
+
+test("a sibling pair's value is read before a comment", () => {
+	hidden(`set {\n  name  = "smtp.auth.password"\n  value = "sunshine99" # set by CI\n}`, "sunshine99");
+	hidden(`[{ name: "DB_PASSWORD", value: "sunshine99"// prod\n}]`, "sunshine99");
+});
+
+test("attributes: where a value ends, and what can follow one", () => {
+	const read = (text: string) => [...attributes(text)].map((a) => [a.key, a.value.value]);
+	assert.deepEqual(read("metadata:\n  name: api-key\n"), [["name", "api-key"]]);
+	assert.deepEqual(read(`value = "x" # set by CI`), [["value", "x"]]);
+	assert.deepEqual(read(`value: "x"// prod`), [["value", "x"]]);
+	assert.deepEqual(read(`value: x # rotated`), [["value", "x"]]);
+	assert.deepEqual(read(`value = "abc" + suffix`), []);
+	assert.deepEqual(read(`, "label": "unclosed`), []);
+	assert.deepEqual(read("password: ${DB_PASSWORD}"), []);
+	assert.deepEqual(read(`Name: prod/db/password`), [["Name", "prod/db/password"]]);
+	assert.deepEqual(read(`<input name=password value=abc/>`), [
+		["name", "password"],
+		["value", "abc"],
+	]);
+	assert.deepEqual(read(`<input value=abc />`), [["value", "abc"]]);
+});
+
+test("a sibling name: quoted in either quote, a name's shape, a line of its own", () => {
+	assert.equal(siblingName(`{'name': 'api_key', 'value': '`), "api_key");
+	assert.equal(siblingName(`{"label": "Work laptop", "value": "`), undefined);
+	assert.equal(siblingName("  - name: API_KEY", { alone: true }), "API_KEY");
+	assert.equal(siblingName("name: web, port: 80", { alone: true }), undefined);
+});
+
+test("string ends, escapes, contractions and token edges", () => {
+	assert.equal(stringEnd('"abc\n"', 0), -1);
+	assert.equal(stringEnd('"abc\n"', 0, { multiline: true }), 5);
+	// (An escaped backslash before `n` is a backslash and a letter: `C:\\nginx` in JSON.)
+	assert.ok(continuesToken(String.raw`"C:\\nginx"`, 5));
+	assert.ok(!continuesToken(String.raw`"a\nb"`, 3));
+	assert.ok(continuesToken("my-wifi-pass", 2, true) && !continuesToken("my-wifi-pass", 2));
+	assert.ok(!isEscapedBreak(String.raw`"C:\\new"`, 4));
+	assert.ok(!isEscapedBreak('"x = 1\\n",\n', 6));
+	assert.ok(isEscapedBreak('{"a": "b\\nc"}', 8));
+	assert.equal(escapedLineStart('{"a": "b\\nc"}', 10), 10);
+	assert.ok(isContraction("it's", 2));
+	assert.ok(!isContraction("re.compile(r'd+')", 12));
+	assert.ok(!isContraction("WITH PASSWORD = N'Kx9mQ2'", 17));
+});
+
+test("table cells: an escaped bar, a line without bars, a doubled quote", () => {
+	assert.deepEqual(
+		pipeCells(String.raw`| a\|b | c |`).map((c) => c.text),
+		[String.raw`a\|b`, "c"],
+	);
+	assert.deepEqual(pipeCells("mysql> SELECT 1;"), [{ text: "mysql> SELECT 1;", start: 0, end: 16 }]);
+	assert.deepEqual(
+		delimitedCells('"say ""hi""",x', ",").map((c) => c.text),
+		['say "hi"', "x"],
+	);
 });
 
 test("a password's own ! and ? stay in it, and its noun reaches across a long sentence", () => {

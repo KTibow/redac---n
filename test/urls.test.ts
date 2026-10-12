@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { queryParams, urlAround, urls } from "../src/urls.ts";
+import { isPasswordlessUrl, percentEncoded, queryParams, urlAround, urls } from "../src/urls.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 const USERINFO: [string, string | undefined, string | undefined][] = [
@@ -131,4 +131,55 @@ test("a URL ends where the URL reader ends it, for every rule: a base64 key afte
 
 test("a -u URL is the URL reader's", () => {
 	kept("redis-cli -u redis://default:Kx9mQv2Lp7Rt@cache.internal:6379/0 PING", "cache.internal:6379/0");
+});
+
+test("a scheme of any length with a driver's _ is a URL's: SQLAlchemy's dialect+driver", () => {
+	for (const scheme of ["redshift+redshift_connector", "oracle+cx_oracle", "ibm_db_sa", "postgresql+psycopg2"]) {
+		hidden(`engine = create_engine("${scheme}://admin:Hq3mT8wZ5rK2@db.example.com:5439/dev")`, "Hq3mT8wZ5rK2");
+		const text = `${scheme}://db.example.com/x?token=TOKEN`;
+		assert.equal(urlAround(text, text.indexOf("TOKEN")), 0, scheme);
+	}
+});
+
+test("a quote in a password is the password's, and a quote that ends a URL isn't", () => {
+	const password = (text: string) => [...urls(text)][0]?.password?.value;
+	assert.equal(password("postgres://app:Kx9m'Qv2@db/x"), "Kx9m'Qv2");
+	assert.equal(password('postgres://app:Kx9m"Qv2@db/x'), 'Kx9m"Qv2');
+	assert.equal(password("mysql://root:#1'Kx9mQv@db/app"), "#1'Kx9mQv");
+	hidden(String.raw`{"stdout": "DB_URL=postgres://app:Kx9m\"Qv2@db/x\nOK"}`, "Qv2");
+	// (Not a placeholder's port, nor pieces joined into a URL.)
+	const code = 'const base = "http://localhost:${PORT}";';
+	const [base] = urls(code);
+	assert.equal(code.slice(base!.start, base!.end), "http://localhost:${PORT}");
+	assert.equal(password("url = 'https://'+user+':'+pw+'@'+host"), undefined);
+});
+
+test("a URL's brackets: an IPv6 host's, and a closing one it didn't open", () => {
+	const whole = (text: string) => [...urls(text)].map((u) => text.slice(u.start, u.end));
+	assert.deepEqual(whole("open http://[::1]:5173/@vite/client now"), ["http://[::1]:5173/@vite/client"]);
+	assert.deepEqual(whole("[https://x.io/a] and (https://y.io/b)"), ["https://x.io/a", "https://y.io/b"]);
+});
+
+test("a password after a placeholder port or a dotted user", () => {
+	const [placeholder] = urls("fetch(`https://localhost:${PORT}/api?email=ops@example.com`)");
+	assert.equal(placeholder!.password, undefined);
+	const [bare] = urls("http://localhost:${PORT}/api");
+	assert.equal(bare!.user, undefined);
+	const [dotted] = urls("postgres://first.last:Kx9mQ2@localhost/app");
+	assert.equal(dotted!.password?.value, "Kx9mQ2");
+	hidden(`dsn := "root:Kx/9@m?Q2v@tcp(127.0.0.1:3306)/db"`, "Q2v");
+});
+
+test("a passwordless URL is one whole URL with no password", () => {
+	assert.ok(isPasswordlessUrl("postgres://db.internal/app"));
+	assert.ok(!isPasswordlessUrl("postgres://app:Kx9mQ2@db.internal/app"));
+	assert.ok(!isPasswordlessUrl("postgres://db.internal/app Kx9mQ2vL"));
+});
+
+test("percent-encoded text of its own is decoded, a single encoded token isn't", () => {
+	const decoded = (text: string) => [...percentEncoded(text)].map((d) => d.decoded);
+	assert.deepEqual(decoded("next=https%3A%2F%2Fx.io%2Fcb%3Fcode%3Dabc"), ["https://x.io/cb?code=abc"]);
+	assert.deepEqual(decoded("sig=Kx9mQ2vLpR7tZz%2BAbCd%3D"), []);
+	assert.deepEqual(decoded("q=a%20b"), []);
+	assert.deepEqual(decoded("100% of a+long+file+name.txt"), []);
 });

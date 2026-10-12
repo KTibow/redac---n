@@ -208,8 +208,9 @@ const ATTRIBUTE_HEAD = /(?<![\w-])(["']?)([A-Za-z]\w{0,80})\1[ \t]*([:=])[ \t]*/
 /**
  * The attributes of a text, in any of the syntaxes pairs come in: `name: x`, `name = "x"`, `"Name": "x"`, `name="x"` in
  * a tag. A quoted value runs to its closing quote; a bare one to a `,` `;` `}` or line break, a tag's `>`, or blanks
- * before another word, and holds no `{`. Each value is read from where it starts to the first character that can end
- * it (one table per text), so a long line of keys is read once.
+ * before another word or a comment, and holds no `{`; either is followed by what can follow a value (followsValue).
+ * Each value is read from where it starts to the first character that can end it (one table per text), so a long line
+ * of keys is read once.
  */
 export function* attributes(text: string): Generator<Attribute> {
 	const stops = stopsOf(text);
@@ -232,19 +233,27 @@ export function* attributes(text: string): Generator<Attribute> {
 			value = { value: text.slice(at, stop), start: at, end: stop };
 			end = stop;
 		}
-		// After the value and its blanks: a separator, a tag's end, the end, or (after a blank) another word.
 		const after = end;
 		while (text[end] === " " || text[end] === "\t") end++;
-		if (!(
-			end >= text.length ||
-			/[,;}\r\n>]/.test(text[end]) ||
-			(text[end] === "/" && text[end + 1] === ">") ||
-			(end > after && /[\w"']/.test(text[end]))
-		))
-			continue;
+		if (!followsValue(text, end, end > after)) continue;
 		head.lastIndex = Math.max(head.lastIndex, end);
 		yield { start: m.index, end, key: m[2], operator: m[3], value, quoted: quote === '"' || quote === "'" };
 	}
+}
+
+/**
+ * Whether what is at `i` can follow an attribute's value (with `blank`, after blanks): the text's end, a separator, a
+ * tag's end, a comment (`"x"// prod`, `"x" # set by CI`), or, after a blank, another word (`name="a" value="b"`). Not an
+ * operator: `"abc" + suffix` is no value.
+ */
+function followsValue(text: string, i: number, blank: boolean): boolean {
+	const c = text[i];
+	return (
+		i >= text.length ||
+		/[,;}\r\n>]/.test(c) ||
+		(c === "/" && /[/*>]/.test(text[i + 1] ?? "")) ||
+		(blank && /[\w"'#]/.test(c))
+	);
 }
 
 /** For each position of a text, the next one (at or after it) that can end a bare attribute value: `, ; } { \r \n > /` or a blank. */
@@ -255,18 +264,21 @@ const stopsOf = lastText((text) => {
 	return next;
 });
 
-/** Where a bare attribute value that starts at `at` ends (see `attributes`), within 4,097 characters; -1 if it doesn't. */
+/**
+ * Where a bare attribute value that starts at `at` ends (see `attributes`), within 4,097 characters; -1 if it doesn't.
+ * (At a `{` too, which can't follow a value: the attribute is none.)
+ */
 function bareEnd(text: string, at: number, stops: Int32Array): number {
 	for (let p = stops[at + 1] ?? text.length; p - at <= 4097; p = stops[p + 1]) {
-		if (p >= text.length) return text.length;
 		const c = text[p];
-		if (c === "{") return -1;
+		// (A path's `/` is the value's.)
 		if (c === "/" && text[p + 1] !== ">") continue;
+		// (The text's end, where `c` is undefined, too.)
 		if (c !== " " && c !== "\t") return p;
-		// Blanks end the value before another word or what ends one; between a value's words (`a - b`) they don't.
+		// Blanks end the value before what can follow one; before a symbol (`Kx9 - 2mQ`'s `-`) they don't.
 		let q = p;
 		while (text[q] === " " || text[q] === "\t") q++;
-		if (q >= text.length || /[\w"',;}\r\n>]/.test(text[q]) || (text[q] === "/" && text[q + 1] === ">")) return p;
+		if (followsValue(text, q, true)) return p;
 		p = q - 1;
 	}
 	return -1;

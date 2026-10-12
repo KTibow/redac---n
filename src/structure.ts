@@ -10,7 +10,7 @@ import { lineEnd, lineStart } from "./lines.ts";
 import { armoredBlocks, pemTail } from "./pem.ts";
 import { inJwk, jsonDocuments, type JsonNode } from "./json.ts";
 import { blockLines, siblingValue, yamlLines } from "./yaml.ts";
-import { isUrl, queryParams, readUserinfo, urls } from "./urls.ts";
+import { isUrl, queryParams, readUserinfo, URL_SCHEME, urls } from "./urls.ts";
 import { naturalness } from "./charlm.ts";
 import { bip39, isNamedSecret } from "./named.ts";
 import { FILE_EXTENSION, isCredentialName, isSettingName, nameClass, namesPasswordOrPin } from "./names.ts";
@@ -190,6 +190,9 @@ export function isLiteralPassword(value: string, quoted = false): boolean {
 	return !isDocsPassword(value);
 }
 
+/** A Go MySQL DSN's user and its `:`, after a scheme or not (`mysql://root:`, `root:`). */
+const DSN_USER = new RegExp(String.raw`(?<![\w/:@.-])(?:${URL_SCHEME}:\/\/)?([\w.-]{1,64}):(?!\/\/)`);
+
 function urlCredentials(text: string, out: Finding[]) {
 	// Go's MySQL DSN: `root:pw@tcp(127.0.0.1:3306)/db`, `user:pw@unix(/tmp/mysql.sock)/db`, after a scheme or not
 	// (`mysql://root:@tcp(…)`, whose password is empty). The userinfo reads as a URL's, with `tcp(` as the host.
@@ -200,9 +203,7 @@ function urlCredentials(text: string, out: Finding[]) {
 		let from = m.index;
 		while (from > previous && !/[\s'"`]/.test(text[from - 1])) from--;
 		previous = m.index + m[0].length;
-		const user = /(?<![\w/:@.-])(?:[a-z][a-z0-9+.-]{0,20}:\/\/)?([\w.-]{1,64}):(?!\/\/)/.exec(
-			text.slice(from, m.index),
-		);
+		const user = DSN_USER.exec(text.slice(from, m.index));
 		if (!user) continue;
 		const at = from + user.index + user[0].length - user[1].length - 1;
 		const info = readUserinfo(text.slice(at, m.index + 4), 0, /\(/);

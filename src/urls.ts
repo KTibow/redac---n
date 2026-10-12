@@ -19,6 +19,20 @@ export interface Url {
 }
 
 /**
+ * A URL's scheme, as a regex source for use inside other patterns: `https`, `postgres`, `mongodb+srv`, SQLAlchemy's
+ * dialect and driver (`redshift+redshift_connector`, `oracle+cx_oracle`, whose drivers' names hold `_`). Two characters
+ * at least: a drive letter (`C://Users`) is none.
+ */
+const SCHEME_LENGTH = 41;
+export const URL_SCHEME = String.raw`[A-Za-z][\w+.-]{1,${SCHEME_LENGTH - 1}}`;
+
+/** A scheme and its `://` that starts a text. */
+const SCHEME = new RegExp(String.raw`^${URL_SCHEME}:\/\/`);
+
+/** A scheme, its `://` and the user information after it, to its first `/` or `@`. */
+const USERINFO = new RegExp(String.raw`${URL_SCHEME}:\/\/[^\s/@]*`, "y");
+
+/**
  * Where a URL that starts at `at` ends: at a blank, a quote, an angle bracket, a backtick, a backslash (a JSON
  * string's escaped quote), or a closing bracket it didn't open (a Markdown link's `)`); sentence punctuation at its
  * end isn't part of it (`…/reset/<token>.`). A password's brackets are (`app:p)dgbs@db`, `admin:<Harbor2291x>@host`).
@@ -28,10 +42,9 @@ export function urlEnd(text: string, at: number): number {
 	const open = { ")": 0, "]": 0 };
 	const closerIsPassword = reachesAt(text, /[^\s"'<>`\\/@]*(@)?/y);
 	const quoteIsPassword = reachesAt(text, /[^\s"<>`\\/@,;]*(@)?/y);
-	// A `'` is a password's only in `scheme://user:password` (no `/` or `@` yet), not after a port (`host:5432'`).
-	const userinfo = /[a-z][a-z0-9+.-]*:\/\/[^\s/@]*/iy;
-	userinfo.lastIndex = at;
-	const userinfoEnd = userinfo.exec(text) ? userinfo.lastIndex : -1;
+	// A quote is a password's only in `scheme://user:password` (no `/` or `@` yet), not after a port (`host:5432'`).
+	USERINFO.lastIndex = at;
+	const userinfoEnd = USERINFO.exec(text) ? USERINFO.lastIndex : -1;
 	const colon = userinfoEnd < 0 ? -1 : text.indexOf(":", text.indexOf("://", at) + 3);
 	const bracketed = /<[^\s<>@"'`]+>@/y;
 	let end = at;
@@ -48,14 +61,14 @@ export function urlEnd(text: string, at: number): number {
 			if (!bracketed.test(text)) break;
 			end = bracketed.lastIndex - 1;
 		} else if (
-			c === "'" &&
+			(c === "'" || c === '"') &&
 			quoteIsPassword(end + 1) &&
 			colon >= 0 &&
 			colon < end &&
 			end <= userinfoEnd &&
 			!endsInPort(text, end)
 		) {
-			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`.)
+			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`, `postgres://app:Kx9m"Qv2@db`.)
 		} else if (/[\s"'<>`\\]/.test(c)) break;
 	}
 	while (end > at && /[.,;:!?]/.test(text[end - 1])) end--;
@@ -87,9 +100,6 @@ function endsInPort(text: string, end: number): boolean {
 	return digits < end && text[digits - 1] === ":";
 }
 
-/** A scheme and its `://`: `https://`, `postgres://`, `mongodb+srv://` (not a drive letter: `C://Users`). */
-const SCHEME = /^[a-z][a-z0-9+.-]{1,20}:\/\//i;
-
 /** Whether `value` starts with a URL with a scheme. */
 export const isUrl = (value: string) => SCHEME.test(value);
 
@@ -107,8 +117,8 @@ export function isPasswordlessUrl(value: string): boolean {
 /** The URLs in `text` with a scheme (`https://…`, `postgres://…`), and with `paths`, paths that start with a segment and a slash (`/reset/<token>`). */
 export function* urls(text: string, { paths = false } = {}): Generator<Url> {
 	const start = paths
-		? /\b[a-z][a-z0-9+.-]{1,20}:\/\/|(?<![\w.:/])\/[\w.-]{1,80}\//gi
-		: /\b[a-z][a-z0-9+.-]{1,20}:\/\//gi;
+		? new RegExp(String.raw`\b${URL_SCHEME}:\/\/|(?<![\w.:/])\/[\w.-]{1,80}\/`, "g")
+		: new RegExp(String.raw`\b${URL_SCHEME}:\/\/`, "g");
 	// (exec, not matchAll, which iterates a copy: the next URL is looked for after this one ends.)
 	for (let m = start.exec(text); m; m = start.exec(text)) {
 		const end = urlEnd(text, m.index);
@@ -124,6 +134,9 @@ const schemeSeparators = lastText((text) => {
 	return out;
 });
 
+/** A scheme that ends a text, as a whole word. */
+const SCHEME_BEFORE = new RegExp(String.raw`(?<![\w+.-])${URL_SCHEME}$`);
+
 /**
  * Where the URL with a scheme that holds `text[at, end)` starts, looking back no further than `from`; -1 if that
  * stretch isn't inside one. (The innermost: `?next=https://…/<token>` is inside the `next` URL.)
@@ -133,7 +146,8 @@ export function urlAround(text: string, at: number, end = at, from = Math.max(0,
 	const seps = schemeSeparators(text);
 	const sep = seps[lowerBound(seps, at) - 1] ?? -1;
 	if (sep < from) return -1;
-	const scheme = /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]{1,20}$/i.exec(text.slice(Math.max(from, sep - 21), sep));
+	// (A scheme's characters and the one before it.)
+	const scheme = SCHEME_BEFORE.exec(text.slice(Math.max(from, sep - SCHEME_LENGTH - 1), sep));
 	if (!scheme) return -1;
 	const start = sep - scheme[0].length;
 	return urlEnd(text, start) >= end ? start : -1;
@@ -148,7 +162,7 @@ export function urlAround(text: string, at: number, end = at, from = Math.max(0,
 function parseUrl(text: string, start: number, end: number): Url {
 	const url = text.slice(start, end);
 	// (A scheme starts the URL: a path's `?next=https://…` is its query's.)
-	const sep = /^[a-z][a-z0-9+.-]{1,20}:\/\//i.test(url) ? url.indexOf("://") : -1;
+	const sep = isUrl(url) ? url.indexOf("://") : -1;
 	const scheme = sep > 0 ? url.slice(0, sep) : "";
 	let at = sep > 0 ? sep + 3 : 0;
 	const span = (from: number, to: number): Span => ({

@@ -52,7 +52,8 @@ test("URL passwords of any length and with brackets and quotes", () => {
 	}
 	// A run of closers is looked ahead once, not once per closer.
 	assertLinear("a run of closers", (n) => urlEnd(`https://x.io/${")".repeat(n)}`, 0), 20_000);
-	// A port before a quote still ends the URL.
+	// A port before a quote still ends the URL, with an `@` after the quote or before the port.
+	assert.equal(urlEnd("'redis://cache:6379'x@y", 1), 19);
 	assert.equal(urlEnd("'postgres://u:p@h:5432'x@y", 1), 22);
 });
 
