@@ -180,6 +180,11 @@ export interface Context {
 	inUrl: boolean;
 	/** The token is a segment of a filesystem path (`/tmp/tmpab12…`, `/var/lib/docker/overlay2/l/…`). */
 	fsPath: boolean;
+	/**
+	 * The token is the whole value of a `name=value` or `name: value` line and a PEM block opens on the next line: the
+	 * block's label (OpenSSL's test files, `PrivateKey=ALICE_cf_c2pnb163v1` above `-----BEGIN PRIVATE KEY-----`).
+	 */
+	labelsBlock: boolean;
 	/** The token sits inside a PEM PUBLIC KEY or CERTIFICATE block, or an SSH public key line. */
 	armored: boolean;
 	/** The token fills its line, and a neighbouring line is base64 of similar length: a wrapped blob. */
@@ -550,6 +555,10 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		inUrl,
 		fsPath,
 		armored: armoredAt(doc, start, left),
+		labelsBlock:
+			/^[ \t]*[\w.-]{1,60}[ \t]*[=:][ \t]*["']?$/.test(left) &&
+			/^["']?[ \t]*\r?$/.test(text.slice(end, doc.end(i))) &&
+			/^\r?\n?-----BEGIN [A-Z0-9 ]{3,40}-----/.test(text.slice(doc.end(i), doc.end(i) + 60)),
 		blobLine: isBlobLine(doc, start, end, i),
 		jwk: doc.hasJwk && inJwk(text, start, end),
 		shellArg:

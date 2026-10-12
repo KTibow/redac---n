@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 438" width="760" height="438" role="img" aria-labelledby="t d">
-<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.4 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
+<title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.3 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
 .k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
@@ -38,72 +38,72 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <text class="tick" x="279.4562340977369" y="107">2.0</text>
 <text x="249.20000000000005" y="133" text-anchor="end">gitleaks</text>
 <rect x="259.20000000000005" y="121" width="9.622958015972415" height="16" class="k0 gap"><title>gitleaks: credential-shaped, 1.35 per MB</title></rect>
-<rect x="268.82295801597246" y="121" width="4.395672180135534" height="16" class="k1 gap"><title>gitleaks: hash, digest or ID, 0.62 per MB</title></rect>
+<rect x="268.82295801597246" y="121" width="4.395672180135534" height="16" class="k1 gap"><title>gitleaks: hex, 0.62 per MB</title></rect>
 <rect x="273.218630196108" y="121" width="2.2572370654750102" height="16" class="k3 gap"><title>gitleaks: other, 0.32 per MB</title></rect>
 <text class="tick" x="281.475867261583" y="133">2.3</text>
 <text x="249.20000000000005" y="159" text-anchor="end" class="ours">guessing off</text>
 <rect x="259.20000000000005" y="147" width="11.285493821388854" height="16" class="k0 gap"><title>redac---n guessing off: credential-shaped, 1.58 per MB</title></rect>
-<rect x="270.4854938213889" y="147" width="4.276608184947349" height="16" class="k1 gap"><title>redac---n guessing off: hash, digest or ID, 0.60 per MB</title></rect>
+<rect x="270.4854938213889" y="147" width="4.276608184947349" height="16" class="k1 gap"><title>redac---n guessing off: hex, 0.60 per MB</title></rect>
 <rect x="274.76210200633625" y="147" width="4.514197528555485" height="16" class="k2 gap"><title>redac---n guessing off: word or placeholder, 0.63 per MB</title></rect>
-<path d="M279.27629953489173,147 h0.03901884133915701 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.03901884133915701 z" class="k3 gap"><title>redac---n guessing off: other, 0.57 per MB</title></path>
-<text class="tick" x="289.3153183762309" y="159">3.4</text>
+<rect x="279.27629953489173" y="147" width="3.8014294977310215" height="16" class="k3 gap"><title>redac---n guessing off: other, 0.53 per MB</title></rect>
+<text class="tick" x="289.07772903262276" y="159">3.3</text>
 <text x="249.20000000000005" y="185" text-anchor="end" class="ours">guessing confident</text>
 <rect x="259.20000000000005" y="173" width="13.780181929274761" height="16" class="k0 gap"><title>redac---n guessing confident: credential-shaped, 1.93 per MB</title></rect>
-<rect x="272.9801819292748" y="173" width="6.296117605616928" height="16" class="k1 gap"><title>redac---n guessing confident: hash, digest or ID, 0.88 per MB</title></rect>
+<rect x="272.9801819292748" y="173" width="6.296117605616928" height="16" class="k1 gap"><title>redac---n guessing confident: hex, 0.88 per MB</title></rect>
 <rect x="279.27629953489173" y="173" width="4.514197528555542" height="16" class="k2 gap"><title>redac---n guessing confident: word or placeholder, 0.63 per MB</title></rect>
-<path d="M283.7904970634473,173 h0.7517868721637342 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.7517868721637342 z" class="k3 gap"><title>redac---n guessing confident: other, 0.66 per MB</title></path>
-<text class="tick" x="294.542283935611" y="185">4.1</text>
+<path d="M283.7904970634473,173 h0.5141975285555418 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.5141975285555418 z" class="k3 gap"><title>redac---n guessing confident: other, 0.63 per MB</title></path>
+<text class="tick" x="294.3046945920028" y="185">4.1</text>
 <text x="249.20000000000005" y="211" text-anchor="end" class="ours">guessing eager</text>
 <rect x="259.20000000000005" y="199" width="14.849333975511627" height="16" class="k0 gap"><title>redac---n guessing eager: credential-shaped, 2.08 per MB</title></rect>
-<rect x="274.0493339755117" y="199" width="6.414912277421024" height="16" class="k1 gap"><title>redac---n guessing eager: hash, digest or ID, 0.90 per MB</title></rect>
+<rect x="274.0493339755117" y="199" width="6.414912277421024" height="16" class="k1 gap"><title>redac---n guessing eager: hex, 0.90 per MB</title></rect>
 <rect x="280.4642462529327" y="199" width="4.514197528555542" height="16" class="k2 gap"><title>redac---n guessing eager: word or placeholder, 0.63 per MB</title></rect>
-<path d="M284.97844378148824,199 h1.8209389184005431 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-1.8209389184005431 z" class="k3 gap"><title>redac---n guessing eager: other, 0.81 per MB</title></path>
-<text class="tick" x="296.7993826998888" y="211">4.4</text>
+<path d="M284.97844378148824,199 h1.5833495747923507 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-1.5833495747923507 z" class="k3 gap"><title>redac---n guessing eager: other, 0.78 per MB</title></path>
+<text class="tick" x="296.5617933562806" y="211">4.4</text>
 <text x="249.20000000000005" y="237" text-anchor="end">Nosey Parker</text>
 <rect x="259.20000000000005" y="225" width="2.8512468195473843" height="16" class="k0 gap"><title>noseyparker: credential-shaped, 0.40 per MB</title></rect>
-<rect x="262.05124681954743" y="225" width="1" height="16" class="k1 gap"><title>noseyparker: hash, digest or ID, 0.13 per MB</title></rect>
+<rect x="262.05124681954743" y="225" width="1" height="16" class="k1 gap"><title>noseyparker: hex, 0.13 per MB</title></rect>
 <rect x="263.0016624260632" y="225" width="52.27285835836858" height="16" class="k2 gap"><title>noseyparker: word or placeholder, 7.31 per MB</title></rect>
 <path d="M315.2745207844318,225 h0.5144741309500205 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-0.5144741309500205 z" class="k3 gap"><title>noseyparker: other, 0.63 per MB</title></path>
 <text class="tick" x="325.7889949153818" y="237">8.5</text>
 <text x="249.20000000000005" y="263" text-anchor="end">CredSweeper</text>
 <rect x="259.20000000000005" y="251" width="21.503153097419784" height="16" class="k0 gap"><title>credsweeper: credential-shaped, 3.01 per MB</title></rect>
-<rect x="280.70315309741983" y="251" width="49.065205686377794" height="16" class="k1 gap"><title>credsweeper: hash, digest or ID, 6.87 per MB</title></rect>
+<rect x="280.70315309741983" y="251" width="49.065205686377794" height="16" class="k1 gap"><title>credsweeper: hex, 6.87 per MB</title></rect>
 <rect x="329.7683587837976" y="251" width="2.0196331638460947" height="16" class="k2 gap"><title>credsweeper: word or placeholder, 0.28 per MB</title></rect>
 <path d="M331.7879919476437,251 h6.573373622488191 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-6.573373622488191 z" class="k3 gap"><title>credsweeper: other, 1.48 per MB</title></path>
 <text class="tick" x="348.3613655701319" y="263">12</text>
 <text x="249.20000000000005" y="289" text-anchor="end">Betterleaks</text>
 <rect x="259.20000000000005" y="277" width="16.27586726158296" height="16" class="k0 gap"><title>betterleaks: credential-shaped, 2.28 per MB</title></rect>
-<rect x="275.475867261583" y="277" width="3.9204643768776464" height="16" class="k1 gap"><title>betterleaks: hash, digest or ID, 0.55 per MB</title></rect>
+<rect x="275.475867261583" y="277" width="3.9204643768776464" height="16" class="k1 gap"><title>betterleaks: hex, 0.55 per MB</title></rect>
 <rect x="279.39633163846065" y="277" width="87.79464165189631" height="16" class="k2 gap"><title>betterleaks: word or placeholder, 12.28 per MB</title></rect>
 <path d="M367.19097329035696,277 h7.167383376560565 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-7.167383376560565 z" class="k3 gap"><title>betterleaks: other, 1.56 per MB</title></path>
 <text class="tick" x="384.35835666691753" y="289">17</text>
 <text x="249.20000000000005" y="315" text-anchor="end">gitleaks + Betterleaks + Kingfisher</text>
 <rect x="259.20000000000005" y="303" width="19.602321884388232" height="16" class="k0 gap"><title>gitleaks+betterleaks+kingfisher: credential-shaped, 2.74 per MB</title></rect>
-<rect x="278.8023218843883" y="303" width="4.395672180135534" height="16" class="k1 gap"><title>gitleaks+betterleaks+kingfisher: hash, digest or ID, 0.62 per MB</title></rect>
+<rect x="278.8023218843883" y="303" width="4.395672180135534" height="16" class="k1 gap"><title>gitleaks+betterleaks+kingfisher: hex, 0.62 per MB</title></rect>
 <rect x="283.1979940645238" y="303" width="87.79464165189631" height="16" class="k2 gap"><title>gitleaks+betterleaks+kingfisher: word or placeholder, 12.28 per MB</title></rect>
 <path d="M370.9926357164201,303 h7.523789229004024 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-7.523789229004024 z" class="k3 gap"><title>gitleaks+betterleaks+kingfisher: other, 1.61 per MB</title></path>
 <text class="tick" x="388.51642494542415" y="315">17</text>
 <text x="249.20000000000005" y="341" text-anchor="end">detect-secrets</text>
 <rect x="259.20000000000005" y="329" width="19.245916031944773" height="16" class="k0 gap"><title>detect-secrets: credential-shaped, 2.69 per MB</title></rect>
-<rect x="278.4459160319448" y="329" width="121.53439568320704" height="16" class="k1 gap"><title>detect-secrets: hash, digest or ID, 17.01 per MB</title></rect>
-<rect x="399.98031171515186" y="329" width="12.593006786334229" height="16" class="k2 gap"><title>detect-secrets: word or placeholder, 1.76 per MB</title></rect>
-<path d="M412.5733185014861,329 h28.195328670722517 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-28.195328670722517 z" class="k3 gap"><title>detect-secrets: other, 4.50 per MB</title></path>
+<rect x="278.4459160319448" y="329" width="41.34307888343699" height="16" class="k1 gap"><title>detect-secrets: hex, 5.78 per MB</title></rect>
+<rect x="319.7889949153818" y="329" width="12.593006786334229" height="16" class="k2 gap"><title>detect-secrets: word or placeholder, 1.76 per MB</title></rect>
+<path d="M332.38200170171604,329 h108.38664547049245 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-108.38664547049245 z" class="k3 gap"><title>detect-secrets: other, 15.73 per MB</title></path>
 <text class="tick" x="450.7686471722086" y="341">26</text>
 <text x="249.20000000000005" y="367" text-anchor="end">all but detect-secrets</text>
 <rect x="259.20000000000005" y="355" width="28.0372603922159" height="16" class="k0 gap"><title>union(all but detect-secrets): credential-shaped, 3.92 per MB</title></rect>
-<rect x="287.23726039221594" y="355" width="50.134423243708056" height="16" class="k1 gap"><title>union(all but detect-secrets): hash, digest or ID, 7.02 per MB</title></rect>
+<rect x="287.23726039221594" y="355" width="50.134423243708056" height="16" class="k1 gap"><title>union(all but detect-secrets): hex, 7.02 per MB</title></rect>
 <rect x="337.371683635924" y="355" width="103.95170696266479" height="16" class="k2 gap"><title>union(all but detect-secrets): word or placeholder, 14.55 per MB</title></rect>
 <path d="M441.3233905985888,355 h20.59200381859614 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-20.59200381859614 z" class="k3 gap"><title>union(all but detect-secrets): other, 3.44 per MB</title></path>
 <text class="tick" x="471.9153944171849" y="367">29</text>
 <text x="249.20000000000005" y="393" text-anchor="end">all seven combined</text>
 <rect x="259.20000000000005" y="381" width="39.79865352284878" height="16" class="k0 gap"><title>union(all 7): credential-shaped, 5.57 per MB</title></rect>
-<rect x="298.9986535228488" y="381" width="168.9363740581822" height="16" class="k1 gap"><title>union(all 7): hash, digest or ID, 23.64 per MB</title></rect>
-<rect x="467.935027581031" y="381" width="108.22857719198589" height="16" class="k2 gap"><title>union(all 7): word or placeholder, 15.14 per MB</title></rect>
-<path d="M576.1636047730169,381 h46.372027145336915 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-46.372027145336915 z" class="k3 gap"><title>union(all 7): other, 7.05 per MB</title></path>
+<rect x="298.9986535228488" y="381" width="88.7450572584122" height="16" class="k1 gap"><title>union(all 7): hex, 12.42 per MB</title></rect>
+<rect x="387.74371078126103" y="381" width="108.22857719198583" height="16" class="k2 gap"><title>union(all 7): word or placeholder, 15.14 per MB</title></rect>
+<path d="M495.97228797324686,381 h126.56334394510696 a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h-126.56334394510696 z" class="k3 gap"><title>union(all 7): other, 18.27 per MB</title></path>
 <text class="tick" x="632.5356319183538" y="393">51</text>
 <line class="axis" x1="259.20000000000005" x2="259.20000000000005" y1="60" y2="402"/>
 <rect x="538.3199999999999" y="68" width="12" height="12" rx="3" class="k0"/><text x="556.3199999999999" y="78">credential-shaped</text>
-<rect x="538.3199999999999" y="88" width="12" height="12" rx="3" class="k1"/><text x="556.3199999999999" y="98">hash, digest or ID</text>
+<rect x="538.3199999999999" y="88" width="12" height="12" rx="3" class="k1"/><text x="556.3199999999999" y="98">hex</text>
 <rect x="538.3199999999999" y="108" width="12" height="12" rx="3" class="k2"/><text x="556.3199999999999" y="118">word or placeholder</text>
 <rect x="538.3199999999999" y="128" width="12" height="12" rx="3" class="k3"/><text x="556.3199999999999" y="138">other</text>
 <text x="556.3199999999999" y="158" class="ours">bold: redac---n</text>

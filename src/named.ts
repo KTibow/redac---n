@@ -149,7 +149,7 @@ function isLabel(value: string, name: string): boolean {
 
 /** Names about how a credential is handled, not the credential: `update_password`, `password_mechanism`, `pin_mode`. */
 const SETTING_OF_CREDENTIAL =
-	/(?:^|[^a-z])(?:update|change|check|rotate|lock|expire|expiry|mechanism|method|mode|strategy|policy|type|format)(?:$|[^a-z])/i;
+	/(?:^|[^a-z])(?:update|change|check|rotate|lock|expire|expiry|mechanism|method|mode|strategy|policy|type|format)(?:$|[^a-z])|(?:password|passwd)[_-]?(?:encryption|hash(?:ing)?[_-]?algorithm|algorithm|scheme)(?:$|[^a-z])/i;
 
 /** Words near a PIN that make it a postal code. */
 const POSTAL = /\b(?:city|state|address|street|road|district|postal|zip|country|landmark|locality)\b/i;
@@ -229,6 +229,28 @@ const ENTITY_KEY = /^[A-Z][A-Z0-9_]{1,30}(?:#[\w.:@-]{1,60}){1,4}$/;
 const PARTITION_KEY = /(?:^|[\s{,"'])(?:PK|pk|partitionKey|hashKey)["']?[ \t]*[:=]/;
 
 /**
+ * A value its name says is no credential's: a setting of how one is handled, a word or two in lower case (Ansible's
+ * `update_password: always`, `password_mechanism: sshpass`, `password_lock: false`) or a hashing scheme's name
+ * (PostgreSQL's `password_encryption = 'scram-sha-256'`); or a placeholder that names its own variable, with markup
+ * around it (`POSTGRES_PASSWORD=!!!SET POSTGRES_PASSWORD!!!`, `ELASTIC_PASSWORD=$ELASTIC_PASSWORD <1>`; not a token
+ * that starts with its name, `API_TOKEN_9fQ2mL…`, nor a password made of it, `DB_PASSWORD1`).
+ */
+function isSettingOrSelfName(name: string, value: string): boolean {
+	if (
+		SETTING_OF_CREDENTIAL.test(name) &&
+		(/^[a-z]+(?:[_-][a-z]+)*$/.test(value) ||
+			/^(?:scram|sha|md5|argon2|bcrypt|scrypt|pbkdf2|crypt|ssha|hmac|plain)(?:[_-]?[a-z0-9]+)*$/i.test(value))
+	)
+		return true;
+	// (Not the name assigned again, its own value after it: `s/# DBPassword=/a\DBPassword=<value>/`.)
+	const rest =
+		name.length >= 8 && value.includes(name) && !value.includes(`${name}=`) && !value.includes(`${name}:`)
+			? value.split(name).join("")
+			: undefined;
+	return rest !== undefined && /[^\w]/.test(rest) && (rest.match(/[A-Za-z0-9]/g)?.length ?? 0) < 8;
+}
+
+/**
  * Whether `value` under credential name `name` is a secret. Password-like names accept any literal
  * that isn't a common word or label; key-like names need something that isn't a word or identifier.
  */
@@ -255,9 +277,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		return /^\d{4,8}$|^\d{2,8}(?:[- ]\d{2,8}){1,3}$/.test(value) && !/^[$%{<]/.test(value);
 	// (Under a password's name, `PurpleRain1984` unquoted in an INI file is a password, not a class name.)
 	const passwordName = takesAnyWord(name);
-	// A name about how a credential is handled takes a setting, a word or two in lower case: Ansible's
-	// `update_password: always`, `password_mechanism: sshpass`, `password_lock: false`.
-	if (SETTING_OF_CREDENTIAL.test(name) && /^[a-z]+(?:[_-][a-z]+)*$/.test(value)) return false;
+	if (isSettingOrSelfName(name, value)) return false;
 	// (And digits with separators, a date or a phone number, are one: `DB_PASSWORD=21.05.1987`; an ISO date is a date, isGroupedDigits.)
 	if (passwordName && isGroupedDigits(value)) return true;
 	if (
@@ -2595,7 +2615,7 @@ function prose(text: string, out: Finding[]) {
 			continue;
 		if (isHashWithWords(value)) continue;
 		if (takesAnyWord(name.replace(/\s+/g, "_"))) {
-			if (/^[a-z]+(-[a-z]+)+$/.test(value) || isLabel(value, name)) continue;
+			if (/^[a-z]+(-[a-z]+)+$/.test(value) || isLabel(value, name) || isSettingOrSelfName(name, value)) continue;
 			// (`pass: 12/12`, `Pass: 98.5%`: a test count.)
 			if (/^pass$/i.test(name) && /^\d+(?:[/.,]\d+)*%?[,;]?$/.test(value)) continue;
 			const after = text.slice(start + value.length, start + value.length + 40);

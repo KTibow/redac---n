@@ -91,6 +91,7 @@ in them would otherwise read as real ones to secret scanners.
 | 2026-10-11 | rescored after the guessing-off precision fixes (code read as values, found in 577 M characters of public text) | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.14 per M chars (off 3.41); dev unchanged |
 | 2026-10-11 | rescored after fixes for the false hits on CredData's dev split that Claude Haiku and jev agreed were mistakes | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.11 per M chars (off 3.37); CredData dev 91.1/2.6 (off 53.1/1.8), test 83.2/3.7 (off 74.5/3.4): the test split, not looked at, lost 32 false lines in each mode and no true one |
 | 2026-10-11 | rescored after fixes for code read as CredData dev passwords (`typeof`, function heads, references in prose, `$RANDOM***$RANDOM`, an empty `NAME=`) | held-out 1 (aggregates) and real text unchanged; CredData dev 91.1/2.5 (off 53.1/1.8, 561 false lines to 546), test 83.2/3.6 (off 74.5/3.4), one false line fewer in each mode |
+| 2026-10-11 | rescored after fixes for CredData dev's remaining false hits: a PEM block's label on the line above it (OpenSSL's test files), a placeholder naming its own variable, a password hashing scheme's name | held-out 1 (aggregates) unchanged: 93.0/3.2, off 90.7/1.2; real text 4.07 per M chars (off 3.34); CredData dev 91.1/1.9 (off 53.1/1.7; 768 false lines to 579, 546 to 504 off; no true line lost), test 83.2/3.6 (off 74.5/3.4): the test split, not looked at, lost 4 false lines in each mode and no true one |
 
 ## Notes
 

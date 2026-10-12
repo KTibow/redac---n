@@ -626,6 +626,8 @@ const VETOES: Veto[] = [
 	// Where it sits: a file path, a PEM block of public material, a line of a wrapped blob.
 	["fs-path", (f, _, cred) => f.ctx.fsPath && !cred],
 	["armored-public", (f) => f.ctx.armored],
+	// A PEM block's label on the line above it, a name of parts (`ALICE_cf_c2pnb163v1`): the block holds the key.
+	["block-label", (f, t) => f.ctx.labelsBlock && /[A-Za-z][_-][A-Za-z0-9]/.test(t)],
 	["blob-line", (f, _, cred) => f.ctx.blobLine && !cred],
 	["ssh-public-key", (_, t) => /^AAAA[A-Z]\d?Nza|^AAAAE2Vj/.test(t)],
 	// (After a version's number, `1.2.`, not after the last digit of a token cut at a dot: `<id>7.<secret>`.)

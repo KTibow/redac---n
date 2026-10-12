@@ -39,13 +39,14 @@ look-alikes.
 | all seven scanners combined | 84.2% | 28.6% | 51.4 |
 | CredSweeper, the best single scanner | 70.1% | 15.2% | 11.6 |
 
-![Redactions per million characters of ordinary text, redac---n against the same scanners, each bar split into credential-shaped values, hashes and IDs, words and placeholders, and the rest](docs/real-text.svg)
+![Redactions per million characters of ordinary text, redac---n against the same scanners, each bar split into credential-shaped values, hex, words and placeholders, and the rest](docs/real-text.svg)
 
 On ordinary text with almost no secrets in it (agent trajectories and repositories it never saw), it redacts less
 than Betterleaks, CredSweeper, Nosey Parker and detect-secrets; the scanners that redact less catch 39–55% of
 secrets. Each bar is split by what was redacted, every tool's redactions sorted by one rule
 ([eval/shapes.ts](eval/shapes.ts)): most of what Betterleaks and Nosey Parker hide is ordinary words, most of what
-detect-secrets and CredSweeper hide is hashes and IDs, and about half of redac---n's is credential-shaped. It can also
+CredSweeper hides is hex (hashes and IDs), most of what detect-secrets hides is other values such as base64 digests,
+and about half of redac---n's is credential-shaped. It can also
 do something they can't: told which command or file the text came from, it reads what `cat .env` printed as a secret
 file, and knows that `cat .env | wc -l` printed only a number.
 
@@ -81,7 +82,7 @@ Other measurements; where a set was first scored blind, that score comes first:
 | set | result |
 |---|---|
 | Development sets (4,250 cases, 6,424 secrets, 18,402 look-alikes; held-out 2–8 among them) | 95.4% caught, 1.4% destroyed; 95.4% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
-| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.2% and 3.6%. On the dev split it was tuned on, 91.1% and 2.5%: the gap shows how much of the tuning doesn't carry over to new repositories |
+| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.2% and 3.6%. On the dev split it was tuned on, 91.1% and 1.9%: the gap shows how much of the tuning doesn't carry over to new repositories |
 | Five more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5 and 17.0 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
 | [GitLab's secret-detection rules](https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules), each rule's examples | 81.4% of 2,038 caught and 23% of 168 negatives hit, blind; now 88.0% and 15% |
 | Credential-handling code with no credentials ([ICSME 2026](https://doi.org/10.5281/zenodo.22942243), 5,903 snippets) | 4.6% of snippets hit, blind; now 2.0%, mostly passwords written into the code |

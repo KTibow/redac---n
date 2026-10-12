@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
-import { hidden, kept, r } from "./helpers.ts";
+import { b62, hidden, kept, r } from "./helpers.ts";
 
 test("built-in type names are types", () => {
 	kept("interface S {\n  secret: Uint8Array;\n  key: CryptoKey;\n}", "secret: Uint8Array;");
@@ -316,4 +316,23 @@ test("code that computes a value holds none: typeof, function heads, references,
 	hidden('DB_PASSWORD="Pa$$WORD"', "Pa$$WORD");
 	hidden("The password is: BlueSecret", "BlueSecret");
 	hidden("MYSQL_PASSWORD=Hx7mQ2pL9vRt FILTER=integration", "Hx7mQ2pL9vRt");
+});
+
+test("a key's label above its PEM block, a placeholder naming its variable, a hashing scheme: no credentials", () => {
+	const body = Array.from({ length: 4 }, () => b62(64)).join("\n");
+	const pem = `PrivateKey=ALICE_cf_c2pnb163v1\n-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----`;
+	const out = r().redact(pem).text;
+	assert.ok(out.includes("ALICE_cf_c2pnb163v1") && !out.includes(body.slice(0, 64)), out);
+	for (const [text, value] of [
+		["POSTGRES_PASSWORD=!!!SET POSTGRES_PASSWORD!!!", "!!!SET POSTGRES_PASSWORD!!!"],
+		["- ELASTIC_PASSWORD=$ELASTIC_PASSWORD <1>", "$ELASTIC_PASSWORD <1>"],
+		[`await self.con.execute("SET password_encryption = 'scram-sha-256';")`, "scram-sha-256"],
+	])
+		assert.ok(r().redact(text).text.includes(value), text);
+	// The same places with a credential in them are read as before.
+	hidden("PrivateKey=Hx7mQ2pL9vRt4wZkLq8s\n-----BEGIN PRIVATE KEY-----", "Hx7mQ2pL9vRt4wZkLq8s");
+	hidden("API_TOKEN=API_TOKEN_9fQ2mL7vXz3pR8sNw4Kd", "9fQ2mL7vXz3pR8sNw4Kd");
+	hidden("sed -i '/# DBPassword=/a\\DBPassword=Hx7mQ2pL9vRt' /etc/zabbix_server.conf", "Hx7mQ2pL9vRt");
+	hidden("ENCRYPTION_KEY=Hx7mQ2pL9vRt4wZkLq8s", "Hx7mQ2pL9vRt4wZkLq8s");
+	hidden("password_encryption = Hx7mQ2pL9vRt", "Hx7mQ2pL9vRt");
 });
