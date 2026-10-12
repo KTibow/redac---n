@@ -36,6 +36,9 @@ test("terminal escapes (colour codes, OSC, CSI, caret notation) around a name or
 	);
 	kept("test dist::manifest::tests::manifest_serialized_with_sorted_keys ... ^[[32mok^[(B^[[m", "^[[32mok");
 	hidden("API_KEY=^[[1mXk9mQ2pLrTvB7nWzQ4cD1aF5eH^[[0m", "Xk9mQ2pLrTvB7nWzQ4cD1aF5eH");
+	// A line continuation inside a token joins it: the key read across it stands, not the part before it.
+	const tail = b62(26);
+	hidden(`TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0ODIxOTMifQ.${b62(20)}\\\n${tail}`, tail);
 });
 
 test("JSON escapes around a value or a flag are undone and the output stays valid JSON", () => {
@@ -61,6 +64,28 @@ test("JSON escapes around a value or a flag are undone and the output stays vali
 		'{"name":"Edit","input":{"file_path":"a.yml","new_string":"  password: gravel orbit fungus tundra"}}',
 		"gravel orbit",
 	);
+});
+
+test("a slash, a tab or a Python repr's quote escaped in a one-line literal is undone where JSON stands around it", () => {
+	// PHP's json_encode escapes every slash.
+	hidden('{"db":"postgres:\\/\\/app:Kx9mQv2Lp7Rt@db.example.com:5432\\/shop"}', "Kx9mQv2Lp7Rt");
+	for (const text of [
+		'{"client_secret":"p\\/yeKx9mQv2Lp7RtZz81Xc4Vb"}',
+		'{"password": "Kx9m\\/Qv2Lp7Rt\\/Zz81Xc4Vb", "user": "admin"}',
+	])
+		hidden(text, "Qv2Lp7Rt");
+	// (In a sed script in a shell's string, `\/` is the script's delimiter, escaped: the value runs on past it.)
+	const sed = 'sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=a\\/b+Kx9mQv2Lp7Rt==/" .env';
+	assert.ok(!new Redactor({ guessing: "off" }).redact(sed).text.includes("Kx9mQv2Lp7Rt"));
+	hidden('{"out": "DB_PASSWORD\\tKx9mQv2Lp7Rt"}', "Kx9mQv2Lp7Rt");
+	hidden("{'stdout': 'DB_HOST=db\\nDB_PASSWORD=Kx9m\\'Qv2 Lp7Rt\\n', 'returncode': 0}", "Lp7Rt");
+});
+
+test("a guessed token is hidden again inside an escaped literal, where it stands without what made it a guess", () => {
+	for (const json of ['{"items": "id\\nKx9mQv2Lp7RtZz81Xc4V\\n"}', '{"out": "commit Kx9mQv2Lp7RtZz81Xc4V\\nmerged"}']) {
+		const out = r().redact(`using Kx9mQv2Lp7RtZz81Xc4V now\n${json}`).text;
+		assert.ok(!out.includes("Kx9mQv2Lp7RtZz81Xc4V"), out);
+	}
 });
 
 test("base64 is decoded and a secret inside it is hidden, wrapped or not", () => {

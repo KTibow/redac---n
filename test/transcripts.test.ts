@@ -58,6 +58,14 @@ test("object keys that hold a secret are renamed, in order", () => {
 		tool_calls: [{ id: "c1", type: "function", function: { name: "sh", arguments: `{"command": "echo\thi ${gh}"}` } }],
 	};
 	assert.ok(!sent(tab).includes(gh));
+	// So are arguments cut off mid-string (a stream that stopped).
+	const cut = {
+		role: "assistant",
+		tool_calls: [
+			{ id: "c1", type: "function", function: { name: "sh", arguments: `{"command": "psql -h db.internal ${gh}` } },
+		],
+	};
+	assert.ok(!sent(cut).includes(gh) && sent(cut).includes("psql -h db.internal"));
 	// Envelope keys stay.
 	const msg = [
 		{ role: "user", content: [{ type: "text", text: "hello there", cache_control: { type: "ephemeral" } }] },

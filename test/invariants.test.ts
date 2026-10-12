@@ -72,6 +72,11 @@ test("JSON stays valid when a secret is a number anywhere", () => {
 		assert.doesNotThrow(() => JSON.parse(out), out);
 		assert.ok(!out.includes("98127"), out);
 	}
+	// Only there: a number in prose, or after a key but before more text, keeps its place unquoted.
+	for (const t of ["the code is 981277341209", '"pin": 981277341209 (the old one)']) {
+		const out = known.redact(t).text;
+		assert.ok(!out.includes('"[REDACTED') && !out.includes("98127"), out);
+	}
 });
 
 test("a known value gets one tag in text, JSON, a URL and a shell escape", () => {

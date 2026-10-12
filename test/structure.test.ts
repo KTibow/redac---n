@@ -8,7 +8,14 @@ import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { BIP39_WORDS } from "../src/bip39-data.ts";
 import { Redactor } from "../src/index.ts";
-import { inJwk, jsonDocuments, jsonStringLiterals } from "../src/json.ts";
+import {
+	inJwk,
+	jsonDocuments,
+	jsonLiteralSpans,
+	jsonStringLiterals,
+	parseJson,
+	pythonReprLiterals,
+} from "../src/json.ts";
 import { urlEnd, urls } from "../src/urls.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 import { randomBytes } from "./random.ts";
@@ -70,9 +77,36 @@ test("inJwk reads the object's own kty, and a symmetric key's k stays secret", (
 	hidden(`{"kty":"oct","k":"${k}","alg":"HS256"}`, k);
 });
 
+test("string literals are read by their grammar: JSON's, a Python repr's, and only where JSON's syntax stands around them", () => {
+	const decoded = (text: string) => jsonStringLiterals(text).map((l) => l.decoded);
+	// A raw line break, or a backslash before one, ends a literal that doesn't close: no document, and none from its middle.
+	assert.deepEqual(decoded('echo "first line\\tA\\nmore of it\nsecond line"'), []);
+	assert.deepEqual(decoded('echo "first line\\tA\\\nmore\\nsecond line"'), []);
+	// `\u` takes four hex digits; another escape JSON doesn't have stays as written.
+	assert.deepEqual(decoded('{"log": "C:\\users\\deploy\\tok\\u00e9\\n"}'), ["C:\\users\\deploy\tok\u00e9\n"]);
+	assert.equal(parseJson('{"a": "\\uZZZZ"}', 0), undefined);
+	const repr = [...pythonReprLiterals("{'stdout': 'it\\'s \\xe9t\\xe9\\nC:\\xampp\\n', 'rc': 0}")];
+	assert.deepEqual(
+		repr.map((l) => l.decoded),
+		["it's \u00e9t\u00e9\nC:\\xampp\n"],
+	);
+	// Blanks of any kind between JSON's `[` or `,` and a literal; and a quote in a shell word, `Kx9m"Qv2"`, opens none.
+	assert.deepEqual(jsonLiteralSpans('[\n\t"a",\r\n\t"b"\n]'), [
+		[4, 5],
+		[11, 12],
+	]);
+	assert.deepEqual(jsonLiteralSpans('export DB_PASSWORD=Kx9m"Qv2Lp7Rt"'), []);
+});
+
 test("jsonDocuments finds documents after a run of starts that fail", () => {
 	const text = "[\n".repeat(400) + "x\n" + '{"password": "hunter2-secret-value"}\n';
 	assert.equal([...jsonDocuments(text)].length, 1);
+});
+
+test("a JSON document is read by JSON's grammar: tabs and CRLF are blanks, and a Python set or a missing comma is none", () => {
+	assert.equal([...jsonDocuments('{\r\n\t"kind": "Secret",\r\n\t"data": {"a": "b"}\r\n}')].length, 1);
+	for (const text of ['{"a": "x\ny"}', '{"api_key", "secret"}', '{"a": 1 "b": 2}', '["a" "b"]'])
+		assert.equal(parseJson(text, 0), undefined, text);
 });
 
 test("tool keys match whole, header breaks in all escaped forms, pem tail trim is linear", () => {
@@ -188,6 +222,12 @@ test("a certificate in a Kubernetes Secret is kept", () => {
 		"apiVersion: v1\ndata:\n  tls.crt: L0ZtMG01WHVHSS9FM3FMaERFNU9SeEFTVFNSTlFITVJ2ZzNBNHo3YkdnYjI1VDNZ\n  tls.key: c2VjcmV0\nkind: Secret\n",
 		"L0ZtMG01WHVHSS9FM3FMaERFNU9SeEFTVFNSTlFITVJ2ZzNBNHo3YkdnYjI1VDNZ",
 	);
+});
+
+test("the command a Kubernetes Secret's JSON config runs is read as a command line, and kept", () => {
+	const config = '{\n  "execProviderConfig": {\n    "command": "argocd-k8s-auth",\n    "args": ["aws"]\n  }\n}';
+	const secret = `apiVersion: v1\nkind: Secret\nstringData:\n  config: |\n    ${config.replace(/\n/g, "\n    ")}\n`;
+	kept(secret, "argocd-k8s-auth");
 });
 
 test("a published BIP-39 test mnemonic is kept", () => {

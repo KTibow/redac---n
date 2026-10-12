@@ -150,15 +150,16 @@ export function* pythonReprLiterals(text: string): Generator<{ decoded: string; 
 
 /**
  * JSON string literals worth scanning as the text they encode, decoded, each with a map from decoded positions to
- * positions in the text (one entry per decoded character, plus one for the end): documents (several lines, terminal
- * output, quoted text inside), and a single config line under a tool's text key or a command line under a shell's,
+ * positions in the text (one entry per decoded character, plus one for the end): documents (several lines, a tab's
+ * columns, quoted text inside), and a single config line under a tool's text key or a command line under a shell's,
  * escapes or not.
  */
 export function jsonStringLiterals(text: string): { decoded: string; map: number[] }[] {
 	const out: { decoded: string; map: number[] }[] = [];
 	for (const { decoded, map, escapes, open } of stringLiterals(text)) {
-		// Only literals that are documents themselves: several lines, terminal output, or quoted text inside. A code string
-		// ending in one `\n` (a line of a C or Python array) is judged in place, with its neighbours.
+		// Only literals that are documents themselves: several lines, a tab's columns, or quoted text inside. A code string
+		// ending in one `\n` (a line of a C or Python array) is judged in place, with its neighbours. (Terminal output's
+		// colour codes, `\u001b[32m`, normalize.ts reads where they are written.)
 		// Also a single config line quoted on its own (an Edit tool's `old_string`): `      private_key_passphrase: a b c`.
 		// (Only under a tool's input key: an i18n file's `"pwd_hint": "Password: 8-64 characters"` is text.)
 		const configLine =
@@ -166,18 +167,21 @@ export function jsonStringLiterals(text: string): { decoded: string; map: number
 			/^[ \t]*[\w.-]{1,80}[ \t]*[:=][ \t]*\S[^\n]*\s/.test(decoded) &&
 			/pass|secret|token|key|cred|auth|pwd/i.test(decoded) &&
 			AFTER_TOOL_TEXT_KEY.test(text.slice(Math.max(0, open - 40), open));
-		// (And a command line under a shell's key, `{"command": "mysql -u root -pV shop"}`: only the shell reader reads it.)
-		const commandLine =
-			decoded.length >= 8 && /\s-/.test(decoded) && AFTER_COMMAND_KEY.test(text.slice(Math.max(0, open - 40), open));
+		// (And a command line under a shell's key, `{"command": "mysql -u root -pV shop"}`: read as the command it is, with
+		// or without flags, `{"command": "argocd-k8s-auth"}`.)
+		const commandLine = decoded.length >= 8 && AFTER_COMMAND_KEY.test(text.slice(Math.max(0, open - 40), open));
 		if (configLine || commandLine) out.push({ decoded, map });
 		else if (
 			escapes > 0 &&
 			decoded.length >= 20 &&
 			(/\n.*\S/.test(decoded.replace(/\n$/, "")) ||
-				decoded.includes("\x1b") ||
 				decoded.includes("\t") ||
 				decoded.includes('"') ||
-				(decoded.includes("/") && /\\\//.test(text.slice(map[0], map[map.length - 1]))))
+				// (An escaped slash, PHP's `"https:\/\/…"`, only where JSON's syntax stands around the literal: in a sed
+				// script in a shell's string, `"s/^DB_PASSWORD=.*/DB_PASSWORD=a\/b/"`, it escapes the script's delimiter.)
+				(decoded.includes("/") &&
+					/\\\//.test(text.slice(map[0], map[map.length - 1])) &&
+					isJsonPlaced(text, open, map[map.length - 1])))
 		)
 			out.push({ decoded, map });
 	}
@@ -195,17 +199,21 @@ function followsJsonOpener(text: string, at: number): boolean {
 	return i === from || "{[,:".includes(text[i - 1]);
 }
 
+/** Whether JSON's syntax stands around the literal whose quotes are at `open` and `close`: `{`, `[`, `,` or `:` before; `:`, `,`, `}` or `]` after, or the text's ends. */
+function isJsonPlaced(text: string, open: number, close: number): boolean {
+	return followsJsonOpener(text, open) && /^[ \t\r\n]*(?:[:,}\]]|$)/.test(text.slice(close + 1, close + 41));
+}
+
 /**
  * Where each JSON string literal's content is, between its quotes: what no finding's span should cross. Only the
- * literals JSON's syntax stands around (`{`, `[`, `,` or `:` before; `:`, `,`, `}` or `]` after, or the text's ends):
- * a `"` inside another language's single-quoted string (`-p'Kx"9…' -e "SELECT 1"`) opens no JSON literal.
+ * literals JSON's syntax stands around (isJsonPlaced): a `"` inside another language's single-quoted string
+ * (`-p'Kx"9…' -e "SELECT 1"`) opens no JSON literal.
  */
 export function jsonLiteralSpans(text: string): [start: number, end: number][] {
 	const out: [number, number][] = [];
 	for (const { map, open } of stringLiterals(text)) {
 		const close = map[map.length - 1];
-		if (followsJsonOpener(text, open) && /^[ \t\r\n]*(?:[:,}\]]|$)/.test(text.slice(close + 1, close + 41)))
-			out.push([open + 1, close]);
+		if (isJsonPlaced(text, open, close)) out.push([open + 1, close]);
 	}
 	return out;
 }
