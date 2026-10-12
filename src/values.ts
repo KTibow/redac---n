@@ -894,12 +894,13 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 	// `quote(pw) if pw else None`: code on either side (a call, a member, a literal), so `rain if sun else snow` isn't.
 	["a Python conditional", (v) => PY_CONDITIONAL.test(v) && /[.([\]"']|\b(?:None|True|False)\b/.test(v)],
 	// `password: SecretStr`, `token: Optional[SecretBytes]`, `PasswordField`; and where code is written `ClientSecret`,
-	// `SecretString`. (Elsewhere words in title case ending so are a passphrase: `DB_PASSWORD=LittleSecret`.)
+	// `SecretString`, `PasswordType`. (Elsewhere words in title case ending so are a passphrase: `DB_PASSWORD=LittleSecret`,
+	// `The password is: HarborModel`.)
 	[
 		"a type name",
 		(v, literal) =>
 			/^(?:Optional\[)?[A-Z]\w*(?:Str|String|Bytes|Field|Type|Secret|Model)\]?,?$/.test(v) &&
-			!(literal && /(?:String|Secret)\]?,?$/.test(v)) &&
+			!(literal && !/^Optional\[/.test(v) && /(?:String|Secret|Type|Model)\]?,?$/.test(v)) &&
 			readsAsWords(v),
 	],
 	// `@options.password`.
