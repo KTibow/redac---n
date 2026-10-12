@@ -120,7 +120,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 		isCountingDigits(value) &&
 		f.name !== undefined &&
 		namesPasswordOrPin(f.name) &&
-		/\b(?:default|factory|example|e\.g\.|such as|for instance)\b/i.test(left.slice(left.lastIndexOf("\n") + 1))
+		/\b(?:default|factory|example|such as|for instance)\b|\be\.g\./i.test(left.slice(left.lastIndexOf("\n") + 1))
 	)
 		return "a published default PIN";
 	// The token the span sits in, to blanks, quotes and separators, and its part after a label (`key_id:rzp_…`,
@@ -542,7 +542,7 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 		/^[@:?][\p{L}_][\p{L}\d_]*$/u.test(v) &&
 		v === value &&
 		!/["'`]/.test(before) &&
-		/(?:[=<>]|\(|,)[ \t]*$/.test(before) &&
+		/(?:[=<>]|\(|,)[ \t]*$/.test(line) &&
 		!/^[ \t]*set[ \t]+[\w.-]+=$/i.test(line) &&
 		(/\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE|VALUES|SET)\b/.test(line) ||
 			/^[ \t]*(?:select|insert|update|delete)\b/i.test(line))

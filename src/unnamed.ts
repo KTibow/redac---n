@@ -357,7 +357,8 @@ function isHookUrl(f: Features): boolean {
 	return (
 		ancestors.some(isHookSegment) ||
 		/^bot\d/.test(ancestors.at(-1) ?? "") ||
-		/:\/\/(?:[\w-]+\.)*(?:hooks?|webhooks?|hc-ping|ping)[.-]/i.test(f.ctx.left)
+		// (The token's own URL's host: an earlier URL on the line is another's.)
+		/:\/\/(?:[\w-]+\.)*(?:hooks?|webhooks?|hc-ping|ping)[.-]/i.test(f.ctx.left.slice(f.ctx.left.lastIndexOf("://")))
 	);
 }
 

@@ -1339,16 +1339,18 @@ const TERNARY = String.raw`(?<!\?)\?(?![?.=]|[\w-]+=)`;
 const CONDITIONAL = new RegExp(String.raw`${TERNARY}[^\n]*:|[ \t]if[ \t][^\n]*[ \t]else[ \t]|\|\||\?\?|[ \t]or[ \t]`);
 /** A credential's name and what gives it a value: `pw =`, `password:`, `setPassword(`. */
 const CONDITIONAL_HEAD = /(?<![\w$])([A-Za-z_$][\w$.]{0,80}?)(?:["']?[ \t]*(?:=|:)(?![=:])|[ \t]*\()[ \t]*/dg;
+/** What may follow a branch that ends the expression: its statement's or bracket's end, or a comment. */
+const BRANCH_END = String.raw`(?:[;,)\]}]|#|//|$)`;
 /** Where a literal branch stands in the expression after it. */
 const BRANCHES = [
 	// A ternary's: `? "…" :` and, after its `?`, `: "…"` closing the expression.
 	new RegExp(String.raw`${TERNARY}[ \t]*${quoted(1, 1, "\"'`")}[ \t]*:`, "dg"),
-	new RegExp(String.raw`${TERNARY}[^\n]*?:[ \t]*${quoted(1, 1, "\"'`")}[ \t]*(?:[;,)]|$)`, "dg"),
+	new RegExp(String.raw`${TERNARY}[^\n]*?:[ \t]*${quoted(1, 1, "\"'`")}[ \t]*${BRANCH_END}`, "dg"),
 	// A fallback's, after `or`, `||` or `??`: `os.getenv("PW") or "…"`.
-	new RegExp(String.raw`(?:\|\||\?\?|[ \t]or)[ \t]+${quoted(1, 1, "\"'`")}[ \t]*(?:[;,)]|$)`, "dg"),
+	new RegExp(String.raw`(?:\|\||\?\?|[ \t]or)[ \t]+${quoted(1, 1, "\"'`")}[ \t]*${BRANCH_END}`, "dg"),
 	// Python's: `"…" if … else …` and `… if … else "…"`.
 	new RegExp(String.raw`^${quoted(1, 1, "\"'")}[ \t]+if[ \t]`, "dg"),
-	new RegExp(String.raw`[ \t]if[ \t][^\n]*?[ \t]else[ \t]+${quoted(1, 1, "\"'")}[ \t]*(?:[;,)]|$)`, "dg"),
+	new RegExp(String.raw`[ \t]if[ \t][^\n]*?[ \t]else[ \t]+${quoted(1, 1, "\"'")}[ \t]*${BRANCH_END}`, "dg"),
 ];
 /**
  * A conditional's string branches under a credential's name, assigned or passed: `pw = cfg == null ? "…" : cfg.pw;`,
@@ -2779,16 +2781,17 @@ function prose(text: string, out: Finding[]) {
 	// Listed in a sentence: `user is ro_analytics, password R0ck3t#46, host …`; and the new value of a credential
 	// the sentence named: `ops rotated the db password yesterday, new one is Thund3r&55`.
 	for (const m of text.matchAll(
-		/(?:^|[,;:(]\s*|\b(?:and|with)\s+)(password|passwd|pwd|pw|passphrase)\s+([^\s,;()"'`]{6,64}?)(?=[,;)]|\s+(?:and|host|user|db|port|for|account|role|warehouse|database|schema|on|at|in|via|to)\b|[.!]?\s*$)|\b(?:password|passwd|token|secret|api key|key)\b[^.\n]{0,80}?\b(?:new one|the new one|it)(?:'s| is| is now|’s)\s+["'`*]{0,2}([^\s"'`*,;]{6,64}?)["'`*]{0,2}(?=[.,;!?]?(?:\s|$))/dgim,
+		/(?:^|[,;:(]\s*|\b(?:and|with)\s+)(password|passwd|pwd|pw|passphrase)\s+([^\s,;()"'`]{6,64}?)(?=[,;)]|\s+(?:and|host|user|db|port|for|account|role|warehouse|database|schema|on|at|in|via|to)\b|[.!]?\s*$)|\b(password|passwd|token|secret|api key|key)\b[^.\n]{0,80}?\b(?:new one|the new one|it)(?:'s| is| is now|’s)\s+["'`*]{0,2}([^\s"'`*,;]{6,64}?)["'`*]{0,2}(?=[.,;!?]?(?:\s|$))/dgim,
 	)) {
-		const k = m[2] !== undefined ? 2 : 3;
+		const k = m[2] !== undefined ? 2 : 4;
 		const value = m[k];
+		const noun = (m[1] ?? m[3]).toLowerCase();
 		// (`it is …` only for a credential just rotated: `rotated the password, new one is …`.)
 		// (Or a quoted value that reads as a password: ``the password instead? It's `Apple2007!` ``.)
 		if (
-			k === 3 &&
+			k === 4 &&
 			!/rotat|chang|reset|regenerat|replac|updat|new one/i.test(m[0]) &&
-			!(/["'`*]$/.test(text.slice(m.index, m.indices![3]![0])) && /\d/.test(value) && /[^\w]/.test(value))
+			!(/["'`*]$/.test(text.slice(m.index, m.indices![4]![0])) && /\d/.test(value) && /[^\w]/.test(value))
 		)
 			continue;
 		// (A label before the word, `Password: …`, is the label rules'.)
@@ -2798,10 +2801,12 @@ function prose(text: string, out: Finding[]) {
 			(k === 2 && text[m.indices![1]![0] - 1] === ":") ||
 			!isProseValue(value) ||
 			isCode(value, true) ||
-			!(/\d/.test(value) && /[A-Za-z]/.test(value))
+			!(/\d/.test(value) && /[A-Za-z]/.test(value)) ||
+			// (A key's or a token's value as those are judged: `the SSH key was updated, it is id_ed25519 now` names a file.)
+			(!/^pass|^pw/.test(noun) && !isNamedSecret(noun.replace(/\s+/g, "_"), `"${value}"`, true))
 		)
 			continue;
-		namedFinding(out, m.indices![k]![0], m.indices![k]![1], m[1] ?? "password", "named:prose", 0.8);
+		namedFinding(out, m.indices![k]![0], m.indices![k]![1], noun, "named:prose", 0.8);
 	}
 	// A value in parentheses after its name: `rotate the passwd (M34d0w) before Friday`, `the DB_PASSWORD (Xk9…)`.
 	for (const m of text.matchAll(
@@ -3169,7 +3174,8 @@ const NSS_SOURCES = new Set([
  */
 export function isSentenceWord(word: string): boolean {
 	const w = word.toLowerCase().replace(/[.,;:!?]+$/, "");
-	return FUNCTION_WORDS.has(w) || (/(?:ed|ing|ly)$/.test(w) && !bip39().has(w));
+	// (A participle or an adverb has a stem before its ending: `using`, `generated`, `randomly`; not `red`, `king`, `holy`.)
+	return FUNCTION_WORDS.has(w) || (/^[a-z]{2,}(?:ed|ing)$|^[a-z]{3,}ly$/.test(w) && !bip39().has(w));
 }
 
 /** BIP39's word list as each word's index in it, built on first use. */
@@ -3249,22 +3255,21 @@ function labelledProse(text: string, out: Finding[]) {
 	// The value is group 2; the noun ends at `nounEnd`.
 	const add = (m: RegExpMatchArray, noun: string, nounEnd: number) => {
 		const [start] = m.indices![2]!;
+		// (The noun is the subject, not a qualifier: `password policy is …`, `password manager is …`, `**Password reset:**
+		// <url>`; checked before a passphrase is read on.)
+		if (
+			/^[ \t]+(?:policy|policies|reset|field|requirements?|rules?|manager|strength|length|hint|prompt|change|expir\w*|history|complexity|recovery|rotation|storage|hash(?:ing)?|form|page|screen|dialog|input|protected|protection|less)\b/i.test(
+				text.slice(nounEnd, start),
+			)
+		)
+			return;
 		const phrase = /pass|phrase/i.test(noun) ? passphraseEnd(text, start, start + m[2].length) : start;
 		if (phrase > start + m[2].length) {
 			namedFinding(out, start, phrase, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 			return;
 		}
 		const v = m[2].replace(/[.,;:)]+$/, "");
-		// (The noun is the subject, not a qualifier: `password policy is …`, `**Password reset:** <url>`.)
-		const after = text.slice(nounEnd, start);
-		if (
-			/^[ \t]+(?:policy|policies|reset|field|requirements?|rules?|manager|strength|length|hint|prompt|change|expir\w*|history|complexity|recovery|rotation|storage|hash(?:ing)?|form|page|screen|dialog|input|protected|protection|less)\b/i.test(
-				after,
-			) ||
-			/^https?:\/\//.test(v)
-		)
-			return;
-		if (!accept(noun, v)) return;
+		if (/^https?:\/\//.test(v) || !accept(noun, v)) return;
 		namedFinding(out, start, start + v.length, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 	};
 	// `<noun> … is|was <value>`: up to 60 characters of the same sentence between them.
@@ -3310,7 +3315,7 @@ function labelledProse(text: string, out: Finding[]) {
 			"dgi",
 		),
 	)) {
-		const noun = CRED_NOUN_IN.exec(m[1])!;
+		const noun = labelNoun(m[1]);
 		if (m[1].split(/\s+/).length <= 6) add(m, noun[0], m.indices![1]![0] + noun.index + noun[0].length);
 	}
 	for (const m of text.matchAll(
@@ -3319,9 +3324,18 @@ function labelledProse(text: string, out: Finding[]) {
 			"dgim",
 		),
 	)) {
-		const noun = CRED_NOUN_IN.exec(m[1])!;
+		const noun = labelNoun(m[1]);
 		if (m[1].trim().split(/\s+/).length <= 6) add(m, noun[0], m.indices![1]![0] + noun.index + noun[0].length);
 	}
+}
+
+/**
+ * The credential noun a label names its value by: its password's, secret's or PIN's when it has one (`API Key Password`
+ * names a password), else its last (`Client ID and Secret Key`).
+ */
+function labelNoun(label: string): RegExpExecArray {
+	const nouns = [...label.matchAll(new RegExp(String.raw`\b${CRED_NOUN}\b`, "gi"))];
+	return (nouns.find((n) => /pass|secret|pin/i.test(n[0])) ?? nouns.at(-1) ?? CRED_NOUN_IN.exec(label))!;
 }
 
 /** "Password" in the languages agents' users write in (and its common inflections). */
@@ -3343,11 +3357,12 @@ function passwordShaped(text: string, out: Finding[]) {
 	// after it but a password's own `!` and `?` kept: `Password "Abc1!" is too short`, `the password is Xk9mPq2&Rt7vLw4!`.)
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`(?<![\p{L}\d_:/@.-])${PASSWORD_WORD}(?![\p{L}\d_-])[^\n.;!?=]{0,${SENTENCE_REACH}}?[ \t:：](?:(["'\x60«(])([^\s"'\x60»)]{1,64})["'\x60»)]|([^\s"'\x60«(][!-~]{5,63}))(?=\s|$|[、。，])`,
+			String.raw`(?<![\p{L}\d_:/@.-])${PASSWORD_WORD}(?![\p{L}\d_-])[^\n.;!?=]{0,${SENTENCE_REACH}}?[ \t:：](?:(["'\x60])([^\s"'\x60]{1,64})\1|«([^\s»]{1,64})»|\(([^\s)]{1,64})\)|([^\s"'\x60«][!-~]{5,63}))(?=\s|$|[、。，])`,
 			"dgiu",
 		),
 	)) {
-		const k = m[2] !== undefined ? 2 : 3;
+		// (Each opener with its own closer, so a quoted password may hold the others: `"Abc)1!"`, `«Mot(de)Passe1»`.)
+		const k = [2, 3, 4, 5].find((i) => m[i] !== undefined)!;
 		const value = withoutUnopenedClosers(m[k].replace(/[.,;:)]+$/, ""));
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, the readers' of those.)

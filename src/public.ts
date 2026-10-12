@@ -51,11 +51,14 @@ export function isClientGoogleKey(text: string, start: number): boolean {
 	const before = text.slice(Math.max(0, start - 600), start);
 	const line = before.slice(before.lastIndexOf("\n") + 1);
 	if (/maps\.googleapis\.com\/maps\/api\/js\?(?:[^\s"'&]*&)*key=$/.test(line)) return true;
-	// An Android manifest's Maps key and the iOS SDK's: the app ships them.
+	// An Android manifest's Maps key and the iOS SDK's: the app ships them. (The manifest's within its `<meta-data>` tag,
+	// its attributes on one line or several, in either order.)
+	if (/GMSServices\.provideAPIKey\(\s*"$|GMSPlacesClient\.provideAPIKey\(\s*"$/.test(line)) return true;
+	const tag = /<meta-data\b[^<>]*android:value="$/.exec(before)?.[0];
 	if (
-		/com\.google\.android\.geo\.API_KEY"[^>\n]{0,80}android:value="$|GMSServices\.provideAPIKey\(\s*"$|GMSPlacesClient\.provideAPIKey\(\s*"$/.test(
-			line,
-		)
+		tag &&
+		(/android:name="com\.google\.android\.geo\.API_KEY"/.test(tag) ||
+			/^[^"<>]*"[^<>]*android:name="com\.google\.android\.geo\.API_KEY"/.test(text.slice(start, start + 600)))
 	)
 		return true;
 	// A server's key by name (Gemini, Vertex), whatever is around it.
@@ -287,12 +290,15 @@ function isSequential(token: string): boolean {
  */
 export function isPublicJwt(token: string, samplesOnly = false): boolean {
 	if (!token.startsWith("eyJ")) return false;
-	const payload = base64Binary(token.split(".")[1] ?? "");
+	const [head, body] = token.split(".");
+	const payload = base64Binary(body ?? "");
 	if (!payload) return false;
+	// (jwt.io's sample claims say a sample when a public key signed them, RS256's and the others'; an HMAC token is a
+	// sample only by its docs key, signedWithDocsKey, as one signed with a real secret may copy the claims.)
+	const hmac = /"alg"\s*:\s*"HS\d+"/.test(base64Binary(head) ?? "");
 	return (
 		(!samplesOnly && /"role"\s*:\s*"anon"/.test(payload)) ||
-		/"sub"\s*:\s*"1234567890"/.test(payload) ||
-		/"name"\s*:\s*"John Doe"/.test(payload) ||
+		(!hmac && (/"sub"\s*:\s*"1234567890"/.test(payload) || /"name"\s*:\s*"John Doe"/.test(payload))) ||
 		signedWithDocsKey(token)
 	);
 }

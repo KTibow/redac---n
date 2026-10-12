@@ -214,7 +214,10 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 		const raw = m[4].trimEnd();
 		// A quoted value keeps its quotes, a JSON line its trailing comma, a `.env` line its ` # comment`; a line of
 		// several JSON pairs is left to jsonPairs.
-		const quoted = raw.match(/^(["'`])((?:\\.|(?!\1|\\).|\\(?=\1(?:[,;]|[ \t]+#.*)?$))*)\1(?:[,;]|[ \t]+#.*)?$/);
+		// (Its quote inside written as YAML and SQL write it, doubled, `'it''s'`, or as a shell does, `'it'\''s'`.)
+		const quoted = raw.match(
+			/^(["'`])((?:\1\\\1\1|\1\1|\\.|(?!\1|\\).|\\(?=\1(?:[,;]|[ \t]+#.*)?$))*)\1(?:[,;]|[ \t]+#.*)?$/,
+		);
 		if (!quoted && /^["'`]/.test(raw)) continue;
 		let value = quoted ? quoted[2] : raw;
 		// An unquoted JSON value (`"token": true, "x": 1`) ends at its delimiter.
@@ -436,12 +439,17 @@ export function findPrintedSecret(text: string): Finding[] {
 		isJsonDocument(line);
 	const first = firstLine(text);
 	const firstEnd = first.end;
-	if (first.value && !notSecret(first.value) && !/^[{[]$/.test(first.value) && readsAsValue(first.value))
-		add(first.start, first.start + first.value.length);
+	// (A value printed as a JSON string is judged as what it holds, and hidden inside its quotes.)
+	const firstValue = jsonString(first.value) ?? first.value;
+	const quote = firstValue === first.value ? 0 : 1;
+	if (firstValue && !notSecret(firstValue) && !/^[{[]$/.test(firstValue) && readsAsValue(firstValue))
+		add(first.start + quote, first.start + first.value.length - quote);
 	for (const m of text.slice(firstEnd).matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
+		const value = jsonString(m[1]) ?? m[1];
+		const q = value === m[1] ? 0 : 1;
 		// (A message's tokens are not values; `[`/`{` start a JSON document's lines.)
-		if (isMessageToken(m[1]) || /^[{[]/.test(m[1]) || notSecret(m[1])) continue;
-		add(firstEnd + at(m, 1)[0], firstEnd + at(m, 1)[1]);
+		if (isMessageToken(value) || /^[{[]/.test(value) || notSecret(value)) continue;
+		add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[1] - q);
 	}
 	return out;
 }
@@ -455,8 +463,17 @@ export function findPrintedSecret(text: string): Finding[] {
 const MESSAGE_SHAPE =
 	/^(?:no|not|error|errors|failed|failure|invalid|unable|cannot|can't|couldn't|please|run|missing|unauthorized|forbidden)\b|\b(?:is|are|was|were|do|does|did|has|have|can|could|will|must)(?:n't| not)\b|\b(?:found|denied|expired|occurred|exists?|failed)$/i;
 
-/** One token that is a message's, not a value: a word with sentence punctuation (`Done.`, `Error:`) or with a message's shape (`Unauthorized`, `expired`). A letters-only word otherwise is a value (`monkeykingdom`, a password). */
-const isMessageToken = (token: string): boolean => /^\p{L}+[.!:]$/u.test(token) || MESSAGE_SHAPE.test(token);
+/**
+ * One token that is a message's, not a value: a label (`Error:`), a status word with its stop (`Done.`, `Saved!`), or
+ * a word with a message's shape (`Unauthorized`, `expired`). A letters-only word otherwise is a value, with a password's
+ * own stop too (`monkeykingdom`, `sunshine!`, `letmein.`).
+ */
+const isMessageToken = (token: string): boolean =>
+	/^\p{L}+:$/u.test(token) ||
+	/^(?:done|ok|okay|success|succeeded|saved|copied|deleted|removed|updated|created|finished|complete|completed|ready|aborted|cancell?ed|warning)[.!]$/i.test(
+		token,
+	) ||
+	MESSAGE_SHAPE.test(token);
 
 /**
  * Whether a credential command's first line reads as the value it prints, not a sentence about it: one token, or a
@@ -468,14 +485,28 @@ function readsAsValue(line: string): boolean {
 	return words.length <= 24 && words.every((w) => /^[\p{L}\p{N}-]+$/u.test(w)) && !MESSAGE_SHAPE.test(line);
 }
 
-/** Whether a line is a JSON value whole: an object, an array or a string that parses (output encoded once more). */
+/**
+ * Whether a line is a JSON document whole: an object, an array, or a string that holds one (output encoded once more,
+ * `--query SecretString`'s `"{\"password\": …}"`). A string that holds anything else is a value (jsonString).
+ */
 function isJsonDocument(line: string): boolean {
 	if (!/^(?:[{[].*[}\]]|".*")$/.test(line)) return false;
 	try {
-		JSON.parse(line);
-		return true;
+		const v = JSON.parse(line);
+		return typeof v !== "string" || isJsonDocument(v.trim());
 	} catch {
 		return false;
+	}
+}
+
+/** What a line that is one JSON string holds (`az … --query value` prints its value so, `"…"`), or undefined. */
+function jsonString(line: string): string | undefined {
+	if (!/^".+"$/.test(line)) return undefined;
+	try {
+		const v = JSON.parse(line);
+		return typeof v === "string" ? v : undefined;
+	} catch {
+		return undefined;
 	}
 }
 

@@ -147,7 +147,8 @@ export function urlAround(text: string, at: number, end = at, from = Math.max(0,
  */
 function parseUrl(text: string, start: number, end: number): Url {
 	const url = text.slice(start, end);
-	const sep = url.indexOf("://");
+	// (A scheme starts the URL: a path's `?next=https://…` is its query's.)
+	const sep = /^[a-z][a-z0-9+.-]{1,20}:\/\//i.test(url) ? url.indexOf("://") : -1;
 	const scheme = sep > 0 ? url.slice(0, sep) : "";
 	let at = sep > 0 ? sep + 3 : 0;
 	const span = (from: number, to: number): Span => ({

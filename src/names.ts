@@ -645,7 +645,7 @@ export function words(name: string): string[] {
 	return name
 		.normalize("NFD")
 		.replace(/\p{M}/gu, "")
-		.replace(/ł/g, "l")
+		.replace(/ł/gi, (c) => (c === "ł" ? "l" : "L"))
 		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
 		.replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
 		.toUpperCase()
@@ -889,7 +889,8 @@ export function takesAnyWord(name: string): boolean {
 
 /** Whether a name says its value is a password or a PIN, by any of its words (`DB_PASSWORD_HINT`, `PGPASSWORD`, `admin-pin`, `door_code`). */
 export function namesPasswordOrPin(name: string): boolean {
-	return words(name).some(isPasswordWord) || isPinName(name);
+	// (A phrase as a name, `mot_de_passe`, `palavra_passe`, as isPasswordName reads it.)
+	return words(name).some(isPasswordWord) || /PASSE$/.test(phraseName(readName(name).core) ?? "") || isPinName(name);
 }
 
 function isVendorName(name: string): boolean {
@@ -913,7 +914,8 @@ const PIN_OWNERS = new Set(["ALARM", "DOOR", "LOCK", "UNLOCK", "KEYPAD", "SAFE",
 /**
  * A credential's word somewhere in a name, as a regex source for the readers' cheap prefilters (named.ts `NAME`,
  * setter calls): every word CREDENTIAL_WORDS and CREDENTIAL_SUFFIX know, in lower case, so a word added there reaches
- * them all; and `sess`, `private`, `contrase` for `session_id`, `vapidPrivate` and `contraseña`. A prefilter only:
+ * them all; `sess` and `private` for `session_id` and `vapidPrivate`; and "password" as other languages spell it in a
+ * name, accents and all (`db_jelszó`, `DB_HASŁO`, `contraseña`), which CREDENTIAL_WORDS holds folded. A prefilter only:
  * whether `pin` in `pinValue` or `spinner` is a credential's word is isCredentialName's (the readers' `i` flag leaves
  * no way to tell a camel-case hump from a lower-case letter here).
  */
@@ -925,7 +927,7 @@ export const CREDENTIAL_WORD = [
 			"PINCODE",
 			"SESS",
 			"PRIVATE",
-			"CONTRASE",
+			...PASSWORD_LANGUAGES.flatMap(([, spellings]) => spellings.filter((w) => /^[^\s-]*[^\x00-\x7f][^\s-]*$/.test(w))),
 		].map((w) => w.toLowerCase()),
 	),
 ]
@@ -1113,8 +1115,27 @@ function unqualifiedName(name: string): string {
 	return w.join("_");
 }
 
-/** Words before `KEY` that name a lookup key in a schema or a store, and a cloud's access key as well (see classify). (Not `SEARCH`: a search key is more often Algolia's public one than an Azure secret.) */
-const AMBIGUOUS_BEFORE_KEY = new Set(["PRIMARY", "SECONDARY", "STORAGE", "HOST", "ROOT", "REDIS", "SERVER", "MASTER"]);
+/**
+ * Words before `KEY` that name a lookup key in a schema or a store, and a cloud's access key as well (see classify); and
+ * a key's algorithm or kind, `SSH_KEY`, `CA_KEY`, its public half or its private one: such a name is neutral, its value
+ * judged by its shape. (Not `SEARCH`: a search key is more often Algolia's public one than an Azure secret.)
+ */
+const AMBIGUOUS_BEFORE_KEY = new Set([
+	"PRIMARY",
+	"SECONDARY",
+	"STORAGE",
+	"HOST",
+	"ROOT",
+	"REDIS",
+	"SERVER",
+	"MASTER",
+	"SSH",
+	"RSA",
+	"DSA",
+	"ECDSA",
+	"ED25519",
+	"CA",
+]);
 
 /** Credential words that may come first in a name, its owner after them (`PASSWORD_DB`, `TOKEN_GITHUB`). */
 const OWNED_CREDENTIAL = new Set(["PASSWORD", "PASSWD", "PWD", "PASSPHRASE", "TOKEN", "SECRET", "APIKEY"]);
@@ -1266,15 +1287,21 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		return last === "KEY" && AMBIGUOUS_BEFORE_KEY.has(core.at(-2)!) ? "neutral" : "identifier";
 	// Encrypted or wrapped key material, CSRF tokens: random, not usable as credentials. (In a dotted name, only the
 	// last part counts: `encryptedSavedObjects.encryptionKey` is a key.)
-	// (By its words: `UNENCRYPTED_PASSWORD` and `unwrapped_key` name the plaintext.)
+	// (By its words: `UNENCRYPTED_PASSWORD` and `unwrapped_key` name the plaintext. A CSRF name ending in a secret's or a
+	// key's word names what signs the tokens, a server's secret: `WTF_CSRF_SECRET_KEY`, `csrfSecret`, `CSRF_AUTH_KEY`.)
 	const lastPart = name.slice(name.lastIndexOf(".") + 1);
-	if (words(lastPart).some((x) => /^(?:ENCRYPTED|WRAPPED|SEALED|CIPHERTEXT|CSRF|XSRF)/.test(x))) return "hash";
+	const partWords = words(lastPart);
+	if (
+		partWords.some((x) => /^(?:ENCRYPTED|WRAPPED|SEALED|CIPHERTEXT)/.test(x)) ||
+		(partWords.some((x) => /^(?:CSRF|XSRF)/.test(x)) && !/^(?:SECRET|KEY)$/.test(partWords.at(-1)!))
+	)
+		return "hash";
 	// A Vault token's accessor looks the token up; git's `signingkey` and `gpgkey` (in its lower case), key IDs and
 	// gspread's `open_by_key` name keys.
 	if (
 		/accessor$/i.test(lastPart) ||
 		/(?:^|[._])(?:signingkey|gpgkey)$/.test(name) ||
-		/(?:^|[._])(?:keyid|key_id|signing_key_id)$|by_key$/i.test(name)
+		/(?:^|[._])(?:keyid|key_id|signing_key_id|(?:\w+_)?by_key)$/i.test(name)
 	)
 		return "identifier";
 	// Client-side error reporting: Sentry's DSN and key are public.

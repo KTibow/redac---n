@@ -523,3 +523,61 @@ test("found in review: tool and file lists, printf, CRLF, prefixed hex, password
 	assert.equal(r().redact("hello %s\n", { hint: { command: "printf 'hello %s\\n' \"$USER\"" } }).text, "hello %s\n");
 	assert.equal(r().redact("x\n", { hint: { command: "printf -v line '%s' \"$TOKEN\"" } }).text, "x\n");
 });
+
+test("found in review, second batch: names, labels, prose, shell, transcripts and public keys", () => {
+	const b64 = (s: string) => Buffer.from(s).toString("base64");
+	for (const [text, secret, hint] of [
+		['const cfg = { password: process.env.PW ?? "Tr0ub4dor&3xQ" }', "Tr0ub4dor&3xQ"],
+		['opts = [password: x ? "a" : "Tr0ub4dor&3xQ"]', "Tr0ub4dor&3xQ"],
+		['$ az keyvault secret show --name db --query value\n"wint3r-horse-42x"\n', "wint3r-horse-42x"],
+		["crackmapexec smb 10.0.0.1 -u admin -p 'Password123!'", "Password123!"],
+		["STANDBY_KEY=Hx7mQ2pL9vRt4wZk8nB3", "Hx7mQ2pL9vRt4wZk8nB3"],
+		['app.config["WTF_CSRF_SECRET_KEY"] = "a8f3k2j9d0s7l4m1n6b5v3c2x"', "a8f3k2j9d0s7l4m1n6b5v3c2x"],
+		["MOT_DE_PASSE=4821-7730", "4821-7730"],
+		["db_jelszó=Tr0ub4dor3xQ", "Tr0ub4dor3xQ"],
+		["**API Key Password:** Ocean@2025", "Ocean@2025"],
+		['The new password: "Xk9)mPq2&Rt" works', "Xk9)mPq2&Rt"],
+		["$ echo $DB_PASSWORD\nletmein!\n", "letmein!"],
+		["CA_KEY=MC4CAQAwBQYDK2VwBCIEIGb3Xk9sQ2mW7tR5bY1cD4fG6hJ8sL0aQwErTyUiZ", "MC4CAQAwBQYDK2VwBCIEIGb3"],
+		["$ cat .env\nDB_PASSWORD='it''sK9mQ2zXv7Lp'\n", "sK9mQ2zXv7Lp"],
+		["smbclient //h/s -Ubob%Tr0ub4dor3xQ", "Tr0ub4dor3xQ"],
+		['conn = "Server=db;User Id=sa;"+"Password=Hx7#mQ2p"+"Lw9zKq4T;"', "Lw9zKq4T"],
+		["ALTER USER 'app'@'%' IDENTIFIED BY 'N3w-Secret!x' REPLACE 'Old-Secret!9';", "Old-Secret!9"],
+		["S: 334 UGFzc3dvcmQ6\nC: " + b64("sunshine99") + "\n", b64("sunshine99")],
+		['"GET /password/reset/Zk3mQ9vL2xR7pT4w?redirect_to=https://app.example.com/x HTTP/1.1" 302', "Zk3mQ9vL2xR7pT4w"],
+		["the API token was rotated, it is Xk9mP2qR7vL4wZ8n", "Xk9mP2qR7vL4wZ8n"],
+	] as [string, string, object?][])
+		assert.ok(
+			!r()
+				.redact(text, hint ? { hint } : {})
+				.text.includes(secret),
+			text,
+		);
+	for (const [text, value] of [
+		["open_by_key: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms", "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"],
+		["csrf_token: Xk9mQ2pL7vRt4wZ8nB3cP5sD1fG6hJ0k", "Xk9mQ2pL7vRt4wZ8nB3cP5sD1fG6hJ0k"],
+		["SELECT id FROM users WHERE password = @pwd AND email = @email", "@pwd"],
+		["Our password manager is bitwarden vault keeper extra", "bitwarden"],
+		["The SSH key was updated, it is id_ed25519 now", "id_ed25519"],
+		["$ pass show email/work\nDone.\n", "Done."],
+		["SSH_KEY_FINGERPRINT=SHA256:Gb3Xk9sQ2mW7tR5bY1cD4fG6hJ8sL0aQwErTyUiZ", "Gb3Xk9sQ2mW7tR5bY1cD4fG6hJ8sL0aQwErTyUiZ"],
+	])
+		kept(text, value);
+	// An attached file's name judges its content in each provider's shape, and leaves the block's own fields alone.
+	const data = b64("FOO=zq81hd72kd9s\n");
+	const [doc] = r().redactValue([
+		{
+			role: "user",
+			content: [{ type: "document", title: ".env", source: { type: "base64", media_type: "text/plain", data } }],
+		},
+	]).value as { content: { source: { type: string; media_type: string; data: string } }[] }[];
+	assert.deepEqual([doc.content[0].source.type, doc.content[0].source.media_type], ["base64", "text/plain"]);
+	assert.ok(!Buffer.from(doc.content[0].source.data, "base64").toString().includes("zq81hd72kd9s"));
+	const [file] = r().redactValue([
+		{ role: "user", content: [{ type: "input_file", filename: ".env", file_data: `data:text/plain;base64,${data}` }] },
+	]).value as { content: { file_data: string }[] }[];
+	assert.ok(!Buffer.from(file.content[0].file_data.split(",")[1], "base64").toString().includes("zq81hd72kd9s"));
+	// A Maps key in an Android manifest, its attributes on several lines, is the app's public key.
+	const key = "AIza" + "SyD3k9Xm2Qp7Lw4Rt8Zn5Bv1Cx6Hj0Gf2Ks";
+	kept(`<meta-data\n    android:name="com.google.android.geo.API_KEY"\n    android:value="${key}" />`, key);
+});

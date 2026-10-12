@@ -354,7 +354,8 @@ function authorization(text: string, out: Finding[]) {
 
 /** SMTP `AUTH PLAIN <base64>` and the base64 lines after `AUTH LOGIN`, as a mail client's debug output shows them. */
 function smtpAuth(text: string, out: Finding[]) {
-	if (!/AUTH (?:PLAIN|LOGIN)/i.test(text)) return;
+	// (Or the password's prompt alone: a log excerpt that starts there, `grep -A1 '334 UGFzc3dvcmQ6' maillog`.)
+	if (!/AUTH[ \t]+(?:PLAIN|LOGIN)|334[ \t]+UGFzc3dvcmQ6/i.test(text)) return;
 	for (const m of text.matchAll(/AUTH[ \t]+PLAIN[ \t]+([A-Za-z0-9+/]{8,4096}={0,2})/gi)) {
 		const start = m.index + m[0].length - m[1].length;
 		out.push({
@@ -877,9 +878,11 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 			(spec.flags.has(w.slice(0, 2)) || (w[1] === "p" && /^mysql|^mariadb/.test(name)))
 		)
 			addWord(rest[i], w.slice(2));
-		// smbclient, net, rpcclient: `-U user%password`.
+		// smbclient, net, rpcclient: `-U user%password`, and attached, `-Uuser%password`, `--user=user%password`.
 		else if (w === "-U" && /^(?:smbclient|net|rpcclient)$/.test(name) && rest[i + 1]?.text.includes("%"))
 			addWord(rest[i + 1], rest[i + 1].text.slice(rest[i + 1].text.indexOf("%") + 1));
+		else if (/^(?:-U|--user=)[^%]*%/.test(w) && /^(?:smbclient|net|rpcclient)$/.test(name))
+			addWord(rest[i], w.slice(w.indexOf("%") + 1));
 	}
 }
 
@@ -1041,9 +1044,12 @@ function cliPasswords(text: string, out: Finding[]) {
 	// The password options of programs outside the tool table: `hydra -p`, `xfreerdp /p:`, `unrar x -p…`, `ssh-keygen -N`,
 	// and a `password <v>` word pair on any command line (`nmcli … password <v>`, `mysqladmin … password <v>`). (`-p` is
 	// a port, a path or a profile to most programs: only these say it is a password.)
-	for (const m of text.matchAll(/(?:^|[ \t])(-[pPNA]|\/p:|password[ \t]+)[ \t]?([^\s'"`]{6,64})(?=[\s;|&)]|$)/g)) {
-		const pw = m[2];
-		const at = m.index + m[0].length - pw.length;
+	// (Bare, or quoted as a shell quotes it: `-p 'Password123!'`, `/p:"Summer2024!"`.)
+	for (const m of text.matchAll(
+		/(?:^|[ \t])(-[pPNA]|\/p:|password[ \t]+)[ \t]?(?:'([^'\n]{6,64})'|"([^"\n]{6,64})"|([^\s'"`]{6,64}))(?=[\s;|&)]|$)/g,
+	)) {
+		const pw = m[2] ?? m[3] ?? m[4];
+		const at = m.index + m[0].length - pw.length - (m[4] === undefined ? 1 : 0);
 		const program = commandAt(text, at)?.command[0];
 		if (pw.startsWith("-") || !program || /[()/]|[.,;:]$|\.(?:txt|lst|list|dic|csv)$/i.test(pw)) continue;
 		const name = programName(program);
@@ -1385,6 +1391,8 @@ function sqlPasswords(text: string, out: Finding[]) {
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
 		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?'((?:[^'\n]|'')+)'/gi,
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*'((?:[^'\n]|'')+)'/gi,
+		// MySQL's current password, which a password change authenticates with: `IDENTIFIED BY 'new' REPLACE 'old'`.
+		/\bIDENTIFIED\s+BY\s+'(?:[^'\n]|'')+'\s+REPLACE\s+'((?:[^'\n]|'')+)'/gi,
 	];
 	for (const re of forms) {
 		for (const m of text.matchAll(re)) {
@@ -1480,7 +1488,7 @@ function vpnSecrets(text: string, out: Finding[]) {
  */
 function passwordHashes(text: string, out: Finding[]) {
 	if (
-		!/\$|\{S?S?HA|\{MD5|\{CRYPT|\{PBKDF2|\{ARGON2|\{BCRYPT|md5[0-9a-f]|\*[0-9A-F]{40}|#[0-9a-f]{64}|SCRAM-|storedKey|serverKey|password_?hash|password_(?:sha|double)|hashed_?password/i.test(
+		!/\$|\{S?S?HA|\{MD5|\{CRYPT|\{PBKDF2|\{ARGON2|\{BCRYPT|md5[0-9a-f]|\*[0-9A-F]{40}|#[0-9a-f]{64}|SCRAM-|storedKey|serverKey|password[_-]?(?:hash|sha|double|digest)|hashed_?password/i.test(
 			text,
 		)
 	)

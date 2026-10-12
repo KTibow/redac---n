@@ -391,6 +391,9 @@ function literalJoints(text: string): Map<number, number> {
 	const sep = new RegExp(PIECE_JOINT, "y");
 	let continues = -1; // where a piece joined to the one before starts
 	for (let m = piece.exec(text); m; m = piece.exec(text)) {
+		// (A piece that joins nothing may be the gap between two literals, `"a;"+"b"` read as `"+"`: the next search
+		// starts inside it, at its closing quote.)
+		piece.lastIndex = m.index + 1;
 		const chained = m.index === continues;
 		if (m[2].length < 3 && !chained) continue;
 		const close = m.index + m[0].length - 1;

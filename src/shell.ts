@@ -261,8 +261,9 @@ function closing(lx: Lexing, from: number, close: ")" | "}" | "`", depth = 0): n
 		if (ch === "\\" && lx.backslash) j++;
 		else if (close === "`") {
 			if (ch === "`") return j;
-		} else if (close === ")" && ch === "<" && text[j + 1] === "<" && text[j + 2] !== "<") {
-			const h = /^<<(-?)[ \t]*(["']?)([\w.-]{1,80})\2/.exec(text.slice(j, j + 100));
+		} else if (close === ")" && ch === "<" && text[j + 1] === "<" && text[j + 2] !== "<" && text[j - 1] !== "<") {
+			// (Not a here-string, `<<<`, at its second `<`; a delimiter quoted, `<<'EOF'`, `<<"EOF"`, or escaped, `<<\EOF`.)
+			const h = /^<<(-?)[ \t]*(?:\\|(["']?))([\w.-]{1,80})\2/.exec(text.slice(j, j + 100));
 			if (h) {
 				heredocs.push({ delimiter: h[3], strip: h[1] === "-" });
 				j += h[0].length - 1;

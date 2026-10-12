@@ -1404,8 +1404,9 @@ const CREDENTIAL_PART =
 	/^(?:[a-z]{1,3}_|[A-Z]|\w*_)?(?:pass(?:word|wd|w|phrase)?|pwd|pw|secret|token|credentials?|creds)s?\d{0,2}$/;
 
 /**
- * Unquoted code that refers to a credential by name, maybe ending its statement: `account.password`,
- * `passwords.pop`, `m_password;`, `Upassword.Text;`, `md5($password);` (policy.ts, for unquoted values only).
+ * Unquoted code that refers to a credential by name, maybe ending its statement: `account.password`, `m_password;`,
+ * `md5($password);`, `secrets.db` (policy.ts, for unquoted values only). (Not a credential's member, `passwords.pop`,
+ * `txtPassword.Text`: under an env line's name that may be the password.)
  */
 export function isCredentialReference(value: string): boolean {
 	const v = value.replace(/;\s*(?:\/\/.*)?$/, "").replace(/,$/, "");

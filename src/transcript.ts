@@ -414,7 +414,11 @@ function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean
 		// A tool input that writes a file: its content is judged as that file (`.env` content as a secret file).
 		const writes = TOOL_PATH_KEYS.map((k) => o[k]).find((x) => typeof x === "string") as string | undefined;
 		const envelope = !scope.free && isEnvelope(o);
-		const name = o.type === "document" && !hint.path ? documentName(o) : undefined;
+		// (An attached file's name: Anthropic's `document` block, OpenAI's `input_file` part and Chat Completions' `file`.)
+		const name =
+			!hint.path && (o.type === "document" || o.type === "input_file" || "file_data" in o)
+				? documentName(o)
+				: undefined;
 		return (field, x) => {
 			const k = field as string;
 			// A key is scanned like a string (under four characters is no secret), whatever its value is.
@@ -428,26 +432,27 @@ function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean
 					isKey: true,
 				});
 			// Envelope fields (ids, roles, signatures) are skipped; inside a tool's input, or a payload, every string is data.
-			if (envelope && isStructure(k, x)) return undefined;
-			// Base64 of text is decoded and scanned as text; other base64 payloads are skipped; URLs are scanned (a presigned URL
-			// carries a credential) unless they're data: URIs.
-			const decoded = typeof x === "string" && (media || BASE64_URI.test(x)) ? base64Text(o, k, x) : undefined;
-			if (decoded) return { hint, free: scope.free, decoded };
-			if (
-				(media && k === "data" && typeof x === "string" && BASE64_VALUE.test(x.replace(/\s/g, ""))) ||
-				(typeof x === "string" && MEDIA_URI.test(x))
-			)
-				return undefined;
+			// (A media object's own `type` and `media_type` too: under a `.env` document's name they'd read as its values.)
+			if ((envelope && isStructure(k, x)) || (media && (k === "type" || k === "media_type"))) return undefined;
 			// (`edits` of a MultiEdit call: each edit's strings are judged as the file too. A Claude Code record's
 			// `toolUseResult` is a second copy of the result in its `message`, and has that result's call's hint.)
 			const childHint =
-				name && k === "source"
+				name && (k === "source" || k === "file_data")
 					? { ...hint, path: name }
 					: writes && CONTENT_KEYS.has(k)
 						? { path: writes }
 						: k === "toolUseResult"
 							? (recordHint(o, hints) ?? hint)
 							: hint;
+			// Base64 of text is decoded and scanned as text; other base64 payloads are skipped; URLs are scanned (a presigned URL
+			// carries a credential) unless they're data: URIs.
+			const decoded = typeof x === "string" && (media || BASE64_URI.test(x)) ? base64Text(o, k, x) : undefined;
+			if (decoded) return { hint: childHint, free: scope.free, decoded };
+			if (
+				(media && k === "data" && typeof x === "string" && BASE64_VALUE.test(x.replace(/\s/g, ""))) ||
+				(typeof x === "string" && MEDIA_URI.test(x))
+			)
+				return undefined;
 			return { hint: childHint, free: scope.free || TOOL_INPUT_KEYS.has(k) };
 		};
 	});
