@@ -292,3 +292,53 @@ test("a rotated credential after `it's`, a PIN in parentheses or after 's, a mix
 	// (Under a token's or a key's name a short value with no symbol is a placeholder's shape.)
 	kept("The token: AbCdEf123456", "AbCdEf123456");
 });
+
+test("a length rule, a time or a required field's star after a password's name is no password", () => {
+	for (const t of [
+		"Password: 8-64 characters",
+		"Passwort: 8-12 Zeichen",
+		"Password: 12 characters",
+		"password (12:30)",
+		"password (required*)",
+		"<!-- password: Master password. -->",
+		"/* password: Master password. */",
+	])
+		assert.equal(r().redact(t).text, t);
+	// The same places with a password in them are read as before.
+	hidden("Password: 8-64charsXk9", "8-64charsXk9");
+	hidden("rotate the passwd (M34d0w) before Friday", "M34d0w");
+	hidden("<!-- password: Sunsh1ne!x -->", "Sunsh1ne!x");
+});
+
+test("a noun that qualifies another names no credential the sentence goes on to give", () => {
+	kept("the password policy changed in 2024 and it is now NIST800 compliant", "NIST800");
+	hidden("ops rotated the db password yesterday, new one is Thund3r&55", "Thund3r&55");
+});
+
+test("a password's ! after it in a sentence is hidden with it, and a common word with one is a word", () => {
+	assert.equal(r().redact("the pass is Xyzzy42!").text.at(-1), "]");
+	assert.equal(r().redact("Passwort: root!").text, "Passwort: root!");
+	kept("the pass is Xyzzy42? not sure", "? not sure");
+});
+
+test("a password in a Latin sentence with accents is one; hyphened words in the sentence's language are not", () => {
+	hidden("Uusi salasana on Kesä2024!x", "Kesä2024!x");
+	hidden("salasana on Kesä2024", "Kesä2024");
+	kept("Das Passwort ist 2FA-geschützt", "2FA-geschützt");
+});
+
+test("a value under a label in another language is reported as a password's or a key's, in a sentence or not", () => {
+	for (const [t, kind] of [
+		["パスワード: hunter2abc", "password"],
+		["パスワードは hunter2abc です", "password"],
+		["密钥: 9b8ab69c272a2ace84ca8d7bd805bffd", "key"],
+		["密钥是 9b8ab69c272a2ace84ca8d7bd805bffd", "key"],
+	])
+		assert.deepEqual(
+			r()
+				.detect(t)
+				.map((f) => f.kind),
+			[kind],
+			t,
+		);
+});

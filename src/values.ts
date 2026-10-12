@@ -1584,7 +1584,8 @@ export function looksSecret(raw: string, literal = false): boolean {
 	if (isPasswordlessUrl(v) && !/^https?:/i.test(v)) return false;
 	if (/^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(v)) return false; // CONSTANT_NAMES
 	if (/^`[A-Z][A-Z0-9_]*`(?:\s*[–-]\s*`[A-Z][A-Z0-9_]*`)?$/.test(v)) return false; // `KEY_F1`–`KEY_F10` in a table
-	if (/^\p{L}{1,12}[!?.]?$/u.test(v) && COMMON_WORDS.has(v.toLowerCase())) return false;
+	// (With the sentence's mark after it: `Passwort: root!`.)
+	if (/^\p{L}{1,12}[!?.]?$/u.test(v) && COMMON_WORDS.has(v.toLowerCase().replace(/[!?.]$/, ""))) return false;
 	return true;
 }
 

@@ -1219,3 +1219,51 @@ test("a key named for a host or a store is judged by its value, and long hex the
 test("a password's word glued to a vendor's name is that vendor's password", () => {
 	for (const text of ["couchbasepass=sunshine", 'mailgunpass = "sunshine"']) hidden(text, "sunshine");
 });
+
+test("words with a digit run in under a password's name, and two words joined by a hyphen, are a password", () => {
+	hidden("DB_PASSWORD='héllo wörld 2291x'", "2291x");
+	kept('"password": "Mot de passe oublié ?"', "oublié");
+	hidden("PASSWORD=blue-moon", "blue-moon");
+	for (const t of [
+		"password: app-specific",
+		"password: case-sensitive",
+		"password: write-only",
+		"password: upper-case",
+	])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("a fixture's password is its user's name with a password's word for the user's", () => {
+	kept('{"username": "containrrr-user", "password": "containrrr-pass"}', "containrrr-pass");
+	hidden('{"username": "containrrr-user", "password": "Xk9mQv2Lp7-pass"}', "Xk9mQv2Lp7");
+});
+
+test("under a bare key, words with a number between them and a translation's lookup are names", () => {
+	for (const t of [
+		'{ "key": "Windows10Home", "label": "Windows 10 Home" }',
+		'{ "key": "Step2:Review", "title": "Review" }',
+		"{ key: \"$t('auth.Login2')\", value: 1 }",
+		'<el-tab-pane :key="$t(\'auth.Login2\')" name="login">',
+	])
+		assert.equal(r().redact(t).text, t);
+	// A password's word and year, and a word spelled with digits, are still made secrets.
+	hidden('"secret": "Sunshine2023"', "Sunshine2023");
+	hidden('"key": "Pa55wordKey9x"', "Pa55wordKey9x");
+});
+
+test("under a bare token, letters in no words are a token at any naturalness; a table's bare auth is no API's", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	assert.ok(!off.redact("token: WnDKpEQCbOciskIKhAfdQxFmY").text.includes("WnDKpEQCbOciskIKhAfdQxFmY"));
+	assert.equal(off.redact("token: RefreshTokenExpiresAtValue").text, "token: RefreshTokenExpiresAtValue");
+	const md5 = "| auth | 5f4dcc3b5aa765d61d8327deb882cf99 |";
+	assert.equal(off.redact(md5).text, md5);
+	assert.ok(!off.redact(`| key | ${"9b8ab69c272a2ace".repeat(4)} |`).text.includes("9b8ab69c272a2ace"));
+});
+
+test("a secret's word before a site or GPG key names the pair's secret half", () => {
+	for (const n of ["SECRET_SITE_KEY", "recaptchaSecretSiteKey", "PRIVATE_GPG_KEY"])
+		assert.equal(nameClass(n), "credential", n);
+	assert.equal(nameClass("RECAPTCHA_SITE_KEY"), "public");
+	assert.equal(nameClass("SECRET_CACHE_KEY"), "identifier");
+	hidden("SECRET_SITE_KEY=6LdKx9mP2vQ7tL4wR8a1b2c3d4e5f6g7h8i9j0kA", "6LdKx9mP2vQ7tL4wR8a1b2c3d4e5f6g7h8i9j0kA");
+});

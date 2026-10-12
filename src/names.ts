@@ -1287,10 +1287,17 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// A credential word that the word before rules out (`GPG_KEY`, `SORT_KEY2`, `PAGE_TOKEN`); PagerDuty's routing and
 	// integration keys are its Events API credentials. (A word that clouds' keys share with lookup keys makes the name
 	// neutral, its value judged by how it looks: Azure's `primaryKey`, `AZURE_STORAGE_KEY`, `hostKey`, `REDIS_KEY`.)
+	// (Not the secret half of a pair whose public half the word names, a secret's word before it: reCAPTCHA's
+	// `SECRET_SITE_KEY`, `PRIVATE_GPG_KEY`.)
 	if (
 		core.length > 1 &&
 		NOT_CREDENTIAL_BEFORE[last]?.has(core.at(-2)!) &&
-		!core.some((x) => x === "PAGERDUTY" || x === "PD")
+		!core.some((x) => x === "PAGERDUTY" || x === "PD") &&
+		!(
+			last === "KEY" &&
+			/^(?:SITE|GPG|PGP)$/.test(core.at(-2)!) &&
+			core.slice(0, -2).some((x) => /^(?:SECRET|PRIVATE)$/.test(x))
+		)
 	)
 		return last === "KEY" && AMBIGUOUS_BEFORE_KEY.has(core.at(-2)!) ? "neutral" : "identifier";
 	// Encrypted or wrapped key material, CSRF tokens: random, not usable as credentials. (In a dotted name, only the

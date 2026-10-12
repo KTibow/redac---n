@@ -123,8 +123,16 @@ const DECLARATION =
 /** The last meaningful word of a name, for deciding how strict to be about its value. */
 const lastWord = (name: string): string => readName(name).last;
 
-/** A UI label or message rather than a password: a sentence, Title Case, or the name repeated. */
+/**
+ * A length rule, as a form or a doc states one: a count or a range of characters (`8-64 characters`, `min. 12 chars`,
+ * `8–12 Zeichen`, `au moins 10 caractères`).
+ */
+const LENGTH_RULE =
+	/^(?:(?:at least|min(?:imum)?\.?|max(?:imum)?\.?|up to|mindestens|maximal|au moins|al menos|pelo menos)[ \t]+)?\d{1,3}(?:[ \t]*(?:[-–]|to|bis|à|a)[ \t]*\d{1,3}|\+)?[ \t]*(?:characters?|chars?|digits?|letters?|symbols?|zeichen|stellen|caract[eè]res?|caratteri|tekens|znak(?:i|ów)|символ(?:а|ов)?)(?!\p{L})/iu;
+
+/** A UI label or message rather than a password: a sentence, Title Case, a length rule, or the name repeated. */
 function isLabel(value: string, name: string): boolean {
+	if (LENGTH_RULE.test(value)) return true;
 	// Title Case words. (One capitalised word is a password as much as a label, `Sunshine`, `Großmutter`: a label of one
 	// word is "password" in some language, isPasswordLabel's. Words with no sentence's word among them are a passphrase:
 	// `Correct horse battery staple`.)
@@ -134,7 +142,15 @@ function isLabel(value: string, name: string): boolean {
 		(!isPassphrase(value.split(" ")) || value.split(" ").some((w) => FOREIGN_FUNCTION_WORDS.has(w.toLowerCase())))
 	)
 		return true;
-	if (/[^\x00-\x7f]/.test(value) && /^[\p{L}\p{M}\d .,!?'’()-]+$/u.test(value) && / \p{L}/u.test(value)) return true;
+	// (Words in another language, a translated label: `Mot de passe oublié ?`, `Mindestens 8 Zeichen`. Not with a word
+	// that runs letters and digits together as no label's word does, a password of words: `héllo wörld 2291x`.)
+	if (
+		/[^\x00-\x7f]/.test(value) &&
+		/^[\p{L}\p{M}\d .,!?'’()-]+$/u.test(value) &&
+		/ \p{L}/u.test(value) &&
+		!/\p{Ll}\d|\d\p{Ll}/u.test(value)
+	)
+		return true;
 	// A sentence; but a passphrase is words by design, and only its UI text says "enter" or "your".
 	const phrase = /PHRASE|MNEMONIC|SEED/.test(lastWord(name));
 	if (
@@ -338,8 +354,15 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 				!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
 		)
 			return false;
-		// A compound adjective about the password, not one: `case-sensitive`, `write-only`, `per-user`.
-		if (/^[a-z]{2,12}-[a-z]{2,12}$/.test(value) && value.split("-").every((p) => naturalness(p) > 0)) return false;
+		// A compound adjective about the password, not one: a sentence's word among its parts (isSentenceWord: `write-only`,
+		// `per-user`, `auto-generated`) or an adjective's ending on its last (`case-sensitive`, `app-specific`,
+		// `human-readable`, `system-wide`, `upper-case`). Two other words are a password: `blue-moon`, `dev-password`.
+		if (
+			/^[a-z]{2,12}-[a-z]{2,12}$/.test(value) &&
+			value.split("-").every((p) => naturalness(p) > 0) &&
+			(value.split("-").some(isSentenceWord) || /(?:ive|able|ible|specific|wide|safe|free|case)$/.test(value))
+		)
+			return false;
 		if (
 			COMMON_WORDS.has(value.toLowerCase()) ||
 			(!/PHRASE/.test(last) && COMMON_WORDS.has(value.trim().split(/\s+/)[0].toLowerCase()))
@@ -440,11 +463,22 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 							.every((seg) => !isGeneratedSegment(seg) && (isNameLike(seg) || naturalness(seg.toLowerCase()) > 0.5)))))
 		)
 			return false;
-		// `"key": "user.name"`, `token: refresh`: a bare generic name needs a generated-looking value.
+		// Words with a number between them, a product's, a step's or a section's name (`Windows10Home`, `Step2:Review`),
+		// read as words once the number is a break; not a password's word and year (`Summer2024!`), nor a word spelled
+		// with digits (`Pa55word`). And a translation looked up by its key, `$t('auth.Login2')`.
+		if (
+			(/[A-Za-z]\d+(?:[A-Z]|[:._-][A-Za-z])/.test(value) &&
+				readsAsWords(value) &&
+				naturalness(value.replace(/\d+/g, "-")) > 1) ||
+			/^[$\w.]+\((["'])[\w.:-]+\1\)$/.test(value)
+		)
+			return false;
+		// `"key": "user.name"`, `token: refresh`: a bare generic name needs a generated-looking value: with a digit, or
+		// letters in no words (mixed case scores near words by its humps: `WnDKpEQCbOciskIKhAfdQxFmY`).
 		// (Or a made password: three character classes, a symbol among them, `CANYpfso8s%` as an express-session secret.)
 		return (
 			(value.length >= 12 && naturalness(value) < 0.6 && /\d/.test(value)) ||
-			(value.length >= 20 && naturalness(value) < 0.2) ||
+			(value.length >= 20 && (naturalness(value) < 0.2 || (/^[A-Za-z_-]+$/.test(value) && !readsAsWords(value)))) ||
 			(value.length >= 8 &&
 				characterClasses(value) >= 3 &&
 				/[^A-Za-z0-9._-]/.test(value) &&
@@ -646,14 +680,14 @@ function explainedByNeighbours(text: string, f: Finding): boolean {
 			?.length ?? 0) >= 3
 	)
 		return true;
-	// A default: the password is the user's or the database's name (`POSTGRES_USER=app` / `POSTGRES_PASSWORD=app`).
+	// A default: the password is the user's or the database's name (`POSTGRES_USER=app` / `POSTGRES_PASSWORD=app`), or
+	// the user's name with a password's word for the user's (a fixture's `containrrr-user` / `containrrr-pass`).
 	// (In the other pairs near it, under a whole name: `INFLUXDB=<value>` isn't a database named <value>.)
 	if (value && value.length <= 32) {
-		const esc = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const others = near.replace(
-			new RegExp(String.raw`[\w.-]*${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?[ \t]*[:=][^\n]*`, "g"),
-			"",
-		);
+		const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const stem = /^(.+?[-_.])(?:pass(?:word)?|passwd|pwd|pw)$/i.exec(value)?.[1];
+		const esc = stem ? `(?:${escape(value)}|${escape(stem)}user(?:name)?)` : escape(value);
+		const others = near.replace(new RegExp(String.raw`[\w.-]*${escape(name)}["']?[ \t]*[:=][^\n]*`, "g"), "");
 		if (
 			new RegExp(
 				String.raw`(?<![\w.-])(?:[\w.-]*[_.-])?(?:user(?:name)?|login|db|database|dbname|name|account)["']?[ \t]*[:=][ \t]*["'\`]?${esc}["'\`]?(?:[\s,;]|$)`,
@@ -890,12 +924,14 @@ function assignments(text: string, out: Finding[]) {
 		// `readPassword("password: ")).thenReturn(…)`: the name was inside a string, and what follows its
 		// closing quote is code.
 		if (quoted && m[1] === "" && /["'`]/.test(text[m.index - 1] ?? "") && /^\)[).;]/.test(raw)) continue;
-		// A parameter's description, a sentence to the line's end that names what the parameter holds, in a comment of any
-		// language or a line of output: `#   keystore_password: Keystore password.`, `REM db_password = Primary password
-		// of the database.` (Not a password that opens a sentence, `# password: Sunshine is the default.`: the sentence
-		// names no credential.)
+		// A parameter's description, a sentence to the line's end (or its comment's) that names what the parameter holds,
+		// in a comment of any language or a line of output: `#   keystore_password: Keystore password.`, `REM db_password =
+		// Primary password of the database.`, `<!-- password: Master password. -->`. (Not a password that opens a sentence,
+		// `# password: Sunshine is the default.`: the sentence names no credential.)
 		if (!quoted && /^\p{Lu}\p{Ll}+$/u.test(raw)) {
-			const rest = /^(?:[ \t]+[\p{L}'’(),-]+)+\.[ \t]*\r?$/u.exec(text.slice(span[1], lineEndAt(text, span[1])))?.[0];
+			const rest = /^(?:[ \t]+[\p{L}'’(),-]+)+\.(?=[ \t]*(?:-->|\*\/)?[ \t]*\r?$)/u.exec(
+				text.slice(span[1], lineEndAt(text, span[1])),
+			)?.[0];
 			const sentence = `${raw}${rest}`.trim();
 			const credential = lastWord(name).toLowerCase();
 			if (
@@ -911,9 +947,12 @@ function assignments(text: string, out: Finding[]) {
 		// Resume after this value: a value isn't also the start of the next pair (`a=b=c…` stays linear). An
 		// object or a list is read inside instead: its pairs are values of their own (`auth: { user, pass: '…' }`).
 		ASSIGN.lastIndex = Math.max(ASSIGN.lastIndex, /^[{[]/.test(raw) ? span[0] + 1 : span[1]);
-		// (With its own quote: a shell's backticks run a command.)
+		// (With its own quote: a shell's backticks run a command. A framework's bound attribute, Vue's `:key="…"` or
+		// `v-bind:key="…"`, Angular's `[key]="…"`, quotes an expression: its value is read as code, `$t('auth.Login2')`.)
 		const q = quoted && text[span[0] - 1] === "`" ? "`" : '"';
-		if (!isNamedSecret(name, quoted ? `${q}${raw}${q}` : raw, literal)) continue;
+		const bound =
+			op === "=" && quoted && /(?:^|[\s<])(?::|v-bind:|\[)$/.test(text.slice(Math.max(0, m.index - 8), m.index));
+		if (!isNamedSecret(name, bound ? raw : quoted ? `${q}${raw}${q}` : raw, literal && !bound)) continue;
 		// In an interpolated string, the value's own (`f'user_id={cookie}'`, `$"Pwd={pw}"`) or the one the pair stands in
 		// (`$"Pwd={pw};User={u}"`, `f"host={h} password={pw}xyz"`), the holes are code: the literal part must hold the secret.
 		if (
@@ -1241,7 +1280,7 @@ function xmlElements(text: string, out: Finding[]) {
  * and a credential's noun, the name and it one phrase: `Bearer Token Usage [RFC6750].`, `Secret Key Rotation`.
  */
 const PROSE_START =
-	/^(tokens?|keys?|secrets?|passwords?|is|was|for|of|and|to|the|a|an|reset|change|changed|updated|rotated|set|required|must|should|will|can|field|policy|manager|hash|length|expired|expires|expiry|last|not|has|have|had|ist|est|es|é|è|är|jest|je|это|lautet|wurde|wird|muss|doit|debe|deve)$/i;
+	/^(tokens?|keys?|secrets?|passwords?|is|was|for|of|on|and|to|the|a|an|reset|change|changed|updated|rotated|set|required|must|should|will|can|field|policy|manager|hash|length|expired|expires|expiry|last|not|has|have|had|ist|est|es|é|è|är|jest|je|это|lautet|wurde|wird|muss|doit|debe|deve)$/i;
 
 /** `NAME value` with blanks between: redis.conf's `requirepass`, Dockerfile `ENV`, `set`, tables with column bars. */
 function spacedPairs(text: string, out: Finding[]) {
@@ -1273,9 +1312,14 @@ function spacedPairs(text: string, out: Finding[]) {
 		if (/^--?[A-Za-z]|^(?:&&|\|\||[|;>&])/.test(raw)) continue; // `htpasswd -nb admin pw`, `pwd && ls`: a command line
 		if (/^(?:->|=>|::|\?\.|<-)/.test(raw)) continue; // `LoginField.PASSWORD -> input.text`: a `when` arm, an operator
 		// A note or a type in brackets first (`password (optional)`, `token [required]`, a docstring's `password (str|None):`),
-		// a member (`.field`), code in braces (`{ get; set; }`).
+		// a member (`.field`), code in braces (`{ get; set; }`). (A value in parentheses and nothing else, `password (12:30)`,
+		// is the prose rule's, which reads one: `the passwd (M34d0w)`.)
 		const note = /^[([{]([^)\]}\n]{0,60})[)\]}]/.exec(raw);
-		if ((note && readsAsWords(note[1])) || /^\.[A-Za-z_]|^\{[ \t]/.test(raw)) continue;
+		if (
+			(note && (readsAsWords(note[1]) || (note[0] === raw && raw[0] === "(" && !barred))) ||
+			/^\.[A-Za-z_]|^\{[ \t]/.test(raw)
+		)
+			continue;
 		// More words after the cell (and its closing quote) on a line that isn't a table: a directive (`password requisite
 		// pam_pwquality.so`). (Not when the cell was read as far as a value is, UNQUOTED_READ: the rest is its own.)
 		const after = span[0] > at ? span[1] + 1 : span[1];
@@ -1860,9 +1904,10 @@ function pipeTables(text: string, out: Finding[]) {
 				!describes(column) &&
 				!prose;
 			const name = column && isCredentialName(column) ? column : rowName ? before : undefined;
-			// (A bare `key` or `secret` naming a row of settings is the setting's name, not a cache's or an object's key:
-			// its value is judged as a credential's, `| key | <64 hex> |`.)
-			const judgedAs = name === before && isGenericName(name ?? "") ? `api_${name}` : name;
+			// (A bare `key`, `secret` or `token` naming a row of settings is the setting's name, not a cache's or an object's
+			// key: its value is judged as a credential's, `| key | <64 hex> |`. Another generic name keeps a generic
+			// name's judgment: `| auth | <md5 hex> |` is a digest.)
+			const judgedAs = name === before && /^(?:key|secret|token)$/i.test(name ?? "") ? `api_${name}` : name;
 			if (!name || !isNamedSecret(judgedAs!, `"${cell.text}"`, true)) continue;
 			namedFinding(out, cell.start, cell.end, name, "named:table-cell");
 		}
@@ -1977,6 +2022,14 @@ function runsIntoCount(text: string, start: number, end: number): boolean {
 	return count !== null && count.index < end - start;
 }
 
+/**
+ * The name a label in another language is judged and reported under: a word for "key" or "token", which also means a
+ * key in general, as a generated key's (`api_key`); any other, a password's.
+ */
+function foreignName(label: string): string {
+	return FOREIGN_KEY_WORDS.some((w) => w.toLowerCase() === label.toLowerCase()) ? "api_key" : "password";
+}
+
 function foreignLabels(text: string, out: Finding[]) {
 	// (The labels' words, or a copula after an English name: what FOREIGN and FOREIGN_COPULA need to match at all.)
 	if (!FOREIGN_PREFILTER.test(text)) return;
@@ -1990,7 +2043,7 @@ function foreignLabels(text: string, out: Finding[]) {
 			runsIntoCount(text, start, start + value.length)
 		)
 			continue;
-		namedFinding(out, start, start + value.length, "password", "named:foreign-label", 0.9);
+		namedFinding(out, start, start + value.length, foreignName(m[1]), "named:foreign-label", 0.9);
 	}
 	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`.
 	for (const m of text.matchAll(
@@ -2029,27 +2082,28 @@ function foreignLabels(text: string, out: Finding[]) {
 		// Judged as a password (or, under a word that also means "key" in general, as a generated key), and
 		// not when a word for "public" stands beside the name (`la clave pública es …`, `публичный ключ — …`),
 		// nor a URL, a version, or a value in the sentence's own language (`8-stellig`, `2FA-geschützt`, `英数字8`); a
-		// password in another script is one (`さくら3594@`), text in it isn't (isForeignText, looksSecret's).
+		// password in another script is one (`さくら3594@`), text in it isn't (isForeignText, looksSecret's), and one in Latin
+		// with its accents is one too, a word that runs on into digits or a symbol rather than words joined by hyphens
+		// (`Kesä2024!x`).
 		const start = m.indices![6]![0];
 		const end = start + value.length;
 		const around = text.slice(Math.max(0, m.index - 20), start);
 		if (
 			/p[uú]blic|öffentlich|публичн|открыт|公开|公開|공개|pubblic/i.test(around) ||
 			/^https?:\/\//.test(value) ||
-			(/[^\x00-\x7f]/.test(value) && !/(?!\p{Script=Latin})\p{L}/u.test(value)) ||
+			(/[^\x00-\x7f]/.test(value) &&
+				!/(?!\p{Script=Latin})\p{L}/u.test(value) &&
+				/^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+$/u.test(value)) ||
 			runsIntoCount(text, start, end) ||
 			/^v?\d+(?:\.\d+)+$/.test(value)
 		)
 			continue;
-		const generic = /^(?:clave|ключ|токен|密钥|令牌|トークン)$/i.test(name);
+		const judgedAs = foreign ? foreignName(name) : name;
 		const accepted = foreign
-			? looksSecret(value) &&
-				/\d/.test(value) &&
-				/\p{L}/u.test(value) &&
-				isNamedSecret(generic ? "api_key" : "password", `"${value}"`, true)
+			? looksSecret(value) && /\d/.test(value) && /\p{L}/u.test(value) && isNamedSecret(judgedAs, `"${value}"`, true)
 			: isNamedSecret(name, `"${value}"`, true);
 		if (!accepted) continue;
-		namedFinding(out, start, end, name, "named:foreign-label", 0.85);
+		namedFinding(out, start, withBangs(text, end), judgedAs, "named:foreign-label", 0.85);
 	}
 }
 
@@ -2826,7 +2880,7 @@ function prose(text: string, out: Finding[]) {
 			(value.length < 16 && !(value.length >= 10 && hasThreeClasses(value) && /[^A-Za-z0-9]/.test(value)))
 		)
 			continue;
-		namedFinding(out, start, start + value.length, name, "named:prose", 0.85);
+		namedFinding(out, start, withBangs(text, start + value.length), name, "named:prose", 0.85);
 	}
 	// Listed in a sentence: `user is ro_analytics, password R0ck3t#46, host …`; and the new value of a credential
 	// the sentence named: `ops rotated the db password yesterday, new one is Thund3r&55`.
@@ -2848,9 +2902,12 @@ function prose(text: string, out: Finding[]) {
 		)
 			continue;
 		// (A word a colon joins to the one before it is a key's or a format's, not a sentence's: pulumi's `db:pw`, the
-		// `username:password` of a .pgpass header, whose next line `\s+` would read as the value.)
+		// `username:password` of a .pgpass header, whose next line `\s+` would read as the value. A noun that qualifies
+		// another names no credential the sentence goes on to give: `the password policy changed …, it is now NIST800
+		// compliant`.)
 		if (
 			!value ||
+			QUALIFIED_NOUN.test(text.slice(m.indices![k - 1]![1], m.indices![k]![0])) ||
 			/:\/\/|\\/.test(value) ||
 			(k === 2 && text[m.indices![1]![0] - 1] === ":") ||
 			!isProseValue(value) ||
@@ -2860,7 +2917,7 @@ function prose(text: string, out: Finding[]) {
 			(!/^pass|^pw/.test(noun) && !isNamedSecret(noun.replace(/\s+/g, "_"), `"${value}"`, true))
 		)
 			continue;
-		namedFinding(out, m.indices![k]![0], m.indices![k]![1], noun, "named:prose", 0.8);
+		namedFinding(out, m.indices![k]![0], withBangs(text, m.indices![k]![1]), noun, "named:prose", 0.8);
 	}
 	// A value in parentheses after its name: `rotate the passwd (M34d0w) before Friday`, `the DB_PASSWORD (Xk9…)`.
 	for (const m of text.matchAll(
@@ -2901,13 +2958,23 @@ function prose(text: string, out: Finding[]) {
 }
 
 /**
+ * Where a value a sentence gives ends, with the `!`s right after it that its reader left to the sentence: a password's
+ * own as often (`the pass is Xyzzy42!`), and an exclamation hidden with one costs nothing. (A `?` stays the sentence's:
+ * `is it hunter2?` asks.)
+ */
+function withBangs(text: string, end: number): number {
+	return end + (/^!+(?=[\s"'\x60*)\]]|$)/.exec(text.slice(end, end + 16))?.[0].length ?? 0);
+}
+
+/**
  * Whether a value a sentence gives (`the password is …`, `pass (…)`, `**Password:** …`, `密码：…`) can be a secret: not a
  * word a sentence goes on with or a common one, code that prose names (PROSE_CODE), or anything else a literal secret
  * never looks like. Sentence punctuation after it isn't part of it. Each rule adds its own terms. (Values never secret
  * whatever names them, an algorithm's name, a range, a count, are policy.ts's, for every rule that reads by name.)
  */
 function isProseValue(value: string): boolean {
-	const v = value.replace(/[.,;:!?)]+$/, "");
+	// (Nor a required field's star: `password (required*)`.)
+	const v = value.replace(/[.,;:!?)*]+$/, "");
 	const lower = v.toLowerCase();
 	return !PROSE_WORDS.has(lower) && !COMMON_WORDS.has(lower) && !PROSE_CODE.test(v) && looksSecret(`"${v}"`, true);
 }
@@ -2933,6 +3000,12 @@ const CRED_NOUN = String.raw`(?:pass(?:word|code|phrase)|pass phrase|(?:${CREDEN
  */
 const CRED_PHRASE = String.raw`(?:(?:the|a|an|their|his|her|its|our|my|your|this|that)\s+)?(?:[\w-]+\s+){0,3}?(${CRED_NOUN}|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_(?:PASSWORD|PASSWD|PASS|PWD|SECRET|TOKEN|KEY)(?:_[A-Z0-9]+)*)`;
 const CRED_NOUN_IN = new RegExp(CRED_NOUN, "i");
+/**
+ * A word after a credential's noun that makes the noun a qualifier and another word the subject (`password policy`,
+ * `password manager`, `**Password reset:**`): what a sentence goes on to say is about that subject.
+ */
+const QUALIFIED_NOUN =
+	/^[ \t]+(?:policy|policies|reset|field|requirements?|rules?|manager|strength|length|hint|prompt|change|expir\w*|history|complexity|recovery|rotation|storage|hash(?:ing)?|form|page|screen|dialog|input|protected|protection|less)\b/i;
 /**
  * Words that don't make a passphrase: the grammar a sentence goes on with (`hunter2 and the user is bob`, `is sometimes
  * passed into`, `is more than enough`, `each time he uses sudo`), and what one says about a password instead of
@@ -3307,12 +3380,7 @@ function labelledProse(text: string, out: Finding[]) {
 		const [start] = m.indices![2]!;
 		// (The noun is the subject, not a qualifier: `password policy is …`, `password manager is …`, `**Password reset:**
 		// <url>`; checked before a passphrase is read on.)
-		if (
-			/^[ \t]+(?:policy|policies|reset|field|requirements?|rules?|manager|strength|length|hint|prompt|change|expir\w*|history|complexity|recovery|rotation|storage|hash(?:ing)?|form|page|screen|dialog|input|protected|protection|less)\b/i.test(
-				text.slice(nounEnd, start),
-			)
-		)
-			return;
+		if (QUALIFIED_NOUN.test(text.slice(nounEnd, start))) return;
 		const phrase = /pass|phrase/i.test(noun) ? passphraseEnd(text, start, start + m[2].length) : start;
 		if (phrase > start + m[2].length) {
 			namedFinding(out, start, phrase, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
@@ -3320,7 +3388,7 @@ function labelledProse(text: string, out: Finding[]) {
 		}
 		const v = m[2].replace(/[.,;:)]+$/, "");
 		if (/^https?:\/\//.test(v) || !accept(noun, v)) return;
-		namedFinding(out, start, start + v.length, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
+		namedFinding(out, start, withBangs(text, start + v.length), noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 	};
 	// `<noun> … is|was <value>`: up to 60 characters of the same sentence between them.
 	for (const m of text.matchAll(
@@ -3351,7 +3419,7 @@ function labelledProse(text: string, out: Finding[]) {
 		const [start] = m.indices![1]!;
 		const v = m[1].replace(/[.,;:)]+$/, "");
 		if (accept(m[2], v))
-			namedFinding(out, start, start + v.length, m[2].replace(/\s+/g, "_"), "named:prose-label", 0.85);
+			namedFinding(out, start, withBangs(text, start + v.length), m[2].replace(/\s+/g, "_"), "named:prose-label", 0.85);
 	}
 	// `X's password, <value>, …` (apposition).
 	for (const m of text.matchAll(
