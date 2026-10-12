@@ -103,6 +103,8 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		hidden(t, v, hint);
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");
 	hidden("::add-mask::correct horse battery staple", "horse battery staple");
+	// (What a workflow masks is secret whatever its shape, a version's included.)
+	hidden('echo "::add-mask::v1.2.3"', "v1.2.3");
 });
 
 test("a command that wraps another still hides its password: pipes, sudo, images, substitutions, environment prefixes", () => {

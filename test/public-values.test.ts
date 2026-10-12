@@ -265,6 +265,38 @@ test("public keys and client-side keys are kept", () => {
 		kept(line, line.match(/[0-9A-F]{16,40}/)![0]);
 });
 
+test("a client SDK's key is an argument or a member of its config; not a comment in it, nor a bare factory's", () => {
+	kept('const pusher = new Pusher(Kx9mQv2Lp7Rt3Vw8Ny2K, { cluster: "eu" });', "Kx9mQv2Lp7Rt3Vw8Ny2K");
+	const bugsnag =
+		'Bugsnag.start({\n  apiKey: "9f8e7d6c5b4a3928170615243f5e6d7c",\n  // CI\'s upload token: Kx9mQv2Lp7Rt3Vw8Ny2Kc5Hj\n});';
+	kept(bugsnag, "9f8e7d6c5b4a3928170615243f5e6d7c");
+	hidden(bugsnag, "Kx9mQv2Lp7Rt3Vw8Ny2Kc5Hj");
+	hidden(
+		'const client = createInstance({ baseURL: "https://api.acme.dev", token: "Kx9mQv2Lp7Rt3Vw8Ny2Kc5Hj" });',
+		"Kx9mQv2Lp7Rt3Vw8Ny2Kc5Hj",
+	);
+});
+
+test("a Google key is a client's only in a client config's own object, call or paragraph", () => {
+	const client = "AIz\x61SyB3kP9xW4vR7tN1mQ8zL3cH6jF0bY5gU2e";
+	const server = "AIz\x61SyD2kP9xW4vR7tN1mQ8zL3cH6jF0bY5gU2e";
+	// The object it sits in has a Firebase config's fields, before or after a call in it; google-services.json's `api_key`.
+	for (const config of [
+		`const config = {\n  messagingSenderId: "448618578101",\n  projectId: env("PROJECT_ID"),\n  apiKey: "${client}",\n};`,
+		`const config = {\n  apiKey: "${client}",\n  appId: env("APP_ID"),\n  messagingSenderId: "448618578101",\n};`,
+		`      "api_key": [\n        {\n          "current_key": "${client}"\n        }\n      ],`,
+	])
+		kept(config, client);
+	// A server's key in a call, or beside a client config: in the next statement, a paragraph below, a nested section.
+	for (const text of [
+		`const translate = new Translate({ projectId: "acme", key: "${server}" });`,
+		`final places = GoogleMapsPlaces(apiKey: '${server}');\nfinal options = FirebaseOptions(apiKey: '${client}', appId: '1:448618578101:android:0b650370bb29e29c', messagingSenderId: '448618578101', projectId: 'acme');`,
+		`GOOGLE_TRANSLATE_KEY = "${server}"\nTRANSLATE_REGION = "us-central1"\n\nFIREBASE_WEB = {"authDomain": "acme.firebaseapp.com", "messagingSenderId": "448618578101"}`,
+		`google:\n  translate_key: ${server}\n  web:\n    authDomain: acme.firebaseapp.com\n    messagingSenderId: "448618578101"`,
+	])
+		hidden(text, server);
+});
+
 test("wallet addresses are kept", () => {
 	kept(`token0: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"`, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
 	kept("destination = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");

@@ -6,13 +6,13 @@
  * hashes, public keys, addresses, stand-ins.
  */
 import assert from "node:assert/strict";
-import { createHmac, generateKeyPairSync } from "node:crypto";
+import { createHmac, generateKeyPairSync, sign } from "node:crypto";
 import { test } from "node:test";
 import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
 import { isBech32Address } from "../src/checksums.ts";
 import { Redactor } from "../src/index.ts";
 import { isPlaceholder, isPublicJwt } from "../src/public.ts";
-import { isDerPublicKey, isPgpPublicKey, isRsaPublicKey } from "../src/publickeys.ts";
+import { isDerPublicKey, isDerSignature, isPgpPublicKey, isRsaPublicKey } from "../src/publickeys.ts";
 import { alphabetOf, shape } from "../src/random.ts";
 import {
 	inertShape,
@@ -104,6 +104,44 @@ test("public keys are recognised by structure, and private keys and random base6
 			assert.ok(!isDerPublicKey(v) && !isPgpPublicKey(v), `${gen}: ${v}`);
 		}
 	}
+});
+
+test("a public key's or a signature's structure is read field by field: one field off and it isn't one", () => {
+	const der = (b64: string, edit: (b: Buffer) => void) => {
+		const b = Buffer.from(b64, "base64");
+		edit(b);
+		return b.toString("base64");
+	};
+	// A P-256 SubjectPublicKeyInfo; with its AlgorithmIdentifier a SET. An encrypted PKCS #8 private key opens with a
+	// SEQUENCE and an OID too, PBES2's.
+	const spki = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWjawrhMY";
+	assert.ok(isDerPublicKey(spki));
+	assert.ok(!isDerPublicKey(der(spki, (b) => (b[2] = 0x31))));
+	const encrypted = generateKeyPairSync("ec", {
+		namedCurve: "P-256",
+		publicKeyEncoding: { type: "spki", format: "der" },
+		privateKeyEncoding: { type: "pkcs8", format: "der", cipher: "aes-256-cbc", passphrase: "x" },
+	}).privateKey.toString("base64");
+	assert.ok(!isDerPublicKey(encrypted), encrypted);
+	// A PKCS #1 RSAPublicKey; with its modulus a BIT STRING, or of a length no DER writes.
+	const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+	const rsa = publicKey.export({ type: "pkcs1", format: "der" }).toString("base64");
+	assert.ok(isRsaPublicKey(rsa));
+	assert.ok(!isRsaPublicKey(der(rsa, (b) => (b[4] = 0x03))));
+	assert.ok(!isRsaPublicKey(der(rsa, (b) => (b[5] = 0x85))));
+	// An ECDSA signature, DER; with its SEQUENCE's length one more than its INTEGERs'.
+	const signature = sign(
+		"sha256",
+		Buffer.from("x"),
+		generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey,
+	).toString("base64");
+	assert.ok(isDerSignature(signature), signature);
+	assert.ok(!isDerSignature(der(signature, (b) => b[1]++)));
+	// OpenPGP: a public subkey packet (tag 14); a version 3 key packet.
+	const time = [0x5f, 0x00, 0x00, 0x00];
+	const packet = (...bytes: number[]) => Buffer.from([...bytes, ...new Array(24).fill(0x5a)]).toString("base64");
+	assert.ok(isPgpPublicKey(packet(0xb9, 0x01, 0x0d, 0x04, ...time, 0x01, 0x08, 0x00, 0xc3)));
+	assert.ok(!isPgpPublicKey(packet(0x99, 0x01, 0x0d, 0x03, ...time, 0x01, 0x08, 0x00, 0xc3)));
 });
 
 test("a password hash is recognised whole, not by how it starts", () => {
@@ -298,6 +336,34 @@ test("a stand-in word plus a tail is a weak password, not a placeholder", () => 
 	kept("DB_PASSWORD=YOUR_KEY_HERE", "YOUR_KEY_HERE");
 });
 
+test("masks, cut keys, templates with plain holes and test vectors are stand-ins; a key cut at its front isn't", () => {
+	for (const v of [
+		"xxxx8f2c", // a mask showing the last characters
+		"sk-proj-abc...xyz", // a key printed cut short
+		"sk-proj-QmTxvRk...a91F",
+		"postgres://<user>:<password>@localhost:5432/app", // docs' holes that name what goes in them
+		"postgres://${USER}:${PASS}@db:5432/app", // a template whose literal text is plain
+		"000102030405060708090a0b0c0d0e0f", // test vectors counting by bytes: FIPS-197's key and plaintext, RFC 4231's key
+		"00112233445566778899aabbccddeeff",
+		"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+	])
+		assert.ok(isPlaceholder(v), v);
+	for (const v of [
+		"...Kx9mQv2Lp7RtVw8NyKcHj0Df4Gs6Bz",
+		"0110100110010110", // steps of one, but no run counts one way
+		"7f3b9c2e1d4a5b6c",
+	])
+		assert.ok(!isPlaceholder(v), v);
+});
+
+test("an NTLM message's zero bytes don't make it a run of one character", () => {
+	// (Its fields' zero bytes are 45% of the base64; the NT response after them is the credential.)
+	const authenticate =
+		"TlRMTVNTUAADAAAAAAAAAEAAAAAYABgAQAAAAAAAAABYAAAABgAGAFgAAAAAAAAAXgAAAAAAAABeAAAABYKIosOh8J5deyhG4Z8LatTHjiU3uQ8dao5MJWIAbwBiAA==";
+	assert.ok(!isPlaceholder(authenticate));
+	hidden(`Authorization: NTLM ${authenticate}`, authenticate);
+});
+
 test("a JWT signed with a weak common key is a real token, one signed with a documented key is public", () => {
 	const sign = (key: string, claims: object) => {
 		const part = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -309,6 +375,28 @@ test("a JWT signed with a weak common key is a real token, one signed with a doc
 	for (const key of ["your-256-bit-secret", "shhhhh", "keyboard cat"]) assert.ok(isPublicJwt(sign(key, claims)), key);
 	const token = sign("secret", claims);
 	hidden(`export SESSION_TOKEN=${token}`, token.split(".")[2]);
+});
+
+test("a token's alphabet is the smallest that holds it, and its shape counts each class and its switches", () => {
+	for (const [token, alphabet] of [
+		["deadbeef1234", "hex"],
+		["DEADBEEF1234", "HEX"],
+		["DeadBeef1234", "b62"],
+		["MFRGG234==", "b32"],
+		["ABCXYZ89", "B36"],
+		["ABCXYZabc234", "b62"],
+		["qwertyuiop", "b36"],
+		["ab+cd/EF", "b64"],
+		["Kx9m_Qv2Lp", "b64url"],
+		["ab+cd_EF", "other"],
+		["Kx9!mQv2", "other"],
+		["abc:def12", "other"],
+		["abc~def", "other"],
+	])
+		assert.equal(alphabetOf(token), alphabet, token);
+	const { lower, upper, digit, switches } = shape("aB3_:~");
+	assert.deepEqual({ lower, upper, digit, switches }, { lower: 1, upper: 1, digit: 1, switches: 3 / 5 });
+	assert.equal(shape("aaBB").switches, 1 / 3);
 });
 
 test("an empty token has no NaN in its shape, and = is no alphabet", () => {

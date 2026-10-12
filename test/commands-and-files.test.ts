@@ -494,6 +494,12 @@ test("padded base64 is a bare token, not a NAME= line", () => {
 	assert.equal(findInSecretFile("SOME_NAME=\n").length, 0);
 });
 
+test("a bare line of a secret file gives way to the narrower secret in it", () => {
+	const text = "# alerts\nhooks.slack.com\x2fservices/T024BE7LD/B07QJ3K2M9P/yQxCGClbaNFDpCWNX0D1lZEz\n";
+	kept(text, "hooks.slack.com/services/", { path: "secrets/webhooks.txt" });
+	hidden(text, "yQxCGClbaNFDpCWNX0D1lZEz", { path: "secrets/webhooks.txt" });
+});
+
 test("a tool that prints a secret is read by its program's name, and only for secret keys", () => {
 	hidden("gho\x5fx9Kd2mQ7vL4pZr8Tn3Wb5Yc1Fh6Js0Ae", "x9Kd2mQ7vL4pZr8Tn3Wb5Yc1Fh6Js0Ae", {
 		command: "/usr/bin/gh auth token",
