@@ -147,46 +147,46 @@ function contentEnd(text: string, start: number): number {
 
 /**
  * The value of `key` in the mapping line `i`'s key belongs to: the lines whose key starts in the same column, from the
- * line one indented less (the parent), a list item starting there (the next resource of a `kind: List`), a document
- * separator, or a line that is no mapping's entry at or left of the column (a shell's prompt between two commands'
- * outputs) to the next such line. Read once per text: each line's mapping, and each mapping's keys.
+ * line one indented less (the parent), a list item starting there (the next resource of a `kind: List`), a key the
+ * mapping already has (the next resource, printed after another with no separator), a document separator, or a line
+ * that is no mapping's entry at or left of the column (a shell's prompt between two commands' outputs) to the next such
+ * line. Read once per text: each line's mapping, and each mapping's keys.
  */
 export function siblingValue(lines: YamlLine[], i: number, key: string): string | undefined {
 	const { mapping, keys } = mappingsOf(lines);
 	return mapping[i] < 0 ? undefined : keys[mapping[i]].get(key);
 }
 
-const MAPPINGS = new WeakMap<YamlLine[], { mapping: Int32Array; keys: Map<string, string>[] }>();
+const MAPPINGS = new WeakMap<YamlLine[], { mapping: Int32Array; keys: Map<string, string | undefined>[] }>();
 
-/** Each line's mapping (-1 for none), and each mapping's keys and their values (the first of a key that comes twice). */
+/** Each line's mapping (-1 for none), and each mapping's keys and their values. */
 function mappingsOf(lines: YamlLine[]) {
 	const known = MAPPINGS.get(lines);
 	if (known) return known;
 	const mapping = new Int32Array(lines.length).fill(-1);
-	const keys: Map<string, string>[] = [];
+	const keys: Map<string, string | undefined>[] = [];
 	// The mappings open at each column, outermost first.
 	const open: { col: number; id: number }[] = [];
 	lines.forEach((l, k) => {
 		if (l.blank) return;
-		if (l.separator) {
-			open.length = 0;
-			return;
-		}
-		// (A line that is no entry ends the mappings at or right of its column: `$ kubectl get secret …`.)
-		if (l.key === undefined && !l.item) {
+		// (A line that is no entry ends the mappings at or right of its column: a document separator, a shell's prompt
+		// (`$ kubectl get secret …`), a list's item with no key (`- foo`).)
+		if (l.key === undefined) {
 			while (open.length && open.at(-1)!.col >= l.indent) open.pop();
 			return;
 		}
 		while (open.length && open.at(-1)!.col > l.indent) open.pop();
-		// (A list item starts a mapping of its own, the next resource of a `kind: List`.)
-		if (l.item && open.at(-1)?.col === l.indent) open.pop();
+		// (A list item starts a mapping of its own, the next resource of a `kind: List`; so does a key the mapping has
+		// already, the next resource printed with nothing between: `kubectl get configmap -o yaml; kubectl get secret …`.)
+		const top = open.at(-1);
+		if (top?.col === l.indent && (l.item || keys[top.id].has(l.key))) open.pop();
 		if (open.at(-1)?.col !== l.indent) {
 			open.push({ col: l.indent, id: keys.length });
 			keys.push(new Map());
 		}
 		const id = open.at(-1)!.id;
 		mapping[k] = id;
-		if (l.key !== undefined && l.value && !keys[id].has(l.key)) keys[id].set(l.key, l.value.value);
+		keys[id].set(l.key, l.value?.value);
 	});
 	const out = { mapping, keys };
 	MAPPINGS.set(lines, out);

@@ -18,6 +18,7 @@ import {
 } from "../src/json.ts";
 import { findStructure } from "../src/structure.ts";
 import { urlEnd, urls } from "../src/urls.ts";
+import { siblingValue, yamlLines } from "../src/yaml.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 import { randomBytes } from "./random.ts";
 import { assertLinear } from "./timing.ts";
@@ -253,6 +254,38 @@ test("a Kubernetes Secret is hidden when data comes before kind, and in a block 
 		"V2ludGVyMjAyNHBhc3M=",
 	);
 	hidden(`apiVersion: v1\nkind: Secret\nstringData:\n  blob: |\n    ${pw}\n`, pw);
+});
+
+test("a Secret's kind is read across blank lines and block scalars, and not across documents", () => {
+	const pw = "Winter2024pass";
+	hidden(`apiVersion: v1\nkind: Secret\n\nstringData:\n  blob: ${pw}\n`, pw);
+	hidden(
+		`apiVersion: v1\nkind: Secret\nmetadata:\n  annotations:\n    note: |\n      rotated monthly\nstringData:\n  blob: ${pw}\n`,
+		pw,
+	);
+	const configMap = "apiVersion: v1\ndata:\n  greeting: Winter2025pass\nkind: ConfigMap\n";
+	kept(`apiVersion: v1\nkind: Secret\nstringData:\n  blob: ${pw}\n---\n${configMap}`, "Winter2025pass");
+	// Two resources printed back to back (`kubectl get configmap app -o yaml; kubectl get secret app -o yaml`): each its own.
+	const secret =
+		"apiVersion: v1\ndata:\n  blob: V2ludGVyMjAyNHBhc3M=\nkind: Secret\nmetadata:\n  name: app\ntype: Opaque\n";
+	for (const text of [configMap + secret, secret + configMap]) {
+		hidden(text, "V2ludGVyMjAyNHBhc3M=");
+		kept(text, "Winter2025pass");
+	}
+});
+
+test("a mapping's keys are its siblings: not a list item's, nor past a compact list", () => {
+	const lines = yamlLines("- name: app\n  kind: Secret\n- data:\n    k: v\nimage:\n- name: a\nkind: Pod\n");
+	assert.equal(siblingValue(lines, 2, "kind"), undefined);
+	assert.equal(siblingValue(lines, 4, "kind"), "Pod");
+});
+
+test("a YAML value: single-quoted with a ` #`, a block scalar with a blank line, an empty block at the end", () => {
+	const out = r().redact("apiVersion: v1\nkind: Secret\nstringData:\n  blob: 'Winter 2024 #pass'\n").text;
+	assert.ok(!out.includes("#pass") && out.includes("blob: '[REDACTED"), out);
+	// A file in a Secret is scanned as text: its lines aren't values.
+	kept("apiVersion: v1\nkind: Secret\nstringData:\n  app.conf: |\n    mode = fast\n\n    retries = 3\n", "mode = fast");
+	assert.equal(r().redact("db:\n  password: |\n").text, "db:\n  password: |\n");
 });
 
 test("a certificate in a Kubernetes Secret is kept", () => {
