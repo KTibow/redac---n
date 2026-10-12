@@ -72,11 +72,23 @@ test("commands are read through wrappers, reserved words and revisions", () => {
 		"docker-compose exec app cat .env",
 		"docker exec app \\\n  cat .env",
 		"bash -lc 'cd /app && cat .env'",
+		"docker exec app sh -c 'cat .env'",
+		"cmd /c type .env",
+		"kubectl run debug --rm -i --image=alpine -- cat /app/.env",
 		"/usr/bin/grep -n KEY .env",
 		"cat < .env",
+		"declare -p",
 	])
 		assert.ok(printsSecretFile(c), c);
-	for (const c of ["grep .env notes.txt", "/usr/bin/grep .env notes.txt", "echo x > .env", "cat ~/.ssh/config"])
+	for (const c of [
+		"grep .env notes.txt",
+		"/usr/bin/grep .env notes.txt",
+		"echo x > .env",
+		"cat ~/.ssh/config",
+		"git show HEAD:src/config.ts",
+		// (A job created runs its command later, where its output isn't shown.)
+		"kubectl create job backup --image=alpine -- cat /app/.env",
+	])
 		assert.ok(!printsSecretFile(c), c);
 	for (const c of [
 		"echo $DB_PASSWORD 2>&1",

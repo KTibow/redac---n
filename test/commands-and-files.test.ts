@@ -30,6 +30,10 @@ test("a command that cuts a settings file down to its names prints no value", ()
 	}
 	hidden("DB_PASSWORD=Kx9mQ2pLrTvB7nWz\n", "Kx9mQ2pLrTvB7nWz", { command: "cut -d= -f2 .env" });
 	hidden("DB_PASSWORD=Kx9mQ2pLrTvB7nWz\n", "Kx9mQ2pLrTvB7nWz", { command: "cut -d= -f1,2 .env" });
+	hidden("production\nHarbor2291!x\n", "Harbor2291!x", { command: "cut -d= -f2 .env" });
+	// (cut prints a line without its delimiter whole: a secret file's, not another file's.)
+	hidden("NODE_ENV\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: "cut -d: -f1 .env" });
+	kept("NODE_ENV\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: "cut -d: -f1 notes.txt" });
 });
 
 test("a substitution an argument takes is not printed by the command it is an argument of", () => {
@@ -58,6 +62,8 @@ test("a secret file's value that is a sentence is no secret, a passphrase is", (
 	kept(" LowercaseKey: The api_key key should be in uppercase", "should be in uppercase", FILE);
 	kept("ASCII text, with CRLF line terminators", "CRLF line terminators", FILE);
 	kept(" .env.example", ".env.example", FILE);
+	// (A file's name has a template's suffix or a dot first: a dotted passphrase has neither.)
+	hidden("UPSTREAM=harbor.2291x\n", "harbor.2291x", FILE);
 	hidden("DB_PASSWORD=correct horse battery staple\n", "battery staple", FILE);
 	hidden("correct horse battery staple\n", "battery staple", FILE);
 	hidden(" Env.Local9x", "Env.Local9x", FILE);
@@ -97,6 +103,7 @@ test("a file that holds only secrets hides a generated token under any name", ()
 		findInSecretFile(text, { path }).some((f) => text.slice(f.start, f.end) === "e8b41f0c7a92d6355bd1c4a09f37e268");
 	assert.ok(hides("config/secrets.staging.yml"));
 	assert.ok(hides("credentials.json"));
+	assert.ok(hides("/run/secrets/algolia"));
 	assert.ok(!hides(".env"));
 	assert.ok(!hides(""));
 });
@@ -252,7 +259,7 @@ test("a command that filters a secret file prints its lines", () => {
 		);
 });
 
-test("a secret file piped through any program but one that prints none of its input is printed", () => {
+test("a secret file piped through any program but one that prints none of its input, or copied and read, is printed", () => {
 	for (const c of [
 		"cat .env | nl",
 		"cat .env | xargs",
@@ -260,8 +267,37 @@ test("a secret file piped through any program but one that prints none of its in
 		"cat .env > /tmp/x; cat /tmp/x",
 		"cp .env /tmp/e && cat /tmp/e",
 		"sudo cat .env > /dev/stderr",
+		"cp .env /tmp/a && mv /tmp/a /tmp/b && cat /tmp/b",
+		'cat .env | sed -n "1,$(wc -l < .env.example)p"',
+		"cat server.key | openssl rsa -check",
+		"cat .env.enc | openssl enc -d -aes-256-cbc -pbkdf2 -pass env:KEY",
+		"cat .env.gpg | gpg -d",
+		"cat .env | gpg --clearsign",
+		"diff <(cat .env) .env.example",
 	])
 		hidden("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
+	for (const c of [
+		"cp .env /tmp/env.bak && rm /tmp/env.bak",
+		"cp .env .env.bak && cat package.json",
+		"cp config.example.json config.json && cat config.json",
+		"cat .env |& wc -l",
+		"cat .env | gpg -c",
+		"cat id.pem | openssl pkey -pubout",
+	])
+		kept("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
+});
+
+test("a search's pattern and its options' values are no files it reads", () => {
+	for (const c of [
+		"grep -e UPSTREAM .env",
+		"grep --regexp=UPSTREAM .env",
+		"grep -eUPSTREAM .env",
+		"ag UPSTREAM .env",
+		"Select-String -Path .env -Pattern UPSTREAM",
+	])
+		hidden("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
+	for (const c of ["grep -rn -e password -e token src/", "grep -m 1 -n password src/", "grep -A 3 secret config/"])
+		kept("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
 });
 
 test("a quoted .env value with a trailing comment is hidden whole", () => {
@@ -283,8 +319,11 @@ test("a secret file printed by find, xargs, a loop or a substitution is printed"
 		"cat $(find . -name .env)",
 		"python3 -c \"print(open('.env').read())\"",
 		'while read l; do echo "$l"; done < .env',
+		'for f in "$HOME/.env" "$HOME/.env.local"; do cat "$f"; done',
 	])
 		hidden("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
+	for (const c of ["find . -name '*.ts' -exec cat {} \\;", "find . -name .env -exec cat {} \\; > /tmp/all.env"])
+		kept("NODE_ENV=production\nUPSTREAM=Harbor2291!x\n", "Harbor2291!x", { command: c });
 });
 
 test("openssl x509 prints a certificate, not a secret file", () => {
@@ -336,6 +375,7 @@ test("echo $VAR prints its value, and a secret reference is kept", () => {
 test("a NUL-separated environment dump hides the secret and keeps the other entries", () => {
 	hidden(`PATH=/usr/bin\0API_SECRET=ifmb%5R6D67hwq\0HOME=/root`, "ifmb%5R6D67hwq");
 	kept(`PATH=/usr/bin\0API_SECRET=ifmb%5R6D67hwq\0HOME=/root`, "HOME=/root");
+	hidden("NODE_ENV=production\0UPSTREAM=Harbor2291!x\0", "Harbor2291!x", { command: "printenv -0" });
 });
 
 test("bundled shell flags and echo $(...) name the command that prints a secret", () => {

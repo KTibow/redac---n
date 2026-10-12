@@ -88,7 +88,7 @@ export function holdsOnlySecrets(path: string): boolean {
 }
 
 const CONTENT_COMMANDS =
-	/^(cat|tac|head|tail|less|more|bat|batcat|nl|sed|awk|grep|egrep|rg|cut|sort|uniq|strings|xxd|od|base64|tr|column|jq|yq|type|Get-Content|gc|diff|sops|op|dotenv|printenv|env|set|export|declare)$/;
+	/^(cat|tac|head|tail|less|more|bat|batcat|nl|sed|awk|grep|egrep|fgrep|zgrep|rg|ag|ack|Select-String|sls|cut|sort|uniq|strings|xxd|od|base64|tr|column|jq|yq|type|Get-Content|gc|diff|sops|op|dotenv|printenv|env|set|export|declare)$/;
 /**
  * Commands whose whole output is a credential, by tool: each read from the program on (a commit message that mentions
  * `gh auth token` isn't one).
@@ -365,7 +365,7 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 	}
 	const sub = subcommand(words);
 	if (/^(?:kubectl|oc)$/.test(program) && sub[0]?.text === "exec") {
-		const dashes = sub.findIndex((w) => w.text === "--" && !w.quoted);
+		const dashes = sub.findIndex((w) => w.text === "--");
 		return dashes > 0 ? from(sub, dashes + 1) : undefined;
 	}
 	// `docker exec`, `docker compose exec`, `docker-compose exec`: options (with the value of those that take one), then
@@ -388,7 +388,7 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 		return k + 1 < sub.length ? entrypoint(tool, sub[k + 1].start) : undefined;
 	}
 	if (/^(?:kubectl|oc)$/.test(program) && sub[0]?.text === "run") {
-		const dashes = sub.findIndex((w) => w.text === "--" && !w.quoted);
+		const dashes = sub.findIndex((w) => w.text === "--");
 		if (dashes < 0 || dashes + 1 >= sub.length) return undefined;
 		const image = sub.find((w) => w.text.startsWith("--image="))?.text.slice(8) ?? "";
 		const tool = ENTRYPOINT_TOOLS[imageName(image)];
@@ -419,6 +419,8 @@ const VALUE_OPTIONS = lookup<RegExp>({
 		/^(?:-f|--file|-p|--project-name|--profile|--env-file|--project-directory|--ansi|--progress|--parallel)$/,
 	ssh: /^-[iplJFoLRDbcemSwWBEOQ]$/,
 	shell: /^-[a-bd-z]*o$|^--(?:rcfile|init-file)$/,
+	// (grep's, and ripgrep's, ag's and ack's alike: context, a count, a pattern or the file of them, which files to read.)
+	grep: /^-[ABCDdefm]$|^--(?:after-context|before-context|context|max-count|regexp|file|include|exclude|exclude-dir|label|devices|directories|binary-files)$/,
 });
 
 /** Where a command's operands start: past its options from `k`, and the values of those `options` takes as a next word. */
@@ -470,10 +472,11 @@ const PRINTER =
  */
 function printsIndirectly(command: string): boolean {
 	if (command.length > 8192 || !PRINTER.test(command)) return false;
-	// (A file named as a path, `.env`, `config/secrets.yml`: a bare word, `token`, or a variable is no file's name here.)
+	// (A file named as a path, `.env`, `config/secrets.yml`, `$HOME/.env`: a bare word or a variable, `token`, `$TOKEN`, is
+	// no file's name here.)
 	const named = command
 		.split(/[\s'"`;|&()<>{}=,]+/)
-		.some((w) => /[./]/.test(w) && !w.includes("$") && isSecretFile(w.replace(/^\.\//, "").replace(/[*?]+$/, "")));
+		.some((w) => /[./]/.test(w) && isSecretFile(w.replace(/^\.\//, "").replace(/[*?]+$/, "")));
 	if (!named) return false;
 	const run = commandsRun(command);
 	const last = run.at(-1);
@@ -486,7 +489,7 @@ function optionValue(args: string[], short: string, long: string): string | unde
 		const a = args[k];
 		if (a === short || a === long) return args[k + 1];
 		if (a.startsWith(long + "=")) return a.slice(long.length + 1);
-		if (a.startsWith(short) && a.length > short.length) return a.slice(short.length);
+		if (a.startsWith(short)) return a.slice(short.length);
 	}
 	return undefined;
 }
@@ -562,17 +565,30 @@ function readsSecretFile(c: ShellCommand): boolean {
 		return true;
 	// (A redirection's target is read when it is `<`'s: `cat < .env`; `echo x > .env` prints nothing.)
 	if (allRedirects(c).some((r) => r.op === "<" && r.target && isSecretFile(r.target.text))) return true;
-	// (grep's first word is its pattern, not a file: `grep -rn password src/`, `grep -E 'A|B' .env`. Counting, listing
-	// and testing print none of it: `grep -c`, `grep -l`, `grep -q`.)
+	// (Counting, listing and testing print none of what grep reads: `grep -c`, `grep -l`, `grep -q`.)
 	if (/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep)$/.test(program) && rest.some((t) => countsMatches(program, t)))
 		return false;
-	const args = rest.filter((t) => !t.startsWith("-"));
-	if (
-		/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program) &&
-		!rest.some((t) => /^-[ef]$|^--(?:regexp|file)=/.test(t))
-	)
-		args.shift();
-	return args.some((t) => isSecretFile(t));
+	const files = /^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
+		? searchedFiles(rest)
+		: rest.filter((t) => !t.startsWith("-"));
+	return files.some((t) => isSecretFile(t));
+}
+
+/**
+ * The files a search reads (grep, ripgrep, Select-String), from its words after the program: its operands but the
+ * pattern, which is the first unless an option gives it (`grep -rn password src/`, `grep -e KEY .env`, `grep -ePASS
+ * .env`, `Select-String -Pattern KEY -Path .env`). An option's value is no operand: `grep -m 1 token src/`.
+ */
+function searchedFiles(rest: string[]): string[] {
+	const operands: string[] = [];
+	let pattern = false;
+	for (let k = 0; k < rest.length; k++) {
+		const t = rest[k];
+		if (/^-[ef]|^--(?:regexp|file)(?:=|$)/.test(t) || /^-Pattern$/i.test(t)) pattern = true;
+		if (VALUE_OPTIONS.grep!.test(t) || /^-(?:Pattern|Context)$/i.test(t)) k++;
+		else if (!t.startsWith("-")) operands.push(t);
+	}
+	return operands.slice(pattern ? 0 : 1);
 }
 
 /**
@@ -670,7 +686,8 @@ const PRINTS_NONE_OF_INPUT =
 /**
  * A stage that takes its input as a secret to store or use, printing only its own messages: `docker login
  * --password-stdin`, `gh secret set`, `kubectl create secret … --from-file=/dev/stdin`, `vault kv put … -`, `gpg -c`,
- * `openssl enc`, `tar`.
+ * `openssl enc`, `tar`. (Not one that decrypts, `openssl enc -d`, nor gpg's `--clearsign`, which prints its input
+ * signed but in the clear.)
  */
 function consumesInput(command: ShellWord[]): boolean {
 	const program = programName(command[0]);
@@ -681,8 +698,10 @@ function consumesInput(command: ShellWord[]): boolean {
 		(program === "gh" && sub === "secret") ||
 		(program === "kubectl" && /^(?:create|apply|replace)$/.test(sub)) ||
 		(program === "vault" && /^(?:kv|write|login)$/.test(sub)) ||
-		(program === "openssl" && /^(?:enc|dgst|pkeyutl|rsautl|smime|cms)$/.test(sub)) ||
-		(program === "gpg" && words.some((w) => /^-[a-z]*[ec][a-z]*$|^--(?:encrypt|symmetric|sign|clearsign)$/.test(w))) ||
+		(program === "openssl" &&
+			/^(?:enc|dgst|pkeyutl|rsautl|smime|cms)$/.test(sub) &&
+			!words.some((w) => /^-(?:d|decrypt)$/.test(w))) ||
+		(program === "gpg" && words.some((w) => /^-[a-z]*[ec][a-z]*$|^--(?:encrypt|symmetric|sign)$/.test(w))) ||
 		program === "tar"
 	);
 }
