@@ -3,7 +3,8 @@ import { isReplaceable } from "./known.ts";
 import { hasCredentialWord, isCredentialName, isSettingName, namesPasswordOrPin } from "./names.ts";
 import { isLiteralPassword } from "./structure.ts";
 import { urls } from "./urls.ts";
-import { isInert, isRandomToken } from "./values.ts";
+import { naturalness } from "./charlm.ts";
+import { hasThreeClasses, isInert, isRandomToken } from "./values.ts";
 
 /**
  * The secrets in an environment, as known values: variables whose name has a credential word (`*_API_KEY`, `*_TOKEN`,
@@ -22,7 +23,7 @@ export function fromEnvironment(env: Record<string, string | undefined>): { valu
 		const widened =
 			!isSettingName(name) &&
 			((namesPasswordOrPin(name) && !isInert(value)) ||
-				((hasCredentialWord(name) || /(?:^|_)(?:SESSION|PEPPER)$/i.test(name)) && isRandomToken(value, 12)));
+				((hasCredentialWord(name) || /(?:^|_)(?:SESSION|PEPPER)$/i.test(name)) && isGenerated(value)));
 		const secretName = isCredentialName(name) || /WEBHOOK/i.test(name) || widened;
 		if (secretName && !isInert(value)) out.push({ value, label: `$${name}` });
 		// (A vendor's token under any name: `CI_DEPLOY=ghp_…`, a Slack webhook URL.)
@@ -37,6 +38,22 @@ export function fromEnvironment(env: Record<string, string | undefined>): { valu
 	}
 	// (Only what a Redactor takes as a known value, so the caller isn't told a `JWT_SECRET=devsecret` is protected when it isn't.)
 	return out.filter((o) => isReplaceable(o.value.trim()));
+}
+
+/**
+ * A value a generator made: a random token (`Xk9mQ2pLrTvB7nWz`), or one with symbols in it, of all three other classes
+ * and no word (`Pq7!zR2@xW9#kL4m`); not a URL or a path.
+ */
+function isGenerated(value: string): boolean {
+	return (
+		isRandomToken(value, 12) ||
+		(value.length >= 12 &&
+			/^[!-~]+$/.test(value) &&
+			hasThreeClasses(value) &&
+			/[^A-Za-z0-9]/.test(value) &&
+			!/:\/\/|^[/~.$]/.test(value) &&
+			naturalness(value) < 0.3)
+	);
 }
 
 function decodeSafe(v: string): string {

@@ -297,6 +297,16 @@ test("a Google key is a client's only in a client config's own object, call or p
 		hidden(text, server);
 });
 
+test("a Maps SDK's key in Expo's app config, and the Maps loader's in a HAR's query string, are the app's", () => {
+	const key = "AIz\x61Z144PSVZYewwsj549l42-snRLuljcCDJoWV";
+	for (const text of [
+		`{\n  "expo": {\n    "ios": {\n      "config": { "googleMapsApiKey": "${key}" }\n    }\n  }\n}`,
+		`    android: {\n      package: "jp.example.app",\n      config: { googleMaps: { apiKey: "${key}" } },\n    },`,
+		`{"request":{"method":"GET","url":"https://maps.googleapis.com/maps/api/js?libraries=places","queryString":[{"name":"libraries","value":"places"},{"name":"key","value":"${key}"}]}}`,
+	])
+		kept(text, key);
+});
+
 test("wallet addresses are kept", () => {
 	kept(`token0: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"`, "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
 	kept("destination = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'", "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2");

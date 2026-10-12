@@ -460,6 +460,11 @@ test("fromEnvironment reads the caller's environment widely", () => {
 	);
 });
 
+test("fromEnvironment takes a generated value with symbols under a session's or a credential's name", () => {
+	const env = fromEnvironment({ APP_PEPPER: "Pq7!zR2@xW9#kL4m", MY_SESSION: "Xk9#mQ2$vL8nRt4W" });
+	assert.deepEqual(env.map((e) => e.value).sort(), ["Pq7!zR2@xW9#kL4m", "Xk9#mQ2$vL8nRt4W"]);
+});
+
 test("the environment's settings stay settings, whatever credential word their name holds", () => {
 	assert.deepEqual(
 		fromEnvironment({

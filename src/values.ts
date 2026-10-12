@@ -72,7 +72,10 @@ const MAX_SHORT_NAME = 4;
 /** A short name that is one word, lower, upper or capitalised, then a digit or two: `db`, `API`, `Key`, `s3`, not `Xk9p`. */
 const PLAIN_SHORT_NAME = /^(?:[a-z]+|[A-Z]+|[A-Z][a-z]+)\d{0,2}$/;
 
-/** Identifier segments that read as names (a word's case, or short): `md5`, `htmlspecialchars`, `jmat.gId`, not `IWNwpPK.QC.BXh`. */
+/**
+ * Identifier segments that read as names (a word's case, or short): `md5`, `htmlspecialchars`, `jmat.gId`, not
+ * `IWNwpPK.QC.BXh`, nor humps a generator's case flips made (`hqArruGhkoRtvpQplEac`).
+ */
 export function isNameLike(path: string): boolean {
 	const parts = path.split(/[^A-Za-z0-9_]+/).filter(Boolean);
 	return (
@@ -80,9 +83,10 @@ export function isNameLike(path: string): boolean {
 		parts.every(
 			(p) =>
 				p.length <= MAX_SHORT_NAME ||
-				WORD_CASE.test(p.replace(/_/g, "")) ||
-				/^[a-z_][a-z0-9_]*$|^[A-Z][A-Z0-9_]*$/.test(p) ||
-				(/^[A-Z]{0,2}[a-z]+(?:[A-Z][a-z]+)*\d{0,4}$/.test(p) && naturalness(p) > -0.5),
+				(!isRandomCase(p) &&
+					(WORD_CASE.test(p.replace(/_/g, "")) ||
+						/^[a-z_][a-z0-9_]*$|^[A-Z][A-Z0-9_]*$/.test(p) ||
+						(/^[A-Z]{0,2}[a-z]+(?:[A-Z][a-z]+)*\d{0,4}$/.test(p) && naturalness(p) > -0.5))),
 		)
 	);
 }

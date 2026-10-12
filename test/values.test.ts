@@ -151,7 +151,15 @@ test("a path is names a person gave, with no segment a generator made", () => {
 		"/srv/{app}/logs",
 	])
 		assert.ok(isPath(v), v);
-	for (const v of ["/srv/{4}/x", "/Summer2024", "/home/me/Tv$-ycX.K9+/key", "/s/Xk9mQ", "/NKR7uXt0UfYN9/"])
+	// (Humps a generator's case flips made read as no name, however long each: `hqArruGhkoRtvpQplEac`.)
+	for (const v of [
+		"/srv/{4}/x",
+		"/Summer2024",
+		"/home/me/Tv$-ycX.K9+/key",
+		"/s/Xk9mQ",
+		"/NKR7uXt0UfYN9/",
+		"/opt/hqArruGhkoRtvpQplEac/bin",
+	])
 		assert.ok(!isPath(v), v);
 });
 
@@ -464,6 +472,8 @@ test("masks, cut keys, templates with plain holes and test vectors are stand-ins
 		"...Kx9mQv2Lp7RtVw8NyKcHj0Df4Gs6Bz",
 		"0110100110010110", // steps of one, but no run counts one way
 		"7f3b9c2e1d4a5b6c",
+		"98879887", // digits, whose pairs step by 0x11 back and forth, or one way: a PIN, not bytes counting
+		"12233445",
 	])
 		assert.ok(!isPlaceholder(v), v);
 });

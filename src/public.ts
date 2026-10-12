@@ -51,6 +51,21 @@ export function isClientGoogleKey(text: string, start: number): boolean {
 	const before = text.slice(Math.max(0, start - 600), start);
 	const line = before.slice(before.lastIndexOf("\n") + 1);
 	if (/maps\.googleapis\.com\/maps\/api\/js\?(?:[^\s"'&]*&)*key=$/.test(line)) return true;
+	// A HAR's record of that loader's request: its `queryString` entry, `{"name": "key", "value": "…"}`.
+	if (
+		/"url"\s*:\s*"https:\/\/maps\.googleapis\.com\/maps\/api\/js\?[^"]*"(?:(?!"url")[^])*"queryString"\s*:\s*\[[^\]]*\{\s*"name"\s*:\s*"key"\s*,\s*"value"\s*:\s*"$/.test(
+			before,
+		)
+	)
+		return true;
+	// Expo's app config, `ios.config.googleMapsApiKey` and `android.config.googleMaps.apiKey`: the Maps SDKs' keys,
+	// built into the app.
+	if (
+		/\bconfig["']?\s*:\s*\{[^{}]*?(?:["']?googleMapsApiKey|["']?googleMaps["']?\s*:\s*\{[^{}]*?["']?apiKey)["']?\s*:\s*["']$/.test(
+			before,
+		)
+	)
+		return true;
 	// An Android manifest's Maps key and the iOS SDK's: the app ships them. (The manifest's within its `<meta-data>` tag,
 	// its attributes on one line or several, in either order.)
 	if (/GMSServices\.provideAPIKey\(\s*"$|GMSPlacesClient\.provideAPIKey\(\s*"$/.test(line)) return true;
@@ -264,20 +279,24 @@ function isSequential(token: string): boolean {
 		step = next;
 	}
 	if (inRuns >= body.length * 0.8) return true;
-	// Hex as bytes, the same way: bytes inside runs of 4+ that step by 0, 1 or 0x11 each (`00010203`, `aabbccdd`).
-	// (`7f3b9c2e1d4a5b6c` has steps of 0x11 here and there, not runs: a key.)
+	// Hex as bytes, the same way: bytes inside runs of 4+ that step by 0, 1 or 0x11, one step all the way (`00010203`,
+	// `aabbccdd`, `fffefdfc`). (`7f3b9c2e1d4a5b6c` has steps of 0x11 here and there, not runs: a key. Digits alone step
+	// by 0x11 as a number's pairs do, `12233445`, `98879887`: a PIN, not bytes counting.)
 	if (/^[0-9a-f]+$/i.test(body) && body.length % 2 === 0) {
+		const strides = /[a-f]/i.test(body) ? [0, 1, 0x11] : [0, 1];
 		const n = body.length / 2;
 		let inByteRuns = 0;
 		let byteRun = 1;
+		let step = NaN;
 		for (let i = 1; i <= n; i++) {
-			const d =
-				i < n ? Math.abs(parseInt(body.slice(i * 2, i * 2 + 2), 16) - parseInt(body.slice(i * 2 - 2, i * 2), 16)) : -1;
-			if (d === 1 || d === 0x11 || d === 0) byteRun++;
+			const d = i < n ? parseInt(body.slice(i * 2, i * 2 + 2), 16) - parseInt(body.slice(i * 2 - 2, i * 2), 16) : NaN;
+			if (strides.includes(Math.abs(d)) && (byteRun === 1 || d === step)) byteRun++;
 			else {
 				if (byteRun >= 4) inByteRuns += byteRun;
-				byteRun = 1;
+				// (The pair that broke the run may start the next.)
+				byteRun = strides.includes(Math.abs(d)) ? 2 : 1;
 			}
+			step = d;
 		}
 		return inByteRuns >= n * 0.8;
 	}
