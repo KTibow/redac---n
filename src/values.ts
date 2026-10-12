@@ -750,6 +750,19 @@ export function isBalanced(s: string): boolean {
 	return open.length === 0;
 }
 
+/**
+ * Variables and the punctuation between them, nothing literal: `$RANDOM***$RANDOM`, `%RANDOM%@%RANDOM%`, `${*}`.
+ * (A bare variable in capitals, after no letter, digit or `$`: `Pa$$WORD`, `P@$SWORD1` keep letters of their own.)
+ */
+function isExpansionsOnly(v: string): boolean {
+	const rest = v.replace(
+		/\$\{[^{}]{1,80}\}|(?<![\p{L}\p{N}$])\$[A-Z_][A-Z0-9_]{2,40}(?![\w$])|%[A-Z_][A-Z0-9_]{2,40}%/gu,
+		"",
+	);
+	// (One variable at least: `!@#$%^&*()` is a password of symbols.)
+	return rest !== v && !/[\p{L}\p{N}]/u.test(rest);
+}
+
 const ENV_LOOKUP =
 	/process\.env|os\.environ|getenv|ENV\[|System\.getenv|Environment\.GetEnvironmentVariable|env::var|std::env|Deno\.env|import\.meta\.env|^(config|settings|secrets|params|args|options|opts|self|this|props|ctx|context|req|request|env)\./;
 
@@ -762,10 +775,13 @@ const ENV_LOOKUP =
  */
 export function isCode(raw: string, literal = false): boolean {
 	const v = raw.trim().replace(/[;,]$/, "").trim();
-	// A quoted string built from code: `".md5($password)."`, `"${prefix}${key}"`.
+	// A quoted string built from code: `".md5($password)."`, `"${prefix}${key}"`, `"$RANDOM***$RANDOM"`.
 	if (/^["'`]/.test(v))
-		return /^["'`]\s*\.\s*\$[a-z_][a-z0-9_]*(?:\[|->|\s*\.|$)|\$[a-z_][a-z_]{2,}\s*\.\s*["'`$]|["'`]\s*\.\s*\$[A-Za-z_]\w+(?=\s*(?:[.;,)\]]|->|\[|$))|\$\{\w+\}.*\$\{\w+\}/.test(
-			v,
+		return (
+			(/^"[^"]*"$/.test(v) && isExpansionsOnly(v.slice(1, -1))) ||
+			/^["'`]\s*\.\s*\$[a-z_][a-z0-9_]*(?:\[|->|\s*\.|$)|\$[a-z_][a-z_]{2,}\s*\.\s*["'`$]|["'`]\s*\.\s*\$[A-Za-z_]\w+(?=\s*(?:[.;,)\]]|->|\[|$))|\$\{\w+\}.*\$\{\w+\}/.test(
+				v,
+			)
 		);
 	if (CODE_SHAPES.some(([, test]) => test(v, literal))) return true;
 	return (literal ? REFERENCES : CODE_ONLY).some(([, test]) => test(v));
@@ -845,6 +861,13 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 	// `new Buffer(pw, "base64")`, `await vault.read(path)`, `require("crypto")`, `function () { … }`, `lambda: os.environ["PW"]`:
 	// the keyword and the code it takes, whole (`fn(Harbor)2291`, `new moon rising` aren't).
 	["a keyword expression", (v) => isBalanced(v) && KEYWORD_EXPRESSION.test(v)],
+	// `function password() {`, `async function* gen(a, b)`, a shell function's `() {`: a function's head, its body below.
+	[
+		"a function's head",
+		(v) => /^(?:async[ \t]+)?function\b[ \t]*\*?[ \t]*[\w$]*[ \t]*\([\w$, \t]*\)[ \t]*\{?$|^\(\)[ \t]*\{$/.test(v),
+	],
+	// `%RANDOM%@%RANDOM%`: variables and the punctuation between them.
+	["expansions only", isExpansionsOnly],
 	// `quote(pw) if pw else None`: code on either side (a call, a member, a literal), so `rain if sun else snow` isn't.
 	["a Python conditional", (v) => PY_CONDITIONAL.test(v) && /[.([\]"']|\b(?:None|True|False)\b/.test(v)],
 	// `password: SecretStr`.

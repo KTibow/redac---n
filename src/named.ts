@@ -706,6 +706,14 @@ function assignments(text: string, out: Finding[]) {
 		if (typed) at += typed[0].length;
 		// Aligned columns: `SecretID:          <value>`.
 		while (text[at] === " " || text[at] === "\t") at++;
+		// `MYSQL_USER=root MYSQL_PASSWORD= FILTER=x npm test`: an empty variable, the next one's pair after it.
+		if (
+			op === "=" &&
+			at > opEnd &&
+			/^[A-Z][A-Z0-9_]*$/.test(name) &&
+			/^[A-Za-z_]\w*=(?!=)/.test(text.slice(at, at + 80))
+		)
+			continue;
 		// `password: |` YAML block scalar, `password = <<EOT` heredoc: the lines below.
 		// (The indicator, and a comment after it however long: yaml.ts reads the line.)
 		const eol = lineEndAt(text, at);
@@ -850,6 +858,9 @@ function assignments(text: string, out: Finding[]) {
 	}
 }
 
+/** JavaScript's `typeof` before a name and its object's path: `typeof this.`. */
+const TYPEOF_BEFORE = /\btypeof[ \t]+[\w$.]*$/;
+
 /** Whether ASSIGN's match names a credential's value, and not a namespace, a string compared, or a header read elsewhere. */
 function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean {
 	const [, quote, , op] = m;
@@ -883,6 +894,8 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 	if (quote && text[m.index - 1] === "=") return false;
 	// `` `pwd`:/workspace ``: a command substitution, not a name.
 	if (quote === "`") return false;
+	// `typeof this.password === 'function'`: the value's type compared, not the value.
+	if (/^===?$/.test(op) && TYPEOF_BEFORE.test(text.slice(Math.max(0, m.index - 60), m.index))) return false;
 	// `"password" === e.type`: a string compared, not a variable (`$auth['password'] === 'x'` is one).
 	if (quote && /^===?$/.test(op) && !m[0].includes("]")) return false;
 	// `Cookie:` and `Set-Cookie:` headers are read pair by pair (structure.ts), with analytics cookies kept.
@@ -1555,6 +1568,8 @@ function comparisons(text: string, out: Finding[]) {
 		),
 	)) {
 		const name = m[1] ?? m[6] ?? m[7];
+		// (`typeof password === 'function'` compares the value's type.)
+		if (m[1] !== undefined && TYPEOF_BEFORE.test(text.slice(Math.max(0, m.index - 60), m.index))) continue;
 		const k = m[3] !== undefined ? 3 : m[5] !== undefined ? 5 : 9;
 		namedValue(out, name, group(m, k), "named:compare");
 	}
@@ -2564,7 +2579,13 @@ function prose(text: string, out: Finding[]) {
 			continue;
 		// (After `=` the sentence is code: `user_password = Arcfour(key).decrypt(…)`; and so it is when code's punctuation
 		// follows, `password: proxyPass);`. A template's hole, `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
-		if ((/=/.test(m[2]) || /^[);,]/.test(text.slice(m.indices![4]![1]))) && isCode(value)) continue;
+		// (A reference, a member's path or a call, is code wherever it's written: `pass: process.env.SMTP_PASSWORD`,
+		// `password: this.data.password`; a bare name isn't, `The password is: BlueSecret`.)
+		if (
+			((/=/.test(m[2]) || /^[);,]/.test(text.slice(m.indices![4]![1]))) && isCode(value)) ||
+			(/[.([]/.test(value) && isCode(value, true))
+		)
+			continue;
 		if (/\{\{|^\[?:[a-z_]\w*\]?$/.test(value) || (text[m.indices![4]![0] - 1] === "{" && /\}$/.test(value))) continue;
 		const start = m.indices![4]![0];
 		if (

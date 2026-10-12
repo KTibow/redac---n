@@ -294,3 +294,26 @@ test("a value's syntax says it is no credential: country codes, ternaries, XAML,
 		"glacier.ruby.reef.birch.iris.hickory",
 	);
 });
+
+test("code that computes a value holds none: typeof, function heads, references, expansions, an empty variable", () => {
+	const off = new Redactor({ guessing: "off", fingerprintKey: "test" });
+	for (const [text, value] of [
+		["    if (typeof this.password === 'function') {", "function"],
+		["    if (typeof passwordUpdaterDestr === 'function') {", "function"],
+		["  password: function password() {", "function password()"],
+		["_pass () {\n  echo hi\n}", "() {"],
+		["    pass: process.env.SMTP_PASSWORD", "process.env.SMTP_PASSWORD"],
+		["    password: this.template.users[user].data.password", "this.template.users[user].data.password"],
+		['mysql_root_password="$RANDOM***$RANDOM"', "$RANDOM***$RANDOM"],
+		["set passwd=%RANDOM%@%RANDOM%", "%RANDOM%@%RANDOM%"],
+		['PASSWD="${*}"', "${*}"],
+		["$ MYSQL_USER=root MYSQL_PASSWORD= FILTER=integration npm test", "FILTER=integration"],
+	])
+		assert.ok(off.redact(text).text.includes(value), text);
+	// A literal among them is read as before.
+	hidden('        String password = "!@#$%^&*()|\\\\<>/?";', "!@#$%^&*()|");
+	hidden("if ($auth['password'] === 'Hx7mQ2pL9vRt4') {", "Hx7mQ2pL9vRt4");
+	hidden('DB_PASSWORD="Pa$$WORD"', "Pa$$WORD");
+	hidden("The password is: BlueSecret", "BlueSecret");
+	hidden("MYSQL_PASSWORD=Hx7mQ2pL9vRt FILTER=integration", "Hx7mQ2pL9vRt");
+});
