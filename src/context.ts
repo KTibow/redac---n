@@ -275,7 +275,7 @@ function isBlobLine(doc: Doc, start: number, end: number, i: number): boolean {
 		return m && !(m[1] && m[3]) ? m[2].length : -1;
 	};
 	const [w, pw, nw] = [width(line), width(doc.line(i - 1)), width(doc.line(i + 1))];
-	if (end - start < 40 || w < 40 || (pw < 0 && nw < 0)) return false;
+	if (end - start < 40 || w < 40) return false;
 	// A body's lines share an encoder's width (64, 76…), or three in a row share one; only the last is shorter.
 	// Keys listed one per line (`kubectl get secret … | base64 -d` per key, a handover) have their own lengths.
 	// (Three in a row: this line and two neighbours above, below or around it.)
@@ -305,14 +305,22 @@ function listName(doc: Doc, i: number): string | undefined {
 	return undefined;
 }
 
+/**
+ * The cell of `header`, a `|` table's header row, over the cell `start` sits in on line `i`: by place, as a Markdown
+ * table's cells needn't line up under their headers. None for a token with no bar before it on its line.
+ */
+function headerOver(header: string, doc: Doc, start: number, i: number): string | undefined {
+	const row = doc.line(i);
+	if (!/\|/.test(row.slice(0, start - doc.start(i)))) return undefined;
+	return pipeCells(header)[pipeCells(row, doc.start(i)).findIndex((c) => c.end >= start)]?.text;
+}
+
 /** The header of the `|` table column `start` sits in on line `i`: `| Test name | Commit |` then `|---|---|` above its row. */
 function pipeColumnAbove(doc: Doc, start: number, i: number): string | undefined {
-	const row = doc.line(i);
-	if (!/\|/.test(row.slice(0, start - doc.start(i))) || start - doc.start(i) > 600) return undefined;
-	const index = pipeCells(row, doc.start(i)).findIndex((c) => c.end >= start);
+	if (!/\|/.test(doc.line(i).slice(0, start - doc.start(i))) || start - doc.start(i) > 600) return undefined;
 	for (let k = i - 1; k > 0 && k >= i - 40; k--) {
 		const line = doc.line(k);
-		if (PIPE_RULE.test(line)) return pipeCells(doc.line(k - 1))[index]?.text.replace(/[*`]/g, "") || undefined;
+		if (PIPE_RULE.test(line)) return headerOver(doc.line(k - 1), doc, start, i)?.replace(/[*`]/g, "");
 		if (!/\|/.test(line)) return undefined;
 	}
 	return undefined;
@@ -324,7 +332,6 @@ function columnAbove(doc: Doc, start: number, end: number, i: number): string | 
 	for (let k = i - 1; k >= 0 && k >= i - 25; k--) {
 		const line = doc.line(k);
 		if (!line.trim()) return undefined;
-		if (/^[ \t]*[+|][-+=|: ]*$/.test(line)) continue; // a rule between header and rows: `+------+------+`
 		// A header: names (one or two words each) separated by two or more spaces.
 		if (
 			/^[ \t]*[A-Z][A-Z0-9_]*(?: [A-Z][A-Z0-9_]*)?(?:[ \t]{2,}[A-Z][A-Z0-9_]*(?: [A-Z][A-Z0-9_]*)?)+[ \t]*$/.test(line)
@@ -345,14 +352,8 @@ function columnAbove(doc: Doc, start: number, end: number, i: number): string | 
 				if (m.index === col || m.index + m[0].length === end - doc.start(i)) return m[0];
 			return undefined;
 		}
-		// A bar-separated header (`aws … --output table`, psql): `|  ClientId  |  ClientName  |`.
-		if (/^[ \t]*\|(?:[ \t]*[A-Za-z][\w.-]{0,60}[ \t]*\|){2,}[ \t]*$/.test(line)) {
-			let cell = line.indexOf("|");
-			for (let next = line.indexOf("|", cell + 1); next >= 0; cell = next, next = line.indexOf("|", cell + 1)) {
-				if (cell < col && col < next) return line.slice(cell + 1, next).trim();
-			}
-			return undefined;
-		}
+		// A bar-separated header with no rule under it (`aws … --output table`): `|  ClientId  |  ClientName  |`.
+		if (/^[ \t]*\|(?:[ \t]*[A-Za-z][\w.-]{0,60}[ \t]*\|){2,}[ \t]*$/.test(line)) return headerOver(line, doc, start, i);
 	}
 	return undefined;
 }
@@ -385,7 +386,7 @@ function nameFromLeft(left: string, url: string | undefined): { name: string; sy
 	let m: RegExpMatchArray | null;
 	if (url !== undefined) {
 		if ((m = QUERY.exec(url))) return { name: m[1], syntax: "query" };
-		if (/\/$/.test(url) || /\/bot$/.test(url)) return { name: "", syntax: "path" };
+		if (/\/$/.test(url)) return { name: "", syntax: "path" };
 		// (Outside a URL, a form body: `#key=` is a comment's assignment.)
 	} else if ((m = QUERY.exec(left)) && m[0][0] !== "#") return { name: m[1], syntax: "query" };
 	const trimmed = left.trimStart();
@@ -447,8 +448,7 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 	if (!name || PAIR_VALUE.test(name))
 		name = siblingName(left) ?? (name || !left.trim() ? siblingName(above, { alone: true }) : undefined) ?? name;
 	// An item of a list under a name (`api_keys:` then `- <key>` lines): the list's name.
-	if (!name && (syntax === "list" || syntax === "bare") && /^[ \t]*(?:[-*•][ \t]*["'`]?|["'`])$/.test(left))
-		name = listName(doc, i) ?? "";
+	if (!name && /^[ \t]*(?:[-*•][ \t]*["'`]?|["'`])$/.test(left)) name = listName(doc, i) ?? "";
 
 	const fsPath =
 		!inUrl &&
@@ -481,10 +481,11 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 			syntax = "prose";
 		}
 	}
-	// A cell under a column header: `NAME  DIGEST  CREATED AT` above `DB_PASSWORD  e17e…  2 days ago`.
+	// A cell under a column header: `NAME  DIGEST  CREATED AT` above `DB_PASSWORD  e17e…  2 days ago`. A Markdown
+	// table's header (over its rule) first: the table's rows above the token's would read as a bar-separated header.
 	const column =
-		(/[ \t]{2,}\S*$|^\S*$|[│|][ \t]*$/.test(left) && start - ls < 300 ? columnAbove(doc, start, end, i) : undefined) ??
-		pipeColumnAbove(doc, start, i);
+		pipeColumnAbove(doc, start, i) ||
+		(/[ \t]{2,}\S*$|^\S*$|[│|][ \t]*$/.test(left) && start - ls < 300 ? columnAbove(doc, start, end, i) : undefined);
 	if (
 		column &&
 		/^(?:digest|hash|sha|sha256|checksum|etag|id|uuid|guid|version|revision|commit|fingerprint|client[ _-]?id|app[ _-]?id|created|updated|name|[a-z]{1,8}[ _-]?id|[a-z]{0,8}uuid)$/i.test(
@@ -507,16 +508,21 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		const index = cells.findIndex((c) => c.end >= start);
 		const top = doc.csvBlockTop(i, cells.length);
 		const header =
-			top < i && index >= 0
+			top < i
 				? delimitedCells(doc.line(top), ",")
 						[index]?.text.trim()
 						.replace(/^["'$]+|["']+$/g, "")
 				: undefined;
 		if (header && /^[A-Za-z_][\w ]{0,40}$/.test(header) && !/\d{3}/.test(header)) name = header.replace(/\s+/g, "_");
 	}
-	// A value in an SQL row: its column (`INSERT INTO uploads (id, name) VALUES ('<id>', …)`).
+	// A value in an SQL row: its column (`INSERT INTO uploads (id, name) VALUES ('<id>', …)`), over what the row's own
+	// text reads as a name (`VALUES (` as a call, the cell before as a pair). A token inside a value keeps a name the
+	// value gives it (`'{"api_key": "…"}'`).
 	const sqlCell = doc.sqlCell(start, end);
-	if (!name && sqlCell) name = sqlCell.column;
+	if (sqlCell) {
+		const value = sqlCell.value.literal ?? sqlCell.value;
+		if (!name || (start <= value.start && end >= value.end)) name = sqlCell.column;
+	}
 	// `checksum/secret:`, `annotations.checksum/config:`: the path before a name is part of it.
 	if (name) {
 		const path = /([\w.-]{1,60})\/$/.exec(textBefore(left, name))?.[1];
@@ -564,7 +570,7 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		shellArg:
 			/^[ \t]*(?:\d{4}-\d\d-\d\dT[\d:.]+Z?[ \t]+)?(?:[$#>+][ \t]+|(?:sudo[ \t]+)?(?:\.{0,2}\/[\w.-][\w./-]*|[a-z][\w-]*(?:\.(?:sh|py|js|rb|ts|pl))?)[ \t]+)(?:[^\s"'|;&]+[ \t]+){0,12}["']?$/.test(
 				left,
-			) && !/[=:]["']?$/.test(left),
+			),
 		left: left.slice(-120),
 		right: right.slice(0, 120),
 		near: text.slice(Math.max(0, start - 300), Math.min(text.length, end + 100)),

@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { GENERATORS, seed } from "../eval/fuzz-secrets.ts";
+import { type Context, contextOf, Doc } from "../src/context.ts";
 import { redactValue } from "../src/transcript.ts";
 import { findUnnamed } from "../src/unnamed.ts";
 import { hidden, kept, r } from "./helpers.ts";
@@ -156,4 +157,60 @@ test("a random token longer than any key the model was trained on is judged as t
 		"X-Session: Q7mZt2Kx9LpV4cW8nR3bY6hF1sD5gJ0aE2uT9kM4wP7xN3qB8vC6zH1rL5yG0fS2dK9jU4iO7eA3tW6mX8nV1pQ5bR2cZ4hY7gT9sF3kL6wD0jM8",
 		"Q7mZt2Kx9LpV4cW8nR3bY6hF1sD5gJ0a",
 	);
+});
+
+test("a document's lines end at its line breaks, escaped ones among them", () => {
+	// A `\r\n` ends its line before the `\r`, real or escaped; an escaped backslash before `n` or `r` is no break.
+	const doc = new Doc("one\ntwo\\r\\nthree\\\\nfour\\\\r\\nfive\r\nsix");
+	assert.deepEqual(
+		[0, 1, 2, 3, 4].map((i) => doc.line(i)),
+		["one", "two", "three\\\\nfour\\\\r", "five", "six"],
+	);
+});
+
+test("a token's context: the name and syntax the text around it gives", () => {
+	const t = "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te";
+	const n = "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPF";
+	const cases: [text: string, want: Partial<Context>][] = [
+		[`curl "https://api.example.com/v1/items?api_key=${t}"`, { name: "api_key", syntax: "query" }],
+		[`curl -d "grant_type=client_credentials&client_secret=${t}"`, { name: "client_secret", syntax: "query" }],
+		// A commented-out line of a .env is an assignment, not a URL's fragment.
+		[`#API_TOKEN=${t}`, { name: "API_TOKEN", syntax: "assign" }],
+		[`api_keys:\n  - ${t}\n`, { name: "api_keys", syntax: "list" }],
+		[`[\n  "${t}"\n]`, { name: "", syntax: "bare" }],
+		[`<input type="hidden" name="csrf" value="${t}">`, { syntax: "xml" }],
+		[`token="${t}"`, { name: "token", syntax: "assign" }],
+		// A sibling names the value: on its line, or alone on the line above.
+		[`{"name": "STRIPE_KEY", "value": "${t}"}`, { name: "STRIPE_KEY" }],
+		[`Name: DB_PASSWORD\n${t}\n`, { name: "DB_PASSWORD" }],
+		// A value after a name and a tab is no list's item (Django's debug page lists `META:` above).
+		[`META:\nCSRF_COOKIE\t'${t}'\n`, { name: "" }],
+		// A wrapped string's later line is its name's; not past the line that ends it in padding, nor past other text,
+		// nor for a token with text before it.
+		[`"n": "${n}\n  ${t}\n`, { name: "n" }],
+		[`"n": "${n}\n  4cbbfAAtVT86zwu1RK7aPFFxuh==\n${t}\n`, { name: "" }],
+		[`"n": "${n}\nsome prose here\n${t}\n`, { name: "" }],
+		[`"n": "${n}\n[INFO] done ${t}\n`, { name: "" }],
+		// A CSV cell's header is its block's first line: not a whitespace table's row, a line without commas, a value
+		// (an email, a number), nor for a token that is only part of its cell.
+		[`HOST     ROLES\nweb1     api,worker\n${t}     api,worker\n`, { name: "" }],
+		[`Here is the output\n${t}\n`, { name: "" }],
+		[`id,note\n1,see ${t}\n`, { name: "" }],
+		[`id,note\n1,${t} now\n`, { name: "" }],
+		[`alice@example.com,pro\n${t},free\n`, { name: "" }],
+		[`user123,pro\n${t},free\n`, { name: "" }],
+		// An SQL row's cell is named by its column, on one line or many.
+		[`INSERT INTO users (email, api_key) VALUES ('a@b.c', '${t}');`, { name: "api_key" }],
+		[`INSERT INTO users (email, api_key) VALUES\n  ('a@b.c', '${t}'),\n  ('b@b.c', 'x');`, { name: "api_key" }],
+		// Git's `HEAD`, as git writes it, is a hash word.
+		[`HEAD is now at ${t}`, { lineHash: true }],
+	];
+	const wrong: string[] = [];
+	for (const [text, want] of cases) {
+		const at = text.indexOf(t);
+		const ctx = contextOf(new Doc(text), at, at + t.length);
+		const got = Object.fromEntries(Object.keys(want).map((k) => [k, ctx[k as keyof Context]]));
+		if (JSON.stringify(got) !== JSON.stringify(want)) wrong.push(`${JSON.stringify(text)} → ${JSON.stringify(got)}`);
+	}
+	assert.deepEqual(wrong, []);
 });
