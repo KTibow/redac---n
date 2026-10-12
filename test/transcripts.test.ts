@@ -469,6 +469,7 @@ test("the environment's settings stay settings, whatever credential word their n
 			DESKTOP_SESSION: "ubuntu-wayland",
 			PASSWORD_POLICY: "strong-v2",
 			GPG_KEY: "7169605F62C751356D054A26A821E680E5FA6305",
+			KEY_FILE_PATTERN: "*.pem,*.key,*.p12",
 		}),
 		[],
 	);

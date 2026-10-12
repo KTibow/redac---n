@@ -78,6 +78,27 @@ test("inert shapes must match exactly under a credential name", () => {
 	hidden("PASSWORD=env:hunter2", "hunter2");
 	hidden('password = "[Xk9p]"', "Xk9p");
 	hidden('password = "{Ab1Q}"', "Ab1Q");
+	// (A password framed like a shape, its inside no name: a variable, a command, an interpolation, a placeholder, a
+	// template, a path, code, a credential's name.)
+	for (const v of [
+		"<Xk9p>",
+		"$XkPqWmTzRb",
+		"$rqcy7duhdjbjv",
+		"@{Tr0ub4dor}",
+		"$(Tr0ub4dor)",
+		"${Tr0ub4dor.Zx9",
+		"${Summer2024",
+		"<Xk9 mQ2vL8>",
+		"%s-PASSword",
+		"/Summer2024",
+		"/home/me/Tv$-ycX.K9+/key",
+		"/s/Xk9mQ",
+		"cfg.QpEpSguu",
+		"fluffy_monkey",
+		"old_whiskey",
+	])
+		hidden(`DB_PASSWORD=${v}`, v);
+	hidden("--password zpu.KcqEeQfd()", "zpu.KcqEeQfd()");
 	kept("PASSWORD=op://prod/db/password", "op://prod/db/password");
 	kept("PASSWORD=env:DB_PASS", "env:DB_PASS");
 	kept("password: vault:secret/data/app#key", "vault:secret/data/app#key");
@@ -130,6 +151,11 @@ test("an unnamed random key is missed at most once in a hundred, in a call, a he
 		const missed = keys.filter((k) => r().redact(place(k)).text.includes(k));
 		assert.ok(missed.length <= 5, `${missed.length}/500 missed in ${place("…")}: ${missed.slice(0, 5).join(" ")}`);
 	}
+});
+
+test("random letters joined by a dash are random, though their runs read as words", () => {
+	// (Most of its runs of letters score as words to the model; its case flips as no word's does.)
+	hidden("session cookie: CiWjariaZPabaLm-MSLOTNicNPLocPtv", "CiWjariaZPabaLm-MSLOTNicNPLocPtv");
 });
 
 test("quoted random tokens and lists of keys are hidden", () => {

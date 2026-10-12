@@ -20,7 +20,9 @@ import {
 	isCode,
 	isIdentifierShaped,
 	isPasswordHash,
+	isPath,
 	isRandomToken,
+	isWordy,
 	looksSecret,
 } from "../src/values.ts";
 import { hidden, kept, r } from "./helpers.ts";
@@ -63,6 +65,92 @@ test("no value gate accepts a generated secret", () => {
 			)
 			.join("\n"),
 	);
+});
+
+test("every inert shape takes its own kind: references, masks, templates, public values", () => {
+	const pkcs1 = generateKeyPairSync("rsa", { modulusLength: 1024 })
+		.publicKey.export({ type: "pkcs1", format: "der" })
+		.toString("base64");
+	for (const v of [
+		// Variables: shell's positional and named, Windows's, PHP's.
+		"$1",
+		"$DB_PASS2",
+		"%SqlAdminPassword%",
+		"%DB_PASSWORD%",
+		"{$pwd}",
+		"$this->passwd",
+		"{$cfg['db']['pass']}",
+		// References: names in brackets (short ones plain), a path of them, a secret's ARN, a cut interpolation, a
+		// Nutanix Calm macro.
+		"[PW]",
+		"{db}",
+		"<SecretsManager:prod/db/password>",
+		"arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf",
+		"${config.db",
+		"@@{PostgresService.address}@@",
+		// Masks and stand-ins.
+		"***1234",
+		"ab****yz",
+		"$encrypted$",
+		"xxxx1234",
+		"sk-ant-xxxxx",
+		"api-key-****",
+		"sk-proj-abc...xyz",
+		"ChangeMe123",
+		// Templates.
+		"db-%s-password",
+		"%s_Password",
+		"key%d.pem",
+		// A secret listing's metadata.
+		"2024-05-01T10:00:00Z",
+		"Secret{name=db}",
+		// Public identifiers and keys.
+		"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+		"QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+		"bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+		"npub1sg6plzptd64u62a878hep2kev88swjh3tw00gjsfl8f237lmu63q0uf63m",
+		"S-1-5-21-3623811015-3361044348-30300820-1013",
+		"1:123456789012:web:3f2a1b0c9d8e7f6a",
+		"<CAJ1x2+abc=def@mail.gmail.com>",
+		"0x3f2a1b0c",
+		pkcs1,
+		"MEUCIDeJz1xqWtFp7jUnMWW8R3aKb8IA+kgE07DhGQBjl6vsAiEAnpt+dlhD5BDjKSgcyQQT35sxJNe0RIXkTve2XTPcd0I=",
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPUPzyFlRaik/Mg76607/G/bKQk2nGpBRREEdPMVg1DT deploy@ci",
+		"test test test test test test test test test test test junk",
+	])
+		assert.ok(inertShape(v), v);
+	// (Docker Compose's escape holds a name: `$${DB_PASS}`, not `$${Xk9mQ2vL}`.)
+	assert.equal(inertShape("$${DB_PASS}"), "escaped variable");
+	assert.equal(inertShape("$${Xk9mQ2vL}"), undefined);
+});
+
+test("a wordy value is words, numbers and short IDs in a word's case", () => {
+	// (A long word with a digit reads oddly to the model, but its case doesn't flip as a generator's does.)
+	for (const v of [
+		"prod-nginxingress2-logs",
+		"PROD_CLOUDWATCHLOGS2_EXPORT",
+		"deploy-myServiceAccountNameForUploads",
+		"GitHub-Actions-2024",
+		"iPhone-build-2024",
+		"münchen-prod-2024",
+		"MÜNCHEN-STAGING",
+	])
+		assert.ok(isWordy(v), v);
+	for (const v of ["prod-hqArruGhkoRtvpQplEac-2024", "acme-prod-XkPqWm9-2024"]) assert.ok(!isWordy(v), v);
+});
+
+test("a path is names a person gave, with no segment a generator made", () => {
+	for (const v of [
+		"certs/dev-key.pem",
+		"/var/lib/myApp2/data",
+		"/Library/macOS/keys",
+		"./src/utils/getIdOf.ts",
+		"./node_modules/XMLHttpRequest/lib",
+		"/srv/{app}/logs",
+	])
+		assert.ok(isPath(v), v);
+	for (const v of ["/srv/{4}/x", "/Summer2024", "/home/me/Tv$-ycX.K9+/key", "/s/Xk9mQ", "/NKR7uXt0UfYN9/"])
+		assert.ok(!isPath(v), v);
 });
 
 test("public keys are recognised by structure, and private keys and random base64 aren't", () => {
@@ -187,7 +275,13 @@ test("a random token is told from words, numbers and dates by its characters", (
 			if (!isRandomToken(Array.from(randomBytes(32), (b) => alphabet[b % alphabet.length]).join(""))) missed++;
 		assert.ok(missed <= 2, `${alphabet}: ${missed} of 2000 read as not random`);
 	}
-	for (const v of ["2ccccbfc5a83859dfc3a267a3bdc5f1b", "HeCyNZaswaFJeXfywkHbZg", "qwhzkfmtvbnrxplo"])
+	// (Hex whose letters are few, which the model reads as a number, is random too.)
+	for (const v of [
+		"2ccccbfc5a83859dfc3a267a3bdc5f1b",
+		"9215e9b4b645255238729925759355c8",
+		"HeCyNZaswaFJeXfywkHbZg",
+		"qwhzkfmtvbnrxplo",
+	])
 		assert.ok(isRandomToken(v), v);
 	for (const v of [
 		"reset-password-confirm",

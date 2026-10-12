@@ -63,7 +63,6 @@ export function isWordy(value: string): boolean {
 				(/^\p{L}+\d{0,4}$/u.test(part) &&
 					!isRandomCase(part) &&
 					!(part.length >= 3 && /[A-Z]/.test(part.slice(1)) && /[a-z]/.test(part) && !WORD_CASE.test(part))) ||
-				/^\d{1,6}$/.test(part) ||
 				/^[0-9a-f]{1,12}$/i.test(part),
 		);
 }
@@ -86,6 +85,11 @@ export function isNameLike(path: string): boolean {
 				(/^[A-Z]{0,2}[a-z]+(?:[A-Z][a-z]+)*\d{0,4}$/.test(p) && naturalness(p) > -0.5),
 		)
 	);
+}
+
+/** A word in brackets that names something: a name, and a plain one when short (`<db password>`, `[API]`; not `[Xk9p]`). */
+function isBracketedWord(word: string): boolean {
+	return isNameLike(word) && (word.length > MAX_SHORT_NAME || PLAIN_SHORT_NAME.test(word));
 }
 
 /** The path of a reference to a secret: every part a name or a number (`secret/data/app`, `projects/123/secrets/db`). */
@@ -330,7 +334,7 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			return /^[A-Za-z_@$.]/.test(inner) && isNameLike(inner.split(/[^\w.]/)[0] || "x");
 		},
 	],
-	// `<db password>`, `[TOKEN]`, `{api_key}`: a name in brackets. (A short word is plain: `[Xk9p]` is not a name.)
+	// `<db password>`, `[TOKEN]`, `{api_key}`: a name in brackets.
 	[
 		"bracketed name",
 		(v) => {
@@ -340,7 +344,7 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 				(m[1] ?? m[2] ?? m[3])
 					.split(/[ .-]+/)
 					.filter(Boolean)
-					.every((w) => isNameLike(w) && (w.length > MAX_SHORT_NAME || PLAIN_SHORT_NAME.test(w)))
+					.every(isBracketedWord)
 			);
 		},
 	],
@@ -366,7 +370,7 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			);
 		},
 	],
-	// `****`, `xxxxxxxx`, `••••`, `[REDACTED]`, `<hidden>`, `ab****yz`; DigitalOcean's `EV[1:…]`, AWX's `$encrypted$`;
+	// `****`, `xxxxxxxx`, `••••`, `[REDACTED]`, `<hidden>`, `ab****yz`; AWX's `$encrypted$`;
 	// `xxxx`, `xxx-xxx`, `xxxx1234`, `sk-ant-xxxxx`, `ghp_xxxx` (but `Xxxq7Lm2x` is a password).
 	[
 		"mask",
@@ -377,7 +381,6 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			) ||
 			/^\*+[^*\s]{0,6}$/.test(v) ||
 			/^[^*\s]{0,6}\*{4,}[^*\s]{0,6}$/.test(v) ||
-			/^EV\[\d+:[A-Za-z0-9+/=:]+\]?$/.test(v) ||
 			v === "$encrypted$" ||
 			/^x{3,}(?:[-_.\d]*$|[-_.]x)/i.test(v) ||
 			/^[a-z]{1,10}(?:[-_][a-z]{1,10}){0,2}[-_](?:x{4,}|X{4,}|\*{4,}|\.{3,})$/.test(v),
@@ -418,7 +421,8 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			/^\[%key:[\w:]{1,200}%\]$/.test(v),
 	],
 	// A placeholder after a prefix: `sk.<ask-in-#atlas-dev>`, `ghp_<your token>`; in words: `<from vault: "Android upload keystore">`,
-	// `<your-key>`; marked: `change-me`, `your_token`, `KEY_HERE`, `sk-...`, `abc…`.
+	// `<your-key>`; names in brackets, a path of them too: `<SecretsManager:prod/db>` (not `<Xk9p>`); marked: `change-me`,
+	// `your_token`, `KEY_HERE`, `sk-...`, `abc…`.
 	[
 		"placeholder",
 		(v) =>
@@ -436,7 +440,7 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 					.slice(1, -1)
 					.split(/[ .:/-]+/)
 					.filter(Boolean)
-					.every((w) => isNameLike(w))) ||
+					.every(isBracketedWord)) ||
 			isTruncated(v) ||
 			/change[-_ ]?me|^your[-_ ]|_here$|-here$/i.test(v),
 	],
@@ -587,7 +591,7 @@ export function isPath(value: string): boolean {
 	if (/^[a-z0-9_-]+(?:\/[a-z0-9_.-]+)*\/[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.[a-z0-9]{1,8}$/.test(value))
 		return value.split(/[/._-]/).every((seg) => (seg.match(/[a-z](?=\d)|\d(?=[a-z])/g)?.length ?? 0) <= 3);
 	// (Rooted at a variable too: `$HOME/.config`, `$PWD/.kube/config`, `${GITHUB_WORKSPACE}/out`. Braces only around a
-	// variable: `/srv/{app}/logs` isn't one.)
+	// name, a variable's or a template's: `/srv/{app}/logs`, not `/srv/{4}/x`.)
 	if (
 		!/^(\.{1,2}\/|~\/|\/|\$\{?[A-Za-z_]\w*\}?\/|[A-Za-z]:\\)[\w.\-/+@${}\\ ]+$/.test(value) ||
 		!/[/\\]/.test(value.slice(1)) ||
@@ -608,7 +612,7 @@ export function isGeneratedSegment(seg: string): boolean {
 	if (mixed && /\d/.test(seg) && (seg.length >= 16 || /[$+@ ]/.test(seg) || (seg.length >= 5 && !isNameLike(seg))))
 		return true;
 	if (mixed && /[A-Za-z0-9]\+[A-Za-z0-9]/.test(seg)) return true;
-	return mixed && seg.length >= 6 && !WORD_CASE.test(seg) && !isNameLike(seg) && naturalness(seg.toLowerCase()) < 0.5;
+	return mixed && seg.length >= 6 && !isNameLike(seg) && naturalness(seg.toLowerCase()) < 0.5;
 }
 
 /** Abbreviations code names things with, which read as no word to the character model. */
