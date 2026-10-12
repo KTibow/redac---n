@@ -30,14 +30,14 @@ came from, and see what would be sent. The library runs in the page, so nothing 
 ![Secrets caught against look-alike values destroyed, redac---n and seven open-source scanners](docs/holdout.svg)
 
 On a held-out set of realistic agent output (1,112 cases, never used for tuning), redac---n catches **93.0%** of
-secrets and destroys **3.2%** of the values that look like secrets but aren't. The best combination of existing
+secrets and destroys **3.0%** of the values that look like secrets but aren't. The best combination of existing
 scanners we found catches 70.6% and destroys 2.2%; all seven together catch 84.2% but destroy 28.6% of the
 look-alikes.
 
 | | secrets caught | look-alikes destroyed |
 |---|---:|---:|
-| **redac---n** (default) | **93.0%** | **3.2%** |
-| redac---n, `guessing: "off"` | 90.7% | 1.2% |
+| **redac---n** (default) | **93.0%** | **3.0%** |
+| redac---n, `guessing: "off"` | 90.9% | 1.1% |
 | gitleaks + Betterleaks + Kingfisher | 70.6% | 2.2% |
 | all seven scanners combined | 84.2% | 28.6% |
 | CredSweeper, the best single scanner | 70.1% | 15.2% |
@@ -58,7 +58,7 @@ file, and knows that `cat .env | wc -l` printed only a number.
 [CredData](https://github.com/Samsung/CredData) is labelled lines from public repositories, sorted here into the same
 kinds. The top row is its dev split, the repositories the fixes were made on; the bottom row is its test split, which
 none of them saw. On the test split redac---n catches more than any other scanner but CredSweeper in every kind, and
-hits fewer false values than the other six combined: 88% of credential-shaped secrets for 6.8% of the false values
+hits fewer false values than the other six combined: 88% of credential-shaped secrets for 6.6% of the false values
 there, against 75% and 14%. CredSweeper is drawn apart because CredData's lines come partly from it and its model is
 trained on CredData's labels.
 
@@ -78,7 +78,7 @@ and then became development data. Secrets caught / look-alikes destroyed at that
 
 | set | redac---n | `guessing: "off"` | gitleaks + Betterleaks + Kingfisher | best single other scanner |
 |---|---:|---:|---:|---:|
-| Held-out 1: 1,112 cases over 104 kinds of output | 93.0 / 3.2 | 90.7 / 1.2 | 70.6 / 2.2 | CredSweeper 70.1 / 15.2 |
+| Held-out 1: 1,112 cases over 104 kinds of output | 93.0 / 3.0 | 90.9 / 1.1 | 70.6 / 2.2 | CredSweeper 70.1 / 15.2 |
 | Held-out 2: 848 cases from blind template writers | 86.8 / 5.7 | 78.3 / 3.7 | 60.3 / 5.1 | CredSweeper 65.7 / 20.1 |
 | Held-out 3: 450 cases, mobile, ML, IoT, enterprise stacks, other CI vendors | 85.5 / 7.4 | 78.5 / 3.2 | 64.0 / 4.8 | CredSweeper 69.4 / 21.0 |
 | Held-out 4: 478 everyday agent sessions, issue and PR threads | 90.4 / 1.9 | 86.7 / 0.7 | 66.2 / 3.6 | CredSweeper 74.1 / 20.4 |
@@ -94,7 +94,7 @@ Other measurements; where a set was first scored blind, that score comes first:
 | set | result |
 |---|---|
 | Development sets (4,250 cases, 6,424 secrets, 18,402 look-alikes; held-out 2–8 among them) | 95.4% caught, 1.4% destroyed; 95.4% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
-| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.2% and 3.6%. On the dev split it was tuned on, 91.1% and 1.8%: the gap shows how much of the tuning doesn't carry over to new repositories |
+| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.5% and 3.5%. On the dev split it was tuned on, 91.1% and 1.8%: the gap shows how much of the tuning doesn't carry over to new repositories |
 | Five more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5 and 17.0 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
 | [GitLab's secret-detection rules](https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules), each rule's examples | 81.4% of 2,038 caught and 23% of 168 negatives hit, blind; now 88.0% and 15% |
 | Credential-handling code with no credentials ([ICSME 2026](https://doi.org/10.5281/zenodo.22942243), 5,903 snippets) | 4.6% of snippets hit, blind; now 2.0%, mostly passwords written into the code |
