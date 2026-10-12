@@ -352,8 +352,13 @@ function columnAbove(doc: Doc, start: number, end: number, i: number): string | 
 				if (m.index === col || m.index + m[0].length === end - doc.start(i)) return m[0];
 			return undefined;
 		}
-		// A bar-separated header with no rule under it (`aws … --output table`): `|  ClientId  |  ClientName  |`.
-		if (/^[ \t]*\|(?:[ \t]*[A-Za-z][\w.-]{0,60}[ \t]*\|){2,}[ \t]*$/.test(line)) return headerOver(line, doc, start, i);
+		// A bar-separated header with no rule under it (`aws … --output table`): `|  ClientId  |  ClientName  |`. (The
+		// table's first row: a row of words under another row is data.)
+		if (
+			/^[ \t]*\|(?:[ \t]*[A-Za-z][\w.-]{0,60}[ \t]*\|){2,}[ \t]*$/.test(line) &&
+			!(k > 0 && /^[ \t]*\|.*\|[ \t]*$/.test(doc.line(k - 1)) && !/^[ \t]*[+|][-+=|: ]*$/.test(doc.line(k - 1)))
+		)
+			return headerOver(line, doc, start, i);
 	}
 	return undefined;
 }
@@ -403,7 +408,8 @@ function nameFromLeft(left: string, url: string | undefined): { name: string; sy
 	// arguments: `algoliasearch('<app id>', '…')`.)
 	if ((m = /(?<![\w$.\])][ \t]*)[([][ \t]*["']([\w.-]{1,60})["'][ \t]*,[ \t]*["'`]$/.exec(left)))
 		return { name: m[1], syntax: "assign" };
-	if ((m = CALL.exec(left))) return { name: m[1], syntax: "call" };
+	// (SQL's `VALUES (` is no call: an INSERT's cell is named by its column, Doc.sqlCell.)
+	if ((m = CALL.exec(left)) && !/^values$/i.test(m[1])) return { name: m[1], syntax: "call" };
 	if ((m = TABLE.exec(left))) return { name: m[1], syntax: "assign" };
 	if ((m = PROSE.exec(left))) return { name: m[1], syntax: "prose" };
 	// "(token 075d…)", "the key abc…": a credential word right before the value.
@@ -513,7 +519,9 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 						[index]?.text.trim()
 						.replace(/^["'$]+|["']+$/g, "")
 				: undefined;
-		if (header && /^[A-Za-z_][\w ]{0,40}$/.test(header) && !/\d{3}/.test(header)) name = header.replace(/\s+/g, "_");
+		// (Not a run of digits, a first row of values read as the header; but a digest's name, `sha256`, `sha3_512`.)
+		if (header && /^[A-Za-z_][\w ]{0,40}$/.test(header) && (!/\d{3}/.test(header) || /^sha(?:3_)?\d{3}$/i.test(header)))
+			name = header.replace(/\s+/g, "_");
 	}
 	// A value in an SQL row: its column (`INSERT INTO uploads (id, name) VALUES ('<id>', …)`), over what the row's own
 	// text reads as a name (`VALUES (` as a call, the cell before as a pair). A token inside a value keeps a name the

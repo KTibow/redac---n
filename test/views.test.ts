@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Redactor } from "../src/index.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
 
 test("a psql name/value table hides the value of a credential row and keeps the others", () => {
@@ -70,6 +71,23 @@ test("a diff hunk or a grep -n line is read as the file it comes from", () => {
 		'diff --git a/.env.production b/.env.production\n--- a/.env.production\n+++ b/.env.production\n@@ -28,3 +28,3 @@ [auth]\n CI_PIPELINE_ID="5034300445"\n-LUMEN_VALUE=m5f/LxNKtMqPJsnsQ0IqQO5KqPEygyJKG82cTlfZgfdQdZFci4fKVXTC0cjkzWFOzm0MNWeJaZBFmg+oEsg5Xg==\n+LUMEN_VALUE=ENC[AES256_GCM,data:abc,iv:def,tag:ghi,type:str]\n',
 		"m5f/LxNKtMqPJsnsQ0IqQO5KqPEyg",
 	);
+});
+
+test("a .pgpass line is a host and a port, whatever its host's top-level domain, not a grep match", () => {
+	// (`.sh`, `.rs` are extensions too; two lines on consecutive ports read like `grep -n`'s.)
+	const off = new Redactor({ fingerprintKey: "t", guessing: "off" });
+	for (const host of ["db.example.sh", "db.prod.rs"]) {
+		const out = off.redact(
+			`$ cat ~/.pgpass\n${host}:5432:app:app:Kx9mQv2Lp7Rt9Wz3\n${host}:5433:app:app:Pq7zR2xW9kL4mN8v`,
+		).text;
+		assert.ok(!out.includes("Kx9mQv2Lp7Rt9Wz3") && !out.includes("Pq7zR2xW9kL4mN8v"), out);
+	}
+});
+
+test("a tab-separated row's cells end at their tabs", () => {
+	const row = '{"stdout": "password\\tKx9mQv2Lp7Rt9Wz3\\tuser\\tadmin"}';
+	hidden(row, "Kx9mQv2Lp7Rt9Wz3");
+	kept(row, "\\tuser\\tadmin");
 });
 
 test("a column of base64 ids in a data frame is kept", () => {

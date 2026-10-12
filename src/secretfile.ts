@@ -42,6 +42,7 @@ import {
 	readsAsWords,
 } from "./values.ts";
 import { isSentenceWord } from "./named.ts";
+import { PGPASS } from "./normalize.ts";
 import { isPasswordlessUrl, leadingUrl } from "./urls.ts";
 import { stringListItems } from "./syntax.ts";
 import { publicBlocks } from "./publickeys.ts";
@@ -228,9 +229,6 @@ function isOneValueLine(line: string): boolean {
 		!(line.includes("=") && isInert(line.slice(line.lastIndexOf("=") + 1)))
 	);
 }
-
-/** A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). */
-const PGPASS = /^[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
 
 /** `.pgpass` lines: the last field. */
 function pgpassLines(text: string, out: Finding[]) {

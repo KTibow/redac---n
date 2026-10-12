@@ -359,6 +359,11 @@ test("a token's context: the name and syntax the text around it gives", () => {
 		// An SQL row's cell is named by its column, on one line or many.
 		[`INSERT INTO users (email, api_key) VALUES ('a@b.c', '${t}');`, { name: "api_key" }],
 		[`INSERT INTO users (email, api_key) VALUES\n  ('a@b.c', '${t}'),\n  ('b@b.c', 'x');`, { name: "api_key" }],
+		// (`VALUES (` is no call: a row's first cell reads as on many lines.)
+		[`INSERT INTO users (api_key) VALUES ('${t}');`, { name: "api_key", syntax: "list" }],
+		// A CSV header may name a digest; a bar table's header is its first row, with no rule under it.
+		[`file,sha256,size\napp.tgz,${t},10\n`, { name: "sha256" }],
+		[`| Service | Value |\n| billing | version |\n| stripe | ${t} |\n`, { name: "stripe" }],
 		// Git's `HEAD`, as git writes it, is a hash word.
 		[`HEAD is now at ${t}`, { lineHash: true }],
 	];

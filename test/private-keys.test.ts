@@ -120,6 +120,18 @@ test("a key stored unwrapped with its front cut off is hidden", () => {
 	hidden(`  "private_key": "${unwrapped.slice(-400)}\\n-----END PRIVATE KEY-----\\n",`, unwrapped.slice(-200, -150));
 });
 
+test("a key's short last line under a log's prefix, and a key whose line breaks were stripped, are hidden", () => {
+	const body = randomBytes(1218)
+		.toString("base64")
+		.match(/.{1,64}/g)!;
+	const key = ["-----BEGIN PRIVATE KEY-----", ...body.slice(0, -1), "Q==", "-----END PRIVATE KEY-----"];
+	hidden(key.map((l, i) => `2026-10-10T08:00:${String(i).padStart(2, "0")}Z app[7]: ${l}`).join("\n"), "Q==");
+	// (OpenSSH's format, no DER to read: by its armor alone, whole or cut before its END line.)
+	const openssh = `-----BEGIN OPENSSH PRIVATE KEY-----b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW${randomBytes(300).toString("base64")}`;
+	hidden(`SSH_KEY=${openssh}-----END OPENSSH PRIVATE KEY-----`, openssh.slice(120, 160));
+	hidden(`SSH_KEY=${openssh}`, openssh.slice(120, 160));
+});
+
 test("a key with a log's prefix on every line, or in ssh.com's armor, is hidden", () => {
 	const key = privateKeyLines();
 	const logged = [...key.slice(0, 1), ...key.slice(1, -1), key.at(-1)!]

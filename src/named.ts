@@ -1401,7 +1401,13 @@ function spacedPairs(text: string, out: Finding[]) {
 		// A table's cell (the name's own cell ended at a bar) ends at a bar; a column's at two blanks. Elsewhere a bar is the
 		// value's (`requirepass a|b`).
 		const barred = /[│|┃║]/.test(m[3]);
-		const cell = text.slice(span[0], span[1]).search(barred ? /[ \t]*[│|┃║]|[ \t]{2,}/ : /[ \t]{2,}/);
+		// (A tab after the name separates columns, `password\tKx9…\tuser\tadmin` (`psql -At`, `--output text`): the cell
+		// ends at the next tab. With more cells after it, the row is a table's, which its header reads: `fly secrets list`'s
+		// `NAME\tDIGEST\tCREATED AT`.)
+		const tabbed = !barred && m[3].includes("\t");
+		const cell = text
+			.slice(span[0], span[1])
+			.search(barred ? /[ \t]*[│|┃║]|[ \t]{2,}/ : tabbed ? /\t|[ \t]{2,}/ : /[ \t]{2,}/);
 		if (cell > 0) span = [span[0], span[0] + cell];
 		// A line that is a JSON string of its own (a notebook's output, `"NAME value\n",`) ends at its escape or quote.
 		const jsonLine = m[1].endsWith('"');

@@ -97,9 +97,15 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		for (let n = 0; n < 40 && (text[i] === " " || text[i] === "\t"); n++) i++;
 		const brk = breakAt(text, i);
 		// A key whose line breaks became spaces (`echo $KEY`): material after a blank, right after BEGIN or after a
-		// full line of material.
+		// full line of material. One whose breaks were stripped (`-----BEGIN OPENSSH PRIVATE KEY-----b3Bl…`): its
+		// material right after BEGIN, its END right after a full line of it.
 		const blank = text[i - 1] === " " || text[i - 1] === "\t";
-		if (!brk && !(blank && (endsAt(text, i) || ((lines === 0 || lastRun >= 40) && isArmorChar(text.charCodeAt(i))))))
+		const glued = (lines === 0 && isArmorChar(text.charCodeAt(i))) || (lastRun >= 40 && endsAt(text, i));
+		if (
+			!brk &&
+			!glued &&
+			!(blank && (endsAt(text, i) || ((lines === 0 || lastRun >= 40) && isArmorChar(text.charCodeAt(i)))))
+		)
 			break;
 		let j = i + brk;
 		lines++;
@@ -146,10 +152,9 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		// `…AB... [truncated]`).
 		if (run > 0) {
 			const lineEnds = j >= text.length || breakAt(text, j) > 0 || endsAt(text, j);
-			// (Under four characters only as the material's last line, the END line next however the line ends: `Q==`,
-			// `"Q==\n" +⏎    "-----END`, `Q== -----END`.)
-			const next = j + breakAt(text, j);
-			const lastLine = lineEnds && /^[ \t"']*-----END /.test(text.slice(next, next + 24));
+			// (Under four characters only as the material's last line, the END line next however the line ends, past the
+			// prefix every line carries: `Q==`, `"Q==\n" +⏎    "-----END`, `Q== -----END`, `<timestamp> -----END`.)
+			const lastLine = lineEnds && endLineNext(text, j, prefix);
 			if (run < 4 && !lastLine) break;
 			if (!(lineEnds || (run >= 40 && j > runEnd && isArmorChar(text.charCodeAt(j))))) {
 				if (run >= 40) return { end: Math.max(end, lineFrom + run), material: material + run };
@@ -162,6 +167,21 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		i = j;
 	}
 	return { end, material };
+}
+
+/**
+ * Whether an END line follows `at`, where a line's material ends: on the next line, past `prefix` and the quotes and
+ * blanks pemBody skips, or on the same line.
+ */
+function endLineNext(text: string, at: number, prefix: RegExp | undefined): boolean {
+	const brk = breakAt(text, at);
+	let j = at + brk;
+	if (brk && prefix) {
+		prefix.lastIndex = j;
+		if (prefix.exec(text)) j = prefix.lastIndex;
+	}
+	while (j < text.length && j - at < 40 && " \t\"'".includes(text[j])) j++;
+	return text.startsWith("-----END ", j);
 }
 
 /**

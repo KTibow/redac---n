@@ -114,6 +114,9 @@ const PREFIXED = /(?:^|\n)[\w./@+-]{1,200}\.\w{1,10}[:-]\d{1,7}[:-]|(?:^|\n)@@ -
 const LINE_NUMBER = /^(?:[ \t]*\d{1,7}→| +\d{1,7}\t)/gm;
 const HAS_LINE_NUMBER = new RegExp(LINE_NUMBER.source, "m");
 
+/** A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). */
+export const PGPASS = /^[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
+
 /** `grep -n` and `rg -n`: `path:12:` before a match, `path-13-` before a context line. */
 const GREP_PREFIX = /^([\w./@+-]{1,200}\.[\w]{1,10})[:-](\d{1,7})[:-]/gm;
 
@@ -302,11 +305,12 @@ function linePrefixes(text: string): Map<number, number> {
 	for (let k = 0; k < grep.length; k++) {
 		const near = (j: number) =>
 			j >= 0 && j < grep.length && grep[j].file === grep[k].file && Math.abs(grep[j].n - grep[k].n) === 1;
-		// (A file's name: a path, or an extension. `db.example.com:5432:` on two lines of a `.pgpass` is a host and a port.)
+		// (A file's name: a path, or an extension. `db.example.com:5432:` on two lines of a `.pgpass` is a host and a port,
+		// and so is `db.example.sh:5432:` on a whole `.pgpass` line, whatever its top-level domain.)
 		if (
 			!grep[k].file.includes("/") &&
-			!FILE_EXTENSION.test(grep[k].file) &&
-			!/\.(?:env|properties|cnf|pem|key|conf)$/.test(grep[k].file)
+			((!FILE_EXTENSION.test(grep[k].file) && !/\.(?:env|properties|cnf|pem|key|conf)$/.test(grep[k].file)) ||
+				PGPASS.test(text.slice(grep[k].at, lineEnd(text, grep[k].at, 4096))))
 		)
 			continue;
 		if (near(k - 1) || near(k + 1) || (grep[k].match && grep[k].file.includes("/"))) drop.set(grep[k].at, grep[k].len);
