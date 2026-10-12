@@ -7,8 +7,11 @@ up in the context sent to the provider, any router in between, and your logs. re
 text and replaces them with placeholders, and leaves alone the commit SHAs, digests, IDs and code the agent needs to
 keep working.
 
-TypeScript, no dependencies, no Node-only APIs (Node 20+, Bun, Deno). Not on npm yet: clone it and run `pnpm build`,
-or vendor `src/`.
+TypeScript, no dependencies, no Node-only APIs (Node 20+, Bun, Deno).
+
+```sh
+npm install redac---n
+```
 
 ```ts
 import { Redactor } from "redac---n";
