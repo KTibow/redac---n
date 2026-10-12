@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { callArguments } from "../src/calls.ts";
+import { normalize } from "../src/normalize.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("adjacent string literals are one value in code, but a log's quoted fields stay apart", () => {
@@ -21,6 +22,18 @@ test("adjacent string literals are one value in code, but a log's quoted fields 
 	hidden('x = foo(\n    "ghp\x5f16C7e42F292c69"\n    "12E7710c838347Ae178B4b",\n)', "12E7710c838347Ae178B4b");
 	hidden("token = ('ghp\x5f16C7e42F292c69' '12E7710c838347Ae178B4b')", "12E7710c838347Ae178B4b");
 	kept('200 512 "https://app.example.com/reset?token=Qz8rT2mLx0vB4nW7kP1y" "curl/7.88.1"', '" "curl/7.88.1"');
+});
+
+test("pieces in single quotes join as double-quoted ones do; a string starts with three characters, of token-like pieces", () => {
+	for (const [code, joined] of [
+		["connect(host, 'Hx7#mQ2p' 'Lw9zKq4T')", "connect(host, 'Hx7#mQ2pLw9zKq4T')"],
+		["KEY = (\n    'Ab3De5Fg7'\n    'Hi9Jk1Lm3No5Pq7Rs9Tu'\n)", "KEY = (\n    'Ab3De5Fg7Hi9Jk1Lm3No5Pq7Rs9Tu'\n)"],
+		["return 'tok_' + 'Hi9Jk1Lm3No5Pq7Rs9Tu';", "return 'tok_Hi9Jk1Lm3No5Pq7Rs9Tu';"],
+		['url = "/" + "v1"; key = "abc" + "def"', 'url = "/" + "v1"; key = "abcdef"'],
+		['msg = "Hello" + " world"; key = "abc" + "def"', 'msg = "Hello" + " world"; key = "abcdef"'],
+		["script-src: 'self' 'nonce-kPXDxABNuZat3yDNgk494nPB'", "script-src: 'self' 'nonce-kPXDxABNuZat3yDNgk494nPB'"],
+	])
+		assert.equal(normalize(code).text, joined);
 });
 
 test("a quote that closes a literal ends a password, and an unclosed quote or comment opens nothing", () => {

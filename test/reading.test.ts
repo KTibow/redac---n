@@ -86,6 +86,43 @@ test("inline tags are still dropped", () => {
 	assert.equal(normalize("<b>Password:</b> <code>X9</code>").text, "Password: X9");
 });
 
+test("what a terminal hides goes, and only that", () => {
+	// Colour codes a JSON log writes as escapes, with no raw ESC in the text.
+	assert.equal(normalize('{"log":"\\u001b[32mok\\u001b[0m"}').text, '{"log":"ok"}');
+	// A title ends at its BEL; a `^` or a `G` in it is the title's. One never ended ends with its line: nano's
+	// `^G Get Help` under it is text.
+	assert.equal(normalize("\x1b]0;Go x^2\x07ok").text, "0;Go x^2\nok");
+	assert.equal(normalize("^[]0;nano\n^G Get Help").text, "0;nano\n^G Get Help");
+	// UTF-16 read as UTF-8 loses every NUL, its last one too; a letter beside an invisible character stays.
+	assert.equal(normalize("p\0w\0=\0X\0Y\0").text, "pw=XY");
+	assert.equal(normalize("café​").text, "café");
+});
+
+test("grep's prefixes go on consecutive lines of a file, not on a .pgpass's hosts and ports", () => {
+	assert.equal(normalize("app.py:10:x = 1\napp.py:11:y = 2").text, "x = 1\ny = 2");
+	assert.equal(normalize("application.properties:12:a=1\napplication.properties:13:b=2").text, "a=1\nb=2");
+	const pgpass = "db.example.com:5432:app:app:Harbor#2291x\ndb.example.com:5433:app:app:Copper#7781x";
+	assert.equal(normalize(pgpass).text, pgpass);
+});
+
+test("a hunk's markers go on the lines its header counts, and no further", () => {
+	for (const [diff, plain] of [
+		["@@ -1 +1 @@\n-a\n+b\n- note", "@@ -1 +1 @@\na\nb\n- note"],
+		["@@ -1,2 +1,2 @@\n a\n-b\n+c\n- note", "@@ -1,2 +1,2 @@\na\nb\nc\n- note"],
+		// (A context line an editor emptied, in CRLF; a hunk cut short by `head`.)
+		["@@ -1,3 +1,3 @@\r\n a\r\n\r\n-b\r\n+c\r\n", "@@ -1,3 +1,3 @@\r\na\r\n\r\nb\r\nc\r\n"],
+		["@@ -1,5 +1,5 @@\n-a\n+b\nDone.\n- note", "@@ -1,5 +1,5 @@\na\nb\nDone.\n- note"],
+	])
+		assert.equal(normalize(diff).text, plain);
+});
+
+test("spaces of other widths, full-width signs and line continuations, and backslashes that are none", () => {
+	assert.equal(normalize("a b c　d e").text, "a b c d e");
+	assert.equal(normalize("PASSWORD：x＝y").text, "PASSWORD:x=y");
+	assert.equal(normalize("a&amp;b \\t c").text, "a&b \\t c");
+	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
+});
+
 test("wrapped base64 with a prefix on the first line and a suffix on the last", () => {
 	const secret = "aws_access_key_id = AKI\x41J7QX3MZP5RTWV2KA\n# padding padding padding padding\n";
 	const folded = Buffer.from(secret)
@@ -338,5 +375,6 @@ test("tag characters and other invisible characters outside the basic plane are 
 	const key = "AKI\x41J7QX3MZP5RTWV2KA";
 	hidden(`aws_access_key_id = ${[...key].join("\u{E0041}")}`, "3MZP5RTWV2KA");
 	assert.equal(normalize("sk\u{E0041}\u{E0100}-abcㅤd").text, "sk-abcd");
-	assert.equal(normalize("a&#0;b &#xD800;").text, "a&#0;b &#xD800;");
+	// (Nor does an entity decode to NUL, half a surrogate pair, or a character of two UTF-16 units.)
+	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
 });

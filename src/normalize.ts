@@ -85,7 +85,7 @@ function entityChar(m: RegExpExecArray | string[]): string | undefined {
 		: m[2]
 			? String.fromCodePoint(parseInt(m[2], 16))
 			: ENTITIES[m[3].toLowerCase()];
-	return ch !== undefined && ch.length === 1 && ch !== "\0" && !(ch >= "\ud800" && ch <= "\udfff") ? ch : undefined;
+	return ch !== undefined && /^[^\0\ud800-\udfff]$/.test(ch) ? ch : undefined;
 }
 
 /** A text with its HTML entities decoded as normalize decodes them: `&lt;redacted&gt;` is `<redacted>`. */
@@ -266,10 +266,9 @@ function isCaretEscape(text: string, i: number, inOsc: boolean): boolean {
 
 /**
  * Where the escape sequence at `i` ends, or `i` if it isn't one, its ESC `esc` characters long (1, or 2 in caret
- * notation: `^[`): CSI (`ESC [ … letter`), dropped whole;
- * OSC (`ESC ] … BEL`), of which only the introducer goes (the payload, a title or a hyperlink's URL, is scanned
- * like any text); its terminator `ESC \`; nF character-set designations (`ESC ( B`); two-byte sequences
- * (`ESC 7`, `ESC =`, `ESC M`).
+ * notation: `^[`): CSI (`ESC [ … letter`), dropped whole; nF character-set designations (`ESC ( B`); two-byte
+ * sequences (`ESC 7`, `ESC =`, `ESC M`), among them an OSC's introducer `ESC ]` (only the introducer goes: the
+ * payload of `ESC ] … BEL`, a title or a hyperlink's URL, is scanned like any text) and its terminator `ESC \`.
  */
 function escapeSequenceEnd(text: string, i: number, esc = 1): number {
 	const next = text[i + esc] ?? "";
@@ -280,7 +279,6 @@ function escapeSequenceEnd(text: string, i: number, esc = 1): number {
 		while (j < text.length && j - i < 44 && /[ -/]/.test(text[j])) j++;
 		return j < text.length && /[@-~]/.test(text[j]) ? j + 1 : i;
 	}
-	if (next === "]" || next === "\\") return i + esc + 1;
 	if (/[ -/]/.test(next)) {
 		let j = i + esc;
 		while (j < text.length && j - i < esc + 3 && /[ -/]/.test(text[j])) j++;
@@ -389,6 +387,8 @@ function literalJoints(text: string): Map<number, number> {
 	const joints = new Map<number, number>();
 	const piece = new RegExp(String.raw`(["'])(${STRING_PART})\1`, "g");
 	const sep = new RegExp(PIECE_JOINT, "y");
+	const doubleQuoted = new RegExp(`"${STRING_PART}"`, "y");
+	const singleQuoted = new RegExp(`'${STRING_PART}'`, "y");
 	let continues = -1; // where a piece joined to the one before starts
 	for (let m = piece.exec(text); m; m = piece.exec(text)) {
 		// (A piece that joins nothing may be the gap between two literals, `"a;"+"b"` read as `"+"`: the next search
@@ -399,33 +399,27 @@ function literalJoints(text: string): Map<number, number> {
 		const close = m.index + m[0].length - 1;
 		sep.lastIndex = close + 1;
 		const s = sep.exec(text);
-		if (!s || text[sep.lastIndex] !== m[1]) continue;
+		if (!s) continue;
+		// The next piece: in the same quotes, and token-like too (`"Hello" + " world"` is two strings).
+		const next = m[1] === '"' ? doubleQuoted : singleQuoted;
+		next.lastIndex = sep.lastIndex;
+		if (!next.test(text)) continue;
 		const start = lineStart(text, m.index);
 		const before = text.slice(start, m.index);
 		// (Or a line of its own after one: `parse(\n    "postgres://u:" "pw" "@host"`, Black's wrapping.)
 		const above = /^[ \t]*$/.test(before) && start > 0 ? text.slice(lineStart(text, start - 1), start - 1) : "";
-		// Single-quoted pieces side by side are Python's implicit concatenation only after `(` or `=`; elsewhere
-		// (a CSP source list, `'self' 'nonce-…'`) they're separate.
-		const csp = /content-security-policy|-src\b/i.test(text.slice(start, lineEnd(text, m.index)));
-		if (
-			m[1] === "'" &&
-			!/[+.&|]/.test(s[0]) &&
-			(csp || !(chained || /[(=][ \t]*$/.test(before) || /[(=,][ \t]*\r?$/.test(above)))
-		)
-			continue;
-		// Juxtaposition (blanks alone) is code only after `=`, `(`, `,`, `:`, `[` or `return`: shell, nginx and
-		// log lines put separate arguments and fields side by side. A format string starts no join.
+		// Juxtaposition (blanks alone) is code only after `=`, `(`, `,`, `:`, `[` or `return`, in either quotes (Python and
+		// Ruby join single-quoted pieces too): shell, nginx and log lines put separate arguments and fields side by side.
+		// A format string starts no join, nor a CSP source list (`'self' 'nonce-…'`).
 		if (!/[+.&|]/.test(s[0]) && !chained) {
 			if (!/(?:[=(,:[]|\breturn)[ \t]*$/.test(before) && !/[=(,[][ \t]*\r?$/.test(above)) continue;
 			// (A command line with options passes its quoted words as separate arguments: `curl -u u:"$PW" "https://…"`.)
 			if (/(?:^|\s)--?[A-Za-z][\w-]*(?:[ \t=]|$)/.test(before)) continue;
 			if (/%[-+ #0-9.]*[sdvqf]|\{\d*\}/.test(m[2])) continue;
+			if (m[1] === "'" && /content-security-policy|-src\b/i.test(text.slice(start, lineEnd(text, m.index)))) continue;
 			// Across a line break with no operator: inside parentheses (Python), or a C initializer after `=`.
 			if (/\n/.test(s[0]) && !/[(=][ \t]*$/.test(before) && !/[(=,][ \t]*\r?$/.test(above)) continue;
 		}
-		const next = new RegExp(`\\${m[1]}${STRING_PART}\\${m[1]}`, "y");
-		next.lastIndex = sep.lastIndex;
-		if (!next.test(text)) continue;
 		// The next piece is more of the string, not a name: `"…"="…"` lines (a .reg file, an INI) don't join.
 		if (/^[ \t]*[=:]/.test(text.slice(next.lastIndex, next.lastIndex + 20))) continue;
 		joints.set(close, sep.lastIndex + 1);
