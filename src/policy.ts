@@ -35,6 +35,8 @@ import {
 	isGroupedDigits,
 	isNameLike,
 	isPasswordHash,
+	isTypeExpression,
+	looksSecret,
 	readsAsWords,
 } from "./values.ts";
 import { CONTRACTION, escapedLineStart } from "./syntax.ts";
@@ -196,10 +198,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 			.replace(/^.*\./, (m) => (/^(?:cfg|config|settings|env|os\.environ|process\.env)\.$/.test(m) ? "" : m)) ?? "";
 	const squash = (s: string) => s.toLowerCase().replace(/[\s_.-]/g, "");
 	// (A type a layer took for the name, `NAME: string = "…"`, isn't one.)
-	const layerName =
-		f.name && !/^(?:string|str|int|bool|boolean|number|bytes|SecretStr|Optional\[str\]|String|char\*?)$/.test(f.name)
-			? f.name
-			: undefined;
+	const layerName = f.name && !isTypeExpression(f.name) ? f.name : undefined;
 	const name =
 		layerName && !(read.length > layerName.length && squash(read).endsWith(squash(layerName))) ? layerName : read;
 	// Never secrets, whatever names them (counts, versions, algorithm names, key chords…), for the rules that
@@ -401,9 +400,8 @@ function isJwtHeader(word: string): boolean {
 /** An identifier path: `pw`, `this.old_pwd`, `StrTools::unMagic`, `FS->Pass`, `$sql_passwd`, `{$secrets`. */
 const PATH = String.raw`\{?${IDENT_PATH}`;
 
-/** Types the platform provides for bytes and keys: a field holding one is declared, not given a value. */
-const BUILTIN_TYPE =
-	/^(?:(?:Big)?U?[Ii]nt(?:8|16|32|64)Array|Uint8ClampedArray|Float(?:32|64)Array|ArrayBuffer|SharedArrayBuffer|DataView|Buffer|CryptoKey|CryptoKeyPair|KeyObject|ArrayBufferLike)$/;
+/** A format string's hole, with its index, conversion and format spec: `{pw}`, `{cfg.db}`, `{args[0]!r}`, `{n:>8}`. */
+const FORMAT_HOLE = /\{[A-Za-z_][\w.]*(?:\[[^\]{}]{0,40}\])?(?:![rsa])?(?::[^{}]{0,20})?\}/g;
 
 /** A GraphQL type with its non-null marks and directives: `[String!]!`, `String! @constraint(minLength: 12)`. */
 const GRAPHQL_TYPE = /^\[*[A-Z]\w*!?\]*!?(?:[ \t]+@\w+(?:\([^()\n]{0,80}\))?)*$/;
@@ -421,7 +419,8 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 	const after = text[f.end] ?? "";
 	// (Without contractions: an apostrophe in prose before it, `Here's the fix: export TOKEN='…'`, is no quote.)
 	const line = left.slice(left.lastIndexOf("\n") + 1).replace(CONTRACTION, "");
-	// A declaration's type, with no value given: `val passwordData: PasswordData?,`, `privateKey: Uint8Array;`.
+	// A declaration's type, a class the code names, with no value given: `val passwordData: PasswordData?,`. (A type the
+	// language builds in, `privateKey: Uint8Array;`, `str | None`, is never a secret: isBenignValue.)
 	// (A type's mark says so, nullable, generic or an array: `SunnyDay`, `BlueKey`, `HarborConfig` alone are passwords,
 	// as after "The password is:"; a declaration's unmarked type is code the readers pass over. A generic's arguments
 	// may follow the name read: `Branded<string, "Password">;`; Rust's `let password: Secret<String> = …`.)
@@ -440,15 +439,6 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 				.replace(/^<[^<>\n]{0,200}>/, "")
 				.slice(0, 4),
 		)
-	)
-		return "a type";
-	// A built-in type's name as a declaration's type, alone or in a union: `secret: Uint8Array;`, `key: Uint8Array | KeyLike`.
-	if (
-		/:[ \t]*$/.test(line) &&
-		!f.literal &&
-		v === value &&
-		BUILTIN_TYPE.test(v) &&
-		/^[ \t]*(?:[;,)=|&}]|\r?$|\n)/.test(text.slice(f.end, f.end + 4))
 	)
 		return "a type";
 	// A GraphQL field's type: a scalar (in a list or not) or a type with a directive, non-null marks and directives after it:
@@ -526,13 +516,16 @@ function codeShape(text: string, f: Finding, value: string, left: string): strin
 		return "identifier";
 	// A Go struct field: `Password string \`json:"password"\``.
 	if (/^(?:\*|\[\])*[\w.]+\s+`[a-z]+:"/.test(v)) return "struct field";
-	// A hole in an interpolated or format string: C# `$"…{DB_Password}"`, Python f-strings and `.format`, Rust `format!`.
+	// A hole in an interpolated or format string: C# `$"…{DB_Password}"`, Python f-strings and `.format`, Rust `format!`;
+	// or a value with holes whose literal text holds no secret, `f"--password={pw}xyz"`, `"password={pw}xyz".format(…)`.
+	const formatted =
+		/\$@?"|@\$"|\bf["']|format!?\(|String\.Format\(/.test(line) ||
+		/^[^\n]*?["'`]\)?\.format\(/.test(text.slice(f.end, f.end + 200));
+	const literalText = v.replace(FORMAT_HOLE, "");
 	if (
-		before === "{" &&
-		after === "}" &&
-		new RegExp(`^${PATH}$`).test(v) &&
-		(/\$@?"|@\$"|\bf["']|format!?\(|String\.Format\(/.test(line) ||
-			/^\}[^\n]*\.format\(/.test(text.slice(f.end, f.end + 200)))
+		formatted &&
+		((before === "{" && after === "}" && new RegExp(`^${PATH}$`).test(v)) ||
+			(literalText !== v && !looksSecret(`"${literalText}"`, true)))
 	)
 		return "template hole";
 	// A SQL bind parameter: `WHERE password=@CONTRASEÑA`, `:password`. (A bare `?` is no value to begin with.)

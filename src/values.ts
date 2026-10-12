@@ -324,11 +324,12 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 	// `$(cat f)`, `$((pass+1))`, `$$(cat f)` (Make), `` `cmd` ``; or opening with a command's name, read up to an inner
 	// quote: `$(kubectl get secret … -o jsonpath="`.
 	["command substitution", isCommandSubstitution],
-	// `{{ var }}`, `${{ secrets.X }}`, `<%= pw %>`, `#{var}`, `@VAR@` (Maven, Autoconf): whole, a name inside.
+	// `{{ var }}`, `${{ secrets.X }}`, `<%= pw %>`, `#{var}`, `@VAR@` (Maven, Autoconf): whole, a name inside. (Go's
+	// templates trim blanks with a `-` inside the braces: `{{- .Values.password -}}`, `{{- end }}`.)
 	[
 		"template",
 		(v) => {
-			const m = /^(?:\$?\{\{(.{0,200})\}\}|<%=?([^%]{0,200})%>|#\{([^}]{0,200})\}|@([\w.-]{1,80})@)$/.exec(v);
+			const m = /^(?:\$?\{\{-?(.{0,200}?)-?\}\}|<%=?([^%]{0,200})%>|#\{([^}]{0,200})\}|@([\w.-]{1,80})@)$/.exec(v);
 			if (!m) return false;
 			const inner = (m[1] ?? m[2] ?? m[3] ?? m[4]).trim();
 			return /^[A-Za-z_@$.]/.test(inner) && isNameLike(inner.split(/[^\w.]/)[0] || "x");
@@ -371,11 +372,12 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 		},
 	],
 	// `****`, `xxxxxxxx`, `••••`, `[REDACTED]`, `<hidden>`, `ab****yz`; AWX's `$encrypted$`;
-	// `xxxx`, `xxx-xxx`, `xxxx1234`, `sk-ant-xxxxx`, `ghp_xxxx` (but `Xxxq7Lm2x` is a password).
+	// `xxxx`, `xxx-xxx`, `xxxx1234`, `sk-ant-xxxxx`, `ghp_xxxx` (but `Xxxq7Lm2x` is a password); an elision, `(...)`, `[…]`.
 	[
 		"mask",
 		(v) =>
 			(/^(.)\1{2,}$/u.test(v) && /[*x•·#?X0-]/.test(v[0])) ||
+			/^(?:\.{3}|…|\(\.{3}\)|\(…\)|\[\.{3}\]|\[…\]|\{\.{3}\}|\{…\}|<\.{3}>|<…>)$/.test(v) ||
 			/^\[?(redacted|hidden|masked|filtered|secret|removed|omitted|censored|sanitized|obfuscated|scrubbed|protected|not set|unset|not[ _-]?set|empty)\]?(?:\s+\([^()]{0,20}\))?$/i.test(
 				v,
 			) ||
@@ -581,8 +583,19 @@ function isSshPublicKey(v: string): boolean {
 
 /** Which inert shape a value has (INERT_SHAPES), if any. (Written in markup's escapes, a shape is that shape: `&lt;redacted&gt;`.) */
 export function inertShape(value: string): string | undefined {
-	const decoded = value.includes("&") ? decodeEntities(value) : value;
+	// (Read through HTML's entities and a URL's percent-encoding too: `&lt;token&gt;`, `?apikey=%7B%7Bapi_key%7D%7D`.)
+	const decoded = value.includes("&") ? decodeEntities(value) : percentDecoded(value);
 	return INERT_SHAPES.find(([, test]) => test(value) || (decoded !== value && test(decoded)))?.[0];
+}
+
+/** `value` with its percent-encoded bytes decoded, or as it is when it has none or they aren't UTF-8. */
+function percentDecoded(value: string): string {
+	if (!/%[0-9A-Fa-f]{2}/.test(value)) return value;
+	try {
+		return decodeURIComponent(value);
+	} catch {
+		return value;
+	}
 }
 
 /** A value that can't be a credential: empty, a boolean, a path, a placeholder or a reference to one held elsewhere. */
@@ -591,7 +604,9 @@ export function isInert(value: string): boolean {
 }
 
 /** A file path: path-shaped, with no segment that a generator made (`/NKR7uXt0UfYN9/`, `/eB7/ZDoDhDrnTAZWfbkgNMM`). */
-export function isPath(value: string): boolean {
+export function isPath(path: string): boolean {
+	// (A variable in a template's syntax is one too: Puppet's and RPM's `%{KEY}`, read as `${KEY}`.)
+	const value = path.replace(/%\{([A-Za-z_]\w*)\}/g, "$${$1}");
 	// (Relative, a directory's name then a file's with its extension, in lower case: `vpn/auth.txt`, `certs/dev-key.pem`.
 	// Names switch between letters and digits three times at most, `x509v3`; a generator's `a1b2c3d4` more.)
 	if (/^[a-z0-9_-]+(?:\/[a-z0-9_.-]+)*\/[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.[a-z0-9]{1,8}$/.test(value))
@@ -791,6 +806,166 @@ function isExpansionsOnly(v: string): boolean {
 	return rest !== v && !/[\p{L}\p{N}]/u.test(rest);
 }
 
+/**
+ * Types the languages build in, or their standard libraries and secret wrappers give: Python's and pydantic's (`str`,
+ * `Optional`, `Dict`, `SecretStr`), TypeScript's and the platform's (`string`, `Record`, `Uint8Array`, `CryptoKey`), Go's
+ * (`byte`, `rune`), Rust's and its crates' (`u8`, `Vec`, `Option`, `SecretString`), Kotlin's, Java's and C#'s (`String`,
+ * `CharArray`, `SecureString`).
+ */
+const BUILT_IN_TYPES = new Set(
+	[
+		"str bytes bytearray int float bool None NoneType Any object dict list tuple set frozenset Optional Union List Dict",
+		"Tuple Set FrozenSet Sequence Mapping MutableMapping Iterable Iterator Callable Literal Annotated Path PathLike",
+		"SecretStr SecretBytes",
+		"string number boolean bigint symbol null undefined void unknown any never Array ReadonlyArray Record Partial",
+		"Readonly Promise Map WeakMap Buffer ArrayBuffer ArrayBufferLike SharedArrayBuffer DataView Uint8Array",
+		"Uint8ClampedArray Int8Array Uint16Array Int16Array Uint32Array Int32Array Float32Array Float64Array BigInt64Array",
+		"BigUint64Array CryptoKey CryptoKeyPair KeyObject KeyLike",
+		"byte rune error uint uint8 uint16 uint32 uint64 int8 int16 int32 int64 float32 float64",
+		"u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize f32 f64 char String Vec Option Result Box Rc Arc Cow HashMap",
+		"BTreeMap SecretString SecretBox Zeroizing",
+		"Int Long Boolean Double Integer CharArray ByteArray SecureString Nullable",
+	]
+		.join(" ")
+		.split(" "),
+);
+
+/**
+ * A class whose name ends in a word only types end in: `PasswordField`, `EncryptedStr`, `SecretModel`. (Title-case words
+ * ending `String`, `Secret`, `Type` or `Model` are a passphrase too, `LittleSecret`: see isTypeExpression's `classes`.)
+ */
+const TYPE_CLASS = /^[A-Z]\w*(?:Str|String|Bytes|Field|Type|Secret|Model)$/;
+
+/** A type's token: a lifetime (`'a`), a string literal's type, a name (maybe qualified), a number, punctuation. */
+const TYPE_TOKEN =
+	/[ \t]*(?:('[a-z_]\w*)(?![\w'])|("[^"\n]{0,40}"|'[^'\n]{0,40}')|([A-Za-z_]\w*(?:(?:\.|::)[A-Za-z_]\w*)*)|(\d{1,6})|(\.\.\.|=>|\[\]|[[\]<>(),|&?!*;:]))/y;
+
+/**
+ * A type as a declaration writes one, in Python, TypeScript, Go, Rust, Kotlin, Java or C#: a name, maybe qualified, with
+ * its arguments (`Optional[str]`, `Dict[str, Any]`, `Map<String, String>`, `Vec<u8>`) and marks (`string[]`, `String?`,
+ * `[]byte`, `*string`, `char*`, `&'a str`, `String!`), in a union (`str | None`, `string | null`; not an intersection,
+ * `Path&Ember&winter` is a passphrase), a tuple, a function's type (`() => string`) or a type query (`typeof DEFAULT`).
+ * One of its names at least is a type the language builds in, and every other reads as a name:
+ * `Optional[PasswordData]` is a type, `Summer|Winter`, `Hunter2!` and `Optional[Xk9mQ2vL]` aren't. With `classes`, a
+ * class named as types are (TYPE_CLASS) counts as built in: `"any"` where code is written; `"marked"` in a literal
+ * context, where a name alone is a type only by a type's own ending, `SecretStr`, `PasswordField` (`LittleSecret` is a
+ * passphrase there, and `Uint8Array` alone may be a password), but `Optional[ClientSecret]` is a type.
+ */
+export function isTypeExpression(value: string, classes: "none" | "marked" | "any" = "none"): boolean {
+	const v = value.trim();
+	if (v.length > 200) return false;
+	const tokens: string[] = [];
+	for (TYPE_TOKEN.lastIndex = 0; TYPE_TOKEN.lastIndex < v.length;) {
+		const m = TYPE_TOKEN.exec(v);
+		if (!m) return false;
+		tokens.push(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5]);
+	}
+	// A recursive descent over the tokens from `i`, collecting the names it reads. (Nesting deeper than 8 isn't read.)
+	let i = 0;
+	const names: string[] = [];
+	// A lifetime or a type query, which only types have.
+	let typeOnly = false;
+	const eat = (t: string) => {
+		if (tokens[i] !== t) return false;
+		i++;
+		return true;
+	};
+	const isName = (t: string | undefined) => /^[A-Za-z_]/.test(t ?? "");
+	// Types joined by `|`, a union.
+	const union = (depth: number): boolean => {
+		if (depth > 8) return false;
+		eat("|");
+		do if (!withMarks(depth)) return false;
+		while (eat("|"));
+		return true;
+	};
+	// A type and the marks after it: an array's `[]`, a nullable's `?`, GraphQL's non-null `!`, C's pointer `*`.
+	const withMarks = (depth: number): boolean => {
+		if (!prefixed(depth)) return false;
+		while (eat("[]") || eat("?") || eat("!") || eat("*"));
+		return true;
+	};
+	// A type and the marks before it: a pointer or a reference (`*T`, `&'a mut T`), Go's slice and array (`[]T`,
+	// `[32]T`), a keyword (`dyn Error`, `readonly string[]`, `typeof DEFAULT`), Go's map (`map[string]T`).
+	const prefixed = (depth: number): boolean => {
+		if (eat("*") || eat("[]")) return prefixed(depth + 1);
+		if (eat("&")) {
+			if (/^'\w/.test(tokens[i] ?? "") && !tokens[i].endsWith("'")) {
+				typeOnly = true;
+				i++;
+			}
+			eat("mut");
+			return prefixed(depth + 1);
+		}
+		if (tokens[i] === "[" && /^\d/.test(tokens[i + 1] ?? "") && tokens[i + 2] === "]") {
+			i += 3;
+			return prefixed(depth + 1);
+		}
+		if ((tokens[i] === "typeof" || tokens[i] === "keyof") && isName(tokens[i + 1])) {
+			typeOnly = true;
+			i++;
+			return atom(depth + 1);
+		}
+		if (/^(?:dyn|impl|mut|const|readonly|chan)$/.test(tokens[i] ?? "") && i + 1 < tokens.length) {
+			i++;
+			return prefixed(depth + 1);
+		}
+		if (tokens[i] === "map" && tokens[i + 1] === "[") {
+			i += 2;
+			return union(depth + 1) && eat("]") && prefixed(depth + 1);
+		}
+		return atom(depth + 1);
+	};
+	// Types up to the bracket that closes them, separated by commas (Python's `...` among them; Rust's array, `[u8; 32]`).
+	const list = (depth: number, close: string): boolean => {
+		if (eat(close)) return true;
+		do if (!eat("...") && !union(depth)) return false;
+		while (eat(","));
+		if (eat(";") && !/^\d/.test(tokens[i++] ?? "")) return false;
+		return eat(close);
+	};
+	// A function type's parameters, to the `)`: `a: string, b?: number`.
+	const parameters = (depth: number): boolean => {
+		if (eat(")")) return true;
+		do {
+			if (!isName(tokens[i])) return false;
+			i++;
+			eat("?");
+			if (!eat(":") || !union(depth)) return false;
+		} while (eat(","));
+		return eat(")");
+	};
+	// A name with its arguments, a type in parentheses, a function's type, a tuple, a string literal's type.
+	const atom = (depth: number): boolean => {
+		const t = tokens[i++];
+		if (t === "(") {
+			const from = i;
+			if (parameters(depth) && eat("=>")) return union(depth);
+			i = from;
+			return union(depth) && eat(")");
+		}
+		if (t === "[") return list(depth, "]");
+		if (/^(["']).+\1$/.test(t ?? "")) return true;
+		if (!isName(t)) return false;
+		names.push(t);
+		if (eat("<")) return list(depth, ">");
+		if (eat("[")) return list(depth, "]");
+		return true;
+	};
+	if (!union(0) || i !== tokens.length) return false;
+	if (classes === "marked" && tokens.length === 1 && !/(?:Str|Bytes|Field)$/.test(tokens[0])) return false;
+	const last = (n: string) => n.split(/\.|::/).pop()!;
+	// (Built in by its name, maybe from a module in lower case: `typing.Optional`, `std::string`; `Path.Ember.list` is a
+	// passphrase.)
+	const typeName = (n: string) =>
+		(BUILT_IN_TYPES.has(last(n)) && /^(?:[a-z_]\w*(?:\.|::))*\w+$/.test(n)) ||
+		(classes !== "none" && TYPE_CLASS.test(n) && readsAsWords(n));
+	return (
+		(typeOnly || names.some(typeName)) &&
+		names.every((n) => typeName(n) || (isNameLike(n) && (n.length <= 2 || readsAsWords(last(n)))))
+	);
+}
+
 const ENV_LOOKUP =
 	/process\.env|os\.environ|getenv|ENV\[|System\.getenv|Environment\.GetEnvironmentVariable|env::var|std::env|Deno\.env|import\.meta\.env|^(config|settings|secrets|params|args|options|opts|self|this|props|ctx|context|req|request|env)\./;
 
@@ -835,13 +1010,27 @@ const KEYWORD_EXPRESSION = new RegExp(
 
 /** Code in any context. */
 const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolean][] = [
-	// `generate_password_hash(self.password.data)`, `getenv(KEY, default)`.
+	// `generate_password_hash(self.password.data)`, `getenv(KEY, default)`, `getSecret(names[0])`; or a variable quoted,
+	// `password('%passwd%')`, `md5("$pw")`.
 	[
 		"a call whose arguments are names",
-		(v) =>
-			/^[A-Za-z_][\w.]*\((?:\s*[A-Za-z_][\w.]*(?:\(\))?\s*,)*\s*(?:[A-Za-z_][\w.]*(?:\(\))?)?\s*\)$/.test(v) &&
-			/[a-z_]\(/.test(v) &&
-			hasWord(v.slice(0, v.indexOf("("))),
+		(v) => {
+			const m = /^([A-Za-z_][\w.]*)\((.*)\)$/.exec(v);
+			return (
+				!!m &&
+				/[a-z_]$/.test(m[1]) &&
+				hasWord(m[1]) &&
+				(!m[2].trim() ||
+					m[2]
+						.split(",")
+						.map((a) => a.trim())
+						.every(
+							(a) =>
+								/^[A-Za-z_][\w.]*(?:\(\)|\[\w{1,20}\])?$/.test(a) ||
+								(/^(["'`]).+\1$/.test(a) && isInert(a.slice(1, -1))),
+						))
+			);
+		},
 	],
 	// Go's pointer to a qualified type or a slice of one, `*corev1.Secret`, `[]byte`: no password starts so.
 	[
@@ -890,6 +1079,14 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 	// `new Buffer(pw, "base64")`, `await vault.read(path)`, `require("crypto")`, `function () { … }`, `lambda: os.environ["PW"]`:
 	// the keyword and the code it takes, whole (`fn(Harbor)2291`, `new moon rising` aren't).
 	["a keyword expression", (v) => isBalanced(v) && KEYWORD_EXPRESSION.test(v)],
+	// `(await vault.read("db")).data.password`: code in parentheses, and a member of what it gives.
+	[
+		"a member of an expression",
+		(v, literal) => {
+			const m = /^\((.+)\)((?:\??\.[A-Za-z_$][\w$]*)+)$/.exec(v);
+			return !!m && isBalanced(m[1]) && isNameLike(m[2]) && isCode(m[1], literal);
+		},
+	],
 	// `function password() {`, `async function* gen(a, b)`, a shell function's `() {`: a function's head, its body below.
 	[
 		"a function's head",
@@ -899,16 +1096,10 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 	["expansions only", isExpansionsOnly],
 	// `quote(pw) if pw else None`: code on either side (a call, a member, a literal), so `rain if sun else snow` isn't.
 	["a Python conditional", (v) => PY_CONDITIONAL.test(v) && /[.([\]"']|\b(?:None|True|False)\b/.test(v)],
-	// `password: SecretStr`, `token: Optional[SecretBytes]`, `PasswordField`; and where code is written `ClientSecret`,
-	// `SecretString`, `PasswordType`. (Elsewhere words in title case ending so are a passphrase: `DB_PASSWORD=LittleSecret`,
-	// `The password is: HarborModel`.)
-	[
-		"a type name",
-		(v, literal) =>
-			/^(?:Optional\[)?[A-Z]\w*(?:Str|String|Bytes|Field|Type|Secret|Model)\]?,?$/.test(v) &&
-			!(literal && !/^Optional\[/.test(v) && /(?:String|Secret|Type|Model)\]?,?$/.test(v)) &&
-			readsAsWords(v),
-	],
+	// `password: SecretStr`, `db_password: Optional[str]`, `password: string | null;`, `key: &'a [u8],`, `PasswordField`;
+	// and where code is written `ClientSecret`, `SecretString`, `PasswordType`. (Alone elsewhere, words in title case
+	// ending so are a passphrase: `DB_PASSWORD=LittleSecret`, `The password is: HarborModel`.)
+	["a type", (v, literal) => isTypeExpression(v, literal ? "marked" : "any")],
 	// `@options.password`.
 	["a Ruby member", (v) => /^@[A-Za-z_]\w*(?:\.\w+)+$/.test(v) && isNameLike(v.slice(1))],
 	// `@user_password`, unquoted in code.
@@ -1356,13 +1547,10 @@ export function isBenignValue(value: string): boolean {
 		/^(?:md5|sha1|sha224|sha256|sha384|sha512|bcrypt|bcrypt_sha256|crypt|scrypt|argon2(?:id|i|d)?|pbkdf2_sha\d+|unsalted_\w+)\$+$/.test(
 			v,
 		) || // a hash's scheme, `password__startswith="md5$"`
-		/^(?:str|bytes|bytearray|int|bool|None|dict|list|tuple|Path|PathLike|Any|SecretStr|SecretBytes|object|float)(?:\|(?:str|bytes|bytearray|int|bool|None|dict|list|tuple|Path|PathLike|Any|SecretStr|SecretBytes|object|float))+$/.test(
-			v,
-		) ||
-		// A parameter's type before its default, read up to the `=`: `password: str=''`, `token: str | None=None`.
-		/^(?:str|bytes|int|bool|float|string|number|boolean|Any|None)(?:\s*\|\s*(?:str|bytes|int|bool|float|None))*\s*=$/.test(
-			value.trim(),
-		) ||
+		// A type with its punctuation, `str|None`, `Optional[str]`, `string | null;`, or one before its default, read up to
+		// the `=`: `password: str=''`, `token: str | None=None`. (A name alone may be a password in a literal context,
+		// `password: Uint8Array`: isCode reads one where code is written.)
+		(/[^\w\s]/.test(value.trim().replace(/[;,]$/, "")) && isTypeExpression(value.trim().replace(/[ \t]*[=;,]$/, ""))) ||
 		// A parameter's type in API docs, with its note: `string (required)`, `boolean (optional)`, `SecureString`.
 		/^(?:string|str|integer|int|number|boolean|bool|object|array|list|map|dict|bytes|float|double|long|any|secret|securestring)(?:\s*\((?:required|optional|sensitive|secret|read-only|write-only|default[^()]{0,30})\)?)?$/i.test(
 			v,

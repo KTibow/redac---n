@@ -36,6 +36,7 @@ import {
 	type Span,
 	stringEnd,
 	stringListItems,
+	throughBrackets,
 	unquotedValue,
 	withoutUnopenedClosers,
 } from "./syntax.ts";
@@ -83,6 +84,7 @@ import {
 	hasThreeClasses,
 	isMadePassword,
 	isNameLike,
+	isTypeExpression,
 	isWordy,
 	looksSecret,
 	readsAsWords,
@@ -549,6 +551,8 @@ function readValue(
 	// shell expansion the value starts with, or a template's `{{ }}`, everything is its own until they close:
 	// `${REDIS_PASSWORD:?set it first}`, `--key=/etc/certs/{{ .Values.keyFile | default "tls.key" }}`.)
 	let open = 0;
+	// (Where the outermost bracket open now opened.)
+	let opened = at;
 	let expansion = text.startsWith("${", at);
 	while (i < text.length && i - at < UNQUOTED_READ) {
 		const ch = text[i];
@@ -562,18 +566,27 @@ function readValue(
 		}
 		if (ch === "\\" && isEscapedBreak(text, i)) break;
 		if (ch === "{" && text[i + 1] === "{") expansion = true;
-		if (ch === "(" || ch === "[" || ch === "{") open++;
-		else if ((ch === ")" || ch === "]" || ch === "}") && open > 0) open--;
+		if (ch === "(" || ch === "[" || ch === "{") {
+			if (open++ === 0) opened = i;
+		} else if ((ch === ")" || ch === "]" || ch === "}") && open > 0) open--;
 		else if (
 			!toEol &&
 			!(expansion && open > 0) &&
 			(toBlank ? /[ \t]/ : shell ? SHELL_WORD_END : CODE_VALUE_END).test(ch)
-		)
-			break;
+		) {
+			// (A quote or a blank inside a bracket the value opened is the value's own, if the bracket closes on the line:
+			// `0x#{key.unpack('H*')[0]}`, `cfg["db"]["pw"]`, `Buffer.from(pw, "base64")`. Not in a logfmt line, whose
+			// values run to a blank whatever they hold.)
+			const close = open > 0 && !toBlank ? throughBrackets(text, opened, i) : i;
+			if (close === i) break;
+			i = close;
+			open = 0;
+			continue;
+		}
 		i++;
 	}
-	// Trailing spaces and a trailing comment of a whole-line value.
 	let end = i;
+	// Trailing spaces and a trailing comment of a whole-line value.
 	if (toEol) {
 		const comment = text.slice(at, end).search(/(?<![ \t])[ \t]+#/);
 		if (comment >= 0) end = at + comment;
@@ -794,13 +807,12 @@ function assignments(text: string, out: Finding[]) {
 		const tight = at === opEnd || op !== m[3];
 		// `password: str = "x"`, `apiKey: string = "x"`: skip a type annotation. (Unspaced, `password: str='x'`, only a
 		// built-in type's: `start='…'` and `MAC id="…"` aren't annotations.)
+		const annotation = op === ":" ? text.slice(at, at + 80) : "";
+		const unspaced = /^([^=\n]{1,60}?)=(?=["'])/.exec(annotation);
 		const typed =
-			op === ":"
-				? /^(?:[A-Za-z_&*][\w.<>\[\]|?, &'*]{0,60}?[ \t]+=(?!=)[ \t]*|(?:str|bytes|int|float|bool|string|number|boolean|SecretStr|(?:Optional|Union|list|dict)\[[\w., |]{1,40}\])(?:[ \t]*\|[ \t]*None)?=(?=["']))/.exec(
-						text.slice(at, at + 80),
-					)
-				: null;
-		if (typed) at += typed[0].length;
+			/^[A-Za-z_&*][\w.<>\[\]|?, &'*]{0,60}?[ \t]+=(?!=)[ \t]*/.exec(annotation)?.[0] ??
+			(unspaced && isTypeExpression(unspaced[1]) ? unspaced[0] : undefined);
+		if (typed) at += typed.length;
 		// Aligned columns: `SecretID:          <value>`.
 		while (text[at] === " " || text[at] === "\t") at++;
 		// `MYSQL_USER=root MYSQL_PASSWORD= FILTER=x npm test`: an empty variable, the next one's pair after it.
@@ -880,10 +892,11 @@ function assignments(text: string, out: Finding[]) {
 		const openParens = inLiteral ? 0 : (before.match(/\(/g)?.length ?? 0) - (before.match(/\)/g)?.length ?? 0);
 		// `SMTP_PASSWORD=x` anywhere (`heroku config:set …`, `API_KEY=x npm start`) is an env var, so a literal; and
 		// `user=root password=x` in a log line or a CLI is data, as is a pair in a query string, `?user=a&pass=x`, or in an
-		// option's comma list of them, `mount -o username=a,password=x`. (Not a declaration's list, `let user=a,password=b`.)
-		// (Nor a keyword argument on a call's own line, `login(` / `  PASSWORD=x,`: code, whose value ends at its comma.)
+		// option's comma list of them, `mount -o username=a,password=x`. (Not a declaration's list, `let user=a,password=b`;
+		// nor a variable with a sigil, Perl's `my @key=map(…)`; nor a keyword argument on a call's own line, `login(` /
+		// `  PASSWORD=x,`: code, whose value ends at its comma.)
 		const envName = op === "=" && /^[A-Z][A-Z0-9_]*$/.test(name) && !sigil && tight && openParens <= 0 && !continued;
-		const pair = op === "=" && m[1] === "" && tight && openParens <= 0;
+		const pair = op === "=" && m[1] === "" && !sigil && tight && openParens <= 0;
 		const logPair = pair && /[ \t]$/.test(before);
 		const listPair = pair && /(?:[?&]|(?:^|[ \t])(?<!\b(?:let|var|const)[ \t]+)(?:[\w.-]+=[^\s=,]*,)+)$/.test(before);
 		const shellTest = /^===?$/.test(op) && /(?:^|\s)(?:\[\[?|test)\s/.test(before);
@@ -1179,20 +1192,18 @@ function assignedValue(
 		if (inner?.length === 1 && inner[0].literal && !inner[0].keyword)
 			return [inner[0].literal.start, inner[0].literal.end];
 	}
-	// `key = hexStringToUint8Array("…")`, `SecretStr("…")`, `bytes.fromhex("…")`: a literal in a converter.
-	const converter =
-		/^[\w.]{0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes|String|str|Uint8Array|parse|Parse)[\w.]{0,40}\(/.exec(
-			text.slice(at, at + 120),
-		);
-	// (Not a lookup, whose argument is a secret's name: Prefect's `Secret.load("db-password")`, `SecretStr.get(…)`.)
-	const lookup = converter && /\.(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0]);
-	const converted = converter && !lookup ? callArguments(text, at + converter[0].length)?.[0]?.literal : undefined;
-	if (converted && !ENCODING.test(converted.value)) return [converted.start, converted.end];
+	const converted = convertedLiteral(text, at);
+	if (converted) return [converted.start, converted.end];
 	// Any other call that is the whole value is code, whose value isn't in the text: `getpass("Password: ")`, Ansible's
 	// `password_expire_warn=dict(type='int', no_log=False)` (which, cut at its comma, would read as `dict(type='int'`).
-	// (A function's name, and the call ending the value: a password with brackets in it, `Pa(ss)w0rd`, goes on.)
+	// (A function's name, and the call ending the value: a password with brackets in it, `Pa(ss)w0rd`, goes on; and so
+	// does a word and a number before them, as passwords are made: `Spring2024(Blue)`.)
 	const call = /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(/.exec(text.slice(at, at + 64));
-	if (call && (/[._]/.test(call[1]) || (call[1].length >= 4 && naturalness(call[1].toLowerCase()) > 0.3))) {
+	if (
+		call &&
+		!/^[A-Z][a-z]+\d{2,}$/.test(call[1]) &&
+		(/[._]/.test(call[1]) || (call[1].length >= 4 && naturalness(call[1].toLowerCase()) > 0.3))
+	) {
 		const close = closingBracket(text, at + call[0].length);
 		// (Code's arguments, not a number alone: `Tiger(6859)`, `Summer(2024)` are passwords.)
 		const args = close > 0 ? text.slice(at + call[0].length, close).trim() : "";
@@ -1216,6 +1227,22 @@ function assignedValue(
 		return shellWordValue(text, span);
 	}
 	return span;
+}
+
+/**
+ * The literal a converter at `at` is given, the value it makes: `hexStringToUint8Array("…")`, `SecretStr("…")`,
+ * `bytes.fromhex("…")`, `SecureString("…")`. (Not a lookup's argument, a secret's name: Prefect's
+ * `Secret.load("db-password")`, `SecretStr.get(…)`; nor an encoding's name.)
+ */
+function convertedLiteral(text: string, at: number): Span | undefined {
+	const converter =
+		/^[\w.]{0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes|String|str|Uint8Array|parse|Parse)[\w.]{0,40}\(/.exec(
+			text.slice(at, at + 120),
+		);
+	if (!converter || /\.(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0]))
+		return undefined;
+	const literal = callArguments(text, at + converter[0].length)?.[0]?.literal;
+	return literal && literal.value.length >= 4 && !ENCODING.test(literal.value) ? literal : undefined;
 }
 
 /** Inside a `--set` argument (helm, helmfile), after a key and its `=`: the pairs before it, then this one's key. */
@@ -1269,7 +1296,8 @@ function escapedClose(text: string, at: number, quote: string): number {
 
 /**
  * A value of several lines under `name`: one line is judged like any value; several (a key, a certificate bundle)
- * are hidden whole, unless each line is inert or code (a template's `{{ .Values.a }}` lines, a script).
+ * are hidden whole, unless each line is inert or code (a template's `{{ .Values.a }}` lines, a script's), a comment, or
+ * brackets and punctuation alone (`}`, `);`).
  */
 function multiLineValue(out: Finding[], name: string, body: Span | undefined, rule: string) {
 	// (Judged by its first 8 KB, a key's or a certificate chain's size: past that, a block holds more than a value.)
@@ -1281,7 +1309,9 @@ function multiLineValue(out: Finding[], name: string, body: Span | undefined, ru
 	if (
 		!body ||
 		isCode(head, true) ||
-		lines.every((line) => isInert(line) || isCode(line, true)) ||
+		lines.every(
+			(line) => isInert(line) || isCode(line, true) || /^(?:#|\/\/)/.test(line) || !/[\p{L}\p{N}]/u.test(line),
+		) ||
 		(lines.length === 1 && !isNamedSecret(name, head, true))
 	)
 		return;
@@ -1381,6 +1411,9 @@ function spacedPairs(text: string, out: Finding[]) {
 			if (stop > 0) span = [span[0], span[0] + stop];
 			if (!/^(?:\\[nrt])*"[ \t]*[,\]]?[ \t]*\r?$/.test(text.slice(span[1], lineEndAt(text, span[1])))) continue;
 		}
+		// A note in brackets and a colon go on the label, the value after them: `password (utf-8): …`, `Password (required): …`.
+		const label = /^[([{][^)\]}\n]{0,60}[)\]}][ \t]*:[ \t]+(?=\S)/.exec(text.slice(span[0], span[1]));
+		if (label) span = [span[0] + label[0].length, span[1]];
 		const raw = text.slice(span[0], span[1]);
 		// A line of an `ls` listing, `passwd-  sudo.conf`. (A random token is no file's name: a cookie's value beside its
 		// name, `__Secure-1PSID<tab>g.a000R9Eh…`.)
@@ -2895,7 +2928,9 @@ function prose(text: string, out: Finding[]) {
 		if (/^pass$/i.test(lastWord(name)) && isPassInEnglish(before)) continue;
 		if (isVerdictUnderPass(name, withoutUnopenedClosers(m[4]))) continue;
 		const last = lastWord(name);
-		const value = withoutUnopenedClosers(m[4]);
+		// (Cut at a quote inside its own brackets, the value runs on to their close: `Option<&'static str>`.)
+		const end = throughBrackets(text, m.indices![4]![0], m.indices![4]![1]);
+		const value = withoutUnopenedClosers(text.slice(m.indices![4]![0], end));
 		if (!isCredentialName(name.replace(/\s+/g, "_")) || /cookie/i.test(name) || clientSdkAt(text, m.index)) continue;
 		// A signature's parameter and its type, `decode(secret: Base32SecretKey): …`: the line opens a bracket before the
 		// name and the value closes it.
@@ -2923,14 +2958,16 @@ function prose(text: string, out: Finding[]) {
 		// `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
 		// (A reference, a member's path or a call, or a type is code wherever it's written:
 		// `pass: process.env.SMTP_PASSWORD`, `password: this.data.password`, `password: SecretStr`; a bare name isn't,
-		// `The password is: BlueSecret`.)
+		// `The password is: BlueSecret`. A keyword's expression is judged with the rest of the line, as a blank cut it:
+		// `password: lambda: secrets["db"]`.)
 		if (
 			((/=/.test(m[2]) ||
-				/^[);,]/.test(text.slice(m.indices![4]![1])) ||
-				(/^[ \t]*\r?$/.test(text.slice(m.indices![4]![1], lineEndAt(text, m.indices![4]![1]))) &&
-					isLastEntry(text, m.index))) &&
+				/^[);,]/.test(text.slice(end)) ||
+				(/^[ \t]*\r?$/.test(text.slice(end, lineEndAt(text, end))) && isLastEntry(text, m.index))) &&
 				isCode(value)) ||
-			isCode(value, true)
+			isCode(value, true) ||
+			(/^(?:lambda|await|new|function|fn)\b/.test(value) &&
+				isCode(text.slice(m.indices![4]![0], lineEndAt(text, m.indices![4]![0])), true))
 		)
 			continue;
 		if (/\{\{|^\[?:[a-z_]\w*\]?$/.test(value) || (text[m.indices![4]![0] - 1] === "{" && /\}$/.test(value))) continue;
@@ -3565,8 +3602,21 @@ function passwordShaped(text: string, out: Finding[]) {
 	)) {
 		// (Each opener with its own closer, so a quoted password may hold the others: `"Abc)1!"`, `«Mot(de)Passe1»`.)
 		const k = [2, 3, 4, 5].find((i) => m[i] !== undefined)!;
-		// (Nor quotes at its end that it didn't open: a string's around it, `"$(openssl passwd -6 …)"`.)
-		const value = withoutUnopenedClosers(m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:)]+$/, ""));
+		// (The sentence's punctuation and a bracket it closes, in either order: `(password: Xk9!mQ2z).`; a call's own
+		// `)` stays. Nor quotes at its end that it didn't open: a string's around it, `"$(openssl passwd -6 …)"`.)
+		const value = withoutUnopenedClosers(
+			m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:]+$/, ""),
+		).replace(/[.,;:]+$/, "");
+		const [start] = m.indices![k]!;
+		// (Unquoted, the code a value opens runs on to its brackets' close, and is judged whole with the keyword before
+		// it: `password: await getSecret(names[0])`, `password: new Buffer(parts[1], "base64")`.)
+		const code =
+			k === 5 &&
+			isCode(
+				/(?:\b(?:await|new)[ \t]+)?$/.exec(text.slice(Math.max(0, start - 12), start))![0] +
+					text.slice(start, throughBrackets(text, start, start + m[k].length)),
+				true,
+			);
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
 		// `["Summer2024!",`, the readers' of those.)
@@ -3574,12 +3624,17 @@ function passwordShaped(text: string, out: Finding[]) {
 			!PASSWORD_SHAPE.test(value) ||
 			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]|^\[["'\x60]/.test(
 				value,
-			) ||
-			isCode(value, true) ||
-			!looksSecret(`"${value}"`, true)
+			)
 		)
 			continue;
-		const [start] = m.indices![k]!;
+		if (code || isCode(value, true)) {
+			// (Code holds the password when a converter is given it: `New SecureString("Kx9mQv2Lp7Rt")`.)
+			const literal = k === 5 ? convertedLiteral(text, start) : undefined;
+			if (literal && isNamedSecret("password", `"${literal.value}"`, true))
+				namedFinding(out, literal.start, literal.end, "password", "named:password-word", 0.85);
+			continue;
+		}
+		if (!looksSecret(`"${value}"`, true)) continue;
 		namedFinding(out, start, start + value.length, "password", "named:password-word", 0.85);
 	}
 }

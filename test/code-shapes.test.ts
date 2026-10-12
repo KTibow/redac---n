@@ -655,3 +655,76 @@ test("what a value under a password's name is instead: a number, an email, a var
 	hidden("WEBHOOK_SECRET=https://example.com/hooks/8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c", "8f7a6b5c4d3e2f1a");
 	hidden("DB_PASSWORD=!!!!!!", "!!!!!!");
 });
+
+test("a type on a line of its own is no value, in each language's syntax; a passphrase of type words is", () => {
+	for (const line of [
+		"    db_password: Optional[str]",
+		"    passwords: List[str]",
+		"    password: str | None",
+		"  password: string | null;",
+		"    password: Dict[str, Any]",
+		"    password: &'a str,",
+		"    password: Option<&'static str>,",
+		"    password: () => string;",
+		"    password: typeof DEFAULT;",
+		"    secret: map[string][]byte",
+		"    key: [u8; 32],",
+	])
+		kept(line, line.trim());
+	kept("def f(password: Optional[str]='', page=None):", "Optional[str]=''");
+	for (const phrase of ["Path&Ember&winter", "Optional[Xk9mQ2vL]", "Summer|Winter2024"])
+		hidden(`password: ${phrase}`, phrase);
+});
+
+test("code a value opens is read to its brackets' close and judged whole: calls, keywords, members, interpolation", () => {
+	for (const line of [
+		"password: await getSecret(names[0])",
+		'password: new Buffer(parts[1], "base64")',
+		'password: lambda: secrets["db"]',
+		'password: (await vault.read("db")).data.password,',
+		"password: 0x#{key.unpack('H*')[0]}",
+		"--secret 0x#{key.unpack('H*')[0]}",
+		"the password is 0x#{key.unpack('H*')[0]}",
+		"password: (...)",
+	])
+		kept(line, line.replace(/^.*?(?:: |secret |is )/, "").replace(/,$/, ""));
+	// (A password with a bracket and a quote in it is hidden whole, not up to the quote.)
+	hidden("--password Abc(d'ef)", "'ef)");
+	// (A word and a number before brackets are a password, not a call; a converter's literal is its password.)
+	hidden("DB_PASSWORD=Spring2024(Blue)", "Spring2024(Blue)");
+	hidden('Private password As New SecureString("Kx9mQv2Lp7Rt")', "Kx9mQv2Lp7Rt");
+	// (A call of quoted variables is code; a sigil's variable no log's pair; a logfmt line's values run to a blank.)
+	for (const [text, value] of [
+		["echo update user set password=password('%passwd%') where user=\"root\";", "password('%passwd%')"],
+		['my @key=map("%zmm$_",(16..31));', 'map("%zmm$_",(16..31))'],
+		['run("rake A=#{e a} B=#{e b} SEED_PASSWORD=#{e Shellwords.escape(pw)}")', "#{e Shellwords.escape(pw)}"],
+	])
+		kept(text, value);
+});
+
+test("a block of code or template tags under a credential's name is no value; a block of values is", () => {
+	kept(
+		"  password: |\n    {{- if .Values.password }}\n    {{ .Values.password | b64enc }}\n    {{- else }}\n    {{ randAlphaNum 16 | b64enc }}\n    {{- end }}",
+		"{{- if .Values.password }}",
+	);
+	kept("token = <<EOF\nfunction f() {\n  return process.env.API_TOKEN;\n}\nEOF", "process.env.API_TOKEN");
+	hidden("  password: |\n    Xk9mQ2vLp7\n    Rt5wZ8nBq2", "Rt5wZ8nBq2");
+});
+
+test("references written in another syntax: a format string's hole, %{VAR} in a path, percent-encoded templates", () => {
+	for (const [text, value] of [
+		['conn = "host={h} password={pw}xyz".format(h=h, pw=pw)', "{pw}xyz"],
+		['cmd = f"--password={pw}xyz"', "{pw}xyz"],
+		["--key=/etc/certs/v2/%{KEY}", "/etc/certs/v2/%{KEY}"],
+		["curl 'https://x.io/v1?apikey=%7B%7Bapi_key%7D%7D'", "%7B%7Bapi_key%7D%7D"],
+		["curl 'https://x.io/v1?password=%24DB_PASSWORD'", "%24DB_PASSWORD"],
+	])
+		kept(text, value);
+	hidden('conn = f"host={h} password={pw}Xk9mQ2vL7"', "Xk9mQ2vL7");
+});
+
+test("a note in brackets goes on the label, and the value after its colon is judged alone", () => {
+	kept("password (utf-8): x", "(utf-8):");
+	hidden("Password (required): Xk9mQ2vL7", "Xk9mQ2vL7");
+	kept("    password (str): Password for the account.", "Password for the account.");
+});

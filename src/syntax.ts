@@ -158,6 +158,34 @@ export function withoutUnopenedClosers(value: string, closers = ")]}"): string {
 }
 
 /**
+ * Where a value that a reader cut (`start`–`end`) inside a bracket it opened ends: at that bracket's close on the same
+ * line, read over the strings and blanks within it (`0x#{key.unpack('H*')[0]}`, `Buffer.from(pw, "base64")`) and a
+ * quote that closes nothing (Rust's lifetime, `Option<&'static str>`; a `<` opens a bracket after a name, a generic's).
+ * Then the value is judged whole, as the code it is, not as the fragment before the cut; and a password with a
+ * bracket, `Xy(z, 9)`, is hidden whole. `end` when the value opened no bracket it didn't close, or nothing closes it on
+ * the line.
+ */
+export function throughBrackets(text: string, start: number, end: number): number {
+	const close: Record<string, string> = { "(": ")", "[": "]", "{": "}", "<": ">" };
+	const open: string[] = [];
+	const lineEnd = text.indexOf("\n", end);
+	const stop = Math.min(lineEnd < 0 ? text.length : lineEnd, start + UNQUOTED_READ);
+	for (let i = start; i < stop; i++) {
+		const c = text[i];
+		if (i >= end && open.length === 0) return end;
+		if (c in close && (c !== "<" || /\w/.test(text[i - 1] ?? ""))) open.push(close[c]);
+		else if (c === open.at(-1) && !(c === ">" && /[-=]/.test(text[i - 1]))) {
+			open.pop();
+			if (open.length === 0 && i >= end) return i + 1;
+		} else if (i >= end && /["'`]/.test(c)) {
+			const q = stringEnd(text, i, { max: stop - i });
+			if (q >= 0) i = q;
+		}
+	}
+	return end;
+}
+
+/**
  * Whether the character at `i` would continue a token beside a value, so the value there is part of a longer one: a
  * letter or a digit of any script, an identifier's `_` and `$`, and a kebab-case name's `-` where the value has one
  * (`set_guest_wifi_password` inside `_async_set_guest_wifi_password` is no whole token). Not the last character of an
