@@ -343,6 +343,7 @@ const NOT: [reason: string, text: string, token: string][] = [
 	],
 	// A credential's name outvotes what a token's shape or its place says.
 	["identifier-shaped", 'api_key: "Kx9-mQ2-vL7-pZr-Tq8-Wn3"', "Kx9-mQ2-vL7-pZr-Tq8-Wn3"],
+	["slug", 'password: "kx9q-tw3v-pz2m-rr8n-lb4c"', "kx9q-tw3v-pz2m-rr8n-lb4c"],
 	["filename", 'session_token = "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5.Va6Ud7.Te8Sf9Rg0Hh1Ij2Kk3"', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
 	["uuid", '"session_id": "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5"],
 	["cuid2", "secret_id=kx9mq2vl7pzrtq8wn3xc4yb5", "kx9mq2vl7pzrtq8wn3xc4yb5"],
