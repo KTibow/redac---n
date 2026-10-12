@@ -2,17 +2,19 @@
 <title id="t">Redactions per million characters of ordinary text</title><desc id="d">kingfisher: 0.8 per MB; trufflehog: 2.0 per MB; gitleaks: 2.3 per MB; redac---n guessing off: 3.3 per MB; redac---n guessing confident: 4.1 per MB; redac---n guessing eager: 4.4 per MB; noseyparker: 8.5 per MB; credsweeper: 11.6 per MB; betterleaks: 16.7 per MB; gitleaks+betterleaks+kingfisher: 17.3 per MB; detect-secrets: 26.0 per MB; union(all but detect-secrets): 28.9 per MB; union(all 7): 51.4 per MB</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.hollow { fill: none; stroke: #898781; } .chain { fill: none; stroke: #c3c2b7; stroke-width: 1.5; }
 .k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
 .ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
 text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
-.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; } .panel { fill: #0b0b0b; font-size: 13px; font-weight: 600; }
 .tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
 .ours { fill: #0b0b0b; font-weight: 600; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .other { fill: #a3a29c; } .hollow { stroke: #a3a29c; } .chain { stroke: #4a4a47; }
   .k0 { fill: #3987e5; } .k1 { fill: #d95926; } .k2 { fill: #199e70; } .k3 { fill: #5e5d58; } .gap { stroke: #1a1a19; }
   .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
-  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
+  text { fill: #c3c2b7; } .title, .panel, .ours { fill: #ffffff; }
 }
 </style>
 <rect width="760" height="438" rx="8" class="bg"/>

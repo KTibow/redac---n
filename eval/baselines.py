@@ -21,7 +21,10 @@ one file per record, reporting findings per MB.
                                [--real-mb 30] [--tools a,b] [--variants txt,ctx] [--out FILE] [--json FILE]
 
 --corpora names files in eval/corpora/ (or gives paths to .jsonl files); --real-src "" takes every record of --real. --json writes the numbers for
-eval/report.ts.
+eval/report.ts, and for cases with a `group` (CredData's, from eval/creddata.ts --cases) the numbers by group for
+eval/creddata-chart.ts:
+  python3 -I eval/baselines.py … --corpora eval/out/creddata-dev.jsonl,eval/out/creddata-test.jsonl --variants ctx
+                               --real-mb 0 --json eval/out/baselines-creddata.json
 
 Stdlib only.
 """
@@ -49,6 +52,9 @@ PIPELINES = {
     "union(all 7)": ALL_TOOLS,
     "union(all but detect-secrets)": [t for t in ALL_TOOLS if t != "detect-secrets"],
     "gitleaks+betterleaks+kingfisher": ["gitleaks", "betterleaks", "kingfisher"],
+    # (For CredData, whose lines and labels come partly from CredSweeper, and whose labels its model is trained on.)
+    "union(all but CredSweeper)": [t for t in ALL_TOOLS if t != "credsweeper"],
+    "union(all but CredSweeper, detect-secrets)": [t for t in ALL_TOOLS if t not in ("credsweeper", "detect-secrets")],
 }
 CTX_EXT = {
     "dotenv": ".env", "env-dump": ".env", "python-code": ".py", "js-code": ".js", "go-code": ".go",
@@ -320,28 +326,32 @@ def scan_dataset(name, files, tools, tool_names, scratch, log):
 # ---------------------------------------------------------------- reports
 
 def score(cases, spans_by_fid):
+    """Totals, and the same [caught, secrets, lost, keeps] by each case's context and by its group (if it has one)."""
     caught = total = lost = keeps = 0
     per_ctx = defaultdict(lambda: [0, 0, 0, 0])
+    per_group = defaultdict(lambda: [0, 0, 0, 0])
     for c in cases:
         sp = []
         for s in spans_by_fid:
             if c["fid"] in s:
                 sp += s[c["fid"]].spans
         out = apply(c["text"], sp) if sp else c["text"]
-        pc = per_ctx[c.get("context") or "?"]
+        tallies = [per_ctx[c.get("context") or "?"]] + ([per_group[c["group"]]] if c.get("group") else [])
         for s in c.get("secrets") or []:
             ok = not leaked(s, out)
             caught += ok
             total += 1
-            pc[0] += ok
-            pc[1] += 1
+            for pc in tallies:
+                pc[0] += ok
+                pc[1] += 1
         for k in c.get("keep") or []:
             bad = k not in out
             lost += bad
             keeps += 1
-            pc[2] += bad
-            pc[3] += 1
-    return (caught, total, lost, keeps), per_ctx
+            for pc in tallies:
+                pc[2] += bad
+                pc[3] += 1
+    return (caught, total, lost, keeps), per_ctx, per_group
 
 
 def pct(a, b):
@@ -407,7 +417,9 @@ def main():
     for variant in a.variants.split(","):
         files = {}
         for c in cases:
-            ext = ".txt" if variant == "txt" else CTX_EXT.get(c.get("context"), ".txt")
+            # (A context `ext:.py` names the extension itself: CredData's cases, from eval/creddata.ts --cases.)
+            ctx = c.get("context") or ""
+            ext = ".txt" if variant == "txt" else ctx[4:] if ctx.startswith("ext:") else CTX_EXT.get(ctx, ".txt")
             files[c["fid"]] = (c["fid"] + ext, c["text"])
         log(f"\n## variant {variant}: {len(files)} case files ({'all .txt' if variant == 'txt' else 'extension from context, .env for dotenv/env-dump'})")
         res, secs = scan_dataset(f"cases-{variant}", files, tools, tool_names, scratch, log)
@@ -423,15 +435,18 @@ def main():
         for name, sp in rows:
             cells = []
             for cn, cs in corp:
-                (caught, total, lost, keeps), per_ctx = score(cs, sp)
+                (caught, total, lost, keeps), per_ctx, per_group = score(cs, sp)
                 cells.append(f" | {pct(caught, total):>13s} {pct(lost, keeps)}")
                 summary["corpora"].setdefault(variant, {}).setdefault(name, {})[cn] = {"caught": caught, "secrets": total, "lost": lost, "keeps": keeps}
+                if per_group:
+                    summary.setdefault("groups", {}).setdefault(variant, {}).setdefault(name, {})[cn] = dict(per_group)
                 if cn == "both":
                     ctx_tables[name] = per_ctx
             log(f"{name:34s}" + "".join(cells))
         log(f"\n### variant {variant}: recall by context (loss in parentheses)")
         ctxs = sorted({k for v in ctx_tables.values() for k in v})
-        short = {"union(all 7)": "U7", "union(all but detect-secrets)": "U6", "gitleaks+betterleaks+kingfisher": "GBK"}
+        short = {"union(all 7)": "U7", "union(all but detect-secrets)": "U6", "gitleaks+betterleaks+kingfisher": "GBK",
+                 "union(all but CredSweeper)": "U6-CS", "union(all but CredSweeper, detect-secrets)": "U5-CS"}
         names = list(ctx_tables)
         log(f"{'context':17s}" + "".join(f"{short.get(n, n[:11]):>15s}" for n in names))
         for k in ctxs:

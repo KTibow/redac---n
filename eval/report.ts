@@ -20,6 +20,7 @@ import { DAMAGE, REDACTION_KINDS, redactionKind, shapeOf } from "./shapes.ts";
 import { loadCases, scoreCase, summarize, type CaseResult } from "./score.ts";
 import { CORPORA } from "./data-root.ts";
 import { Args } from "./args.ts";
+import { esc, pct, STYLE, textWidth } from "./chart.ts";
 
 const args = new Args();
 const root = join(import.meta.dirname, "..");
@@ -166,34 +167,7 @@ if (baselines) {
 		});
 }
 
-function pct(x: number, digits = 1) {
-	return `${(x * 100).toFixed(digits)}%`;
-}
-
 // ---------------------------------------------------------------- charts
-
-const FONT = `system-ui, -apple-system, "Segoe UI", sans-serif`;
-// Plain class rules (no CSS variables, which some SVG renderers ignore); dark mode by media query.
-const STYLE = `<style>
-.bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
-.k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
-.ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
-text { font-family: ${FONT}; fill: #52514e; font-size: 12px; }
-.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
-.tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
-.ours { fill: #0b0b0b; font-weight: 600; }
-@media (prefers-color-scheme: dark) {
-  .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
-  .k0 { fill: #3987e5; } .k1 { fill: #d95926; } .k2 { fill: #199e70; } .k3 { fill: #5e5d58; } .gap { stroke: #1a1a19; }
-  .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
-  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
-}
-</style>`;
-
-function esc(s: string) {
-	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-const textWidth = (s: string, size = 12) => s.length * size * 0.56;
 
 /** Recall against keep-loss: each scanner as a grey dot, redac---n's three modes in the accent colour. */
 function scatter(points: Point[], title: string, sub: string): string {
@@ -258,7 +232,7 @@ function scatter(points: Point[], title: string, sub: string): string {
 	boxes.push([m.l + pw - legendW - 4, m.t, m.l + pw, m.t + 14 + LEGEND.length * 20]);
 	for (let i = 1; i < ours.length; i++) {
 		const [x1, y1, x2, y2] = [x(ours[i - 1].loss), y(ours[i - 1].recall), x(ours[i].loss), y(ours[i].recall)];
-		const steps = Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 4);
+		const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 4));
 		for (let k = 0; k <= steps; k++) {
 			const [lx, ly] = [x1 + ((x2 - x1) * k) / steps, y1 + ((y2 - y1) * k) / steps];
 			boxes.push([lx - 2, ly - 2, lx + 2, ly + 2]);

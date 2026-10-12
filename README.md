@@ -31,13 +31,13 @@ secrets and destroys **3.2%** of the values that look like secrets but aren't. T
 scanners we found catches 70.6% and destroys 2.2%; all seven together catch 84.2% but destroy 28.6% of the
 look-alikes.
 
-| | secrets caught | look-alikes destroyed | redactions per million characters of ordinary text |
-|---|---:|---:|---:|
-| **redac---n** (default) | **93.0%** | **3.2%** | 4.1 |
-| redac---n, `guessing: "off"` | 90.7% | 1.2% | 3.4 |
-| gitleaks + Betterleaks + Kingfisher | 70.6% | 2.2% | 17.3 |
-| all seven scanners combined | 84.2% | 28.6% | 51.4 |
-| CredSweeper, the best single scanner | 70.1% | 15.2% | 11.6 |
+| | secrets caught | look-alikes destroyed |
+|---|---:|---:|
+| **redac---n** (default) | **93.0%** | **3.2%** |
+| redac---n, `guessing: "off"` | 90.7% | 1.2% |
+| gitleaks + Betterleaks + Kingfisher | 70.6% | 2.2% |
+| all seven scanners combined | 84.2% | 28.6% |
+| CredSweeper, the best single scanner | 70.1% | 15.2% |
 
 ![Redactions per million characters of ordinary text, redac---n against the same scanners, each bar split into credential-shaped values, hex, words and placeholders, and the rest](docs/real-text.svg)
 
@@ -49,6 +49,14 @@ CredSweeper hides is hex (hashes and IDs), most of what detect-secrets hides is 
 and about half of redac---n's is credential-shaped. It can also
 do something they can't: told which command or file the text came from, it reads what `cat .env` printed as a secret
 file, and knows that `cat .env | wc -l` printed only a number.
+
+![CredData's test split by kind of value: secrets caught against false values hit, redac---n against the same scanners](docs/creddata.svg)
+
+On [CredData](https://github.com/Samsung/CredData)'s test split (labelled lines from public repositories none of the
+fixes were made on), sorted into the same kinds, redac---n catches more than any other scanner but CredSweeper in every
+kind, and hits fewer false values than the other six combined: 88% of credential-shaped secrets for 6.8% of the false
+values there, against 75% and 14%. CredSweeper is drawn apart because CredData's lines come partly from it and its
+model is trained on CredData's labels. [The dev split](docs/creddata-dev.svg) is where the fixes were made.
 
 It isn't a guarantee: about one secret in fourteen still gets through, mostly short values with no name or format
 next to them. See [what it misses](#what-it-misses).
@@ -289,7 +297,8 @@ it as a `known` value: known values are hidden whatever they look like, as long 
   up to 5,000 characters; `scripts/fuzz-perf.ts` puts every rule's trigger after long runs of filler and fails on
   any input that takes more than linear time.
 - **Evaluations:** `node eval/all.ts` runs the development checks. `node eval/layers.ts` scores each detector alone
-  and left out. `node eval/report.ts` scores the held-out set (totals only) and draws the charts above.
+  and left out. `node eval/report.ts` scores the held-out set (totals only) and draws the first two charts above;
+  `node eval/creddata-chart.ts` draws the CredData charts (its header gives the steps before it).
 - **Corpora:** the third-party corpora live outside the repository (`$REDACT_CORPORA`, by default
   `~/Downloads/redact-corpora`); on a fresh clone, the scripts score `eval/corpora` and skip the rest. The corpora in
   the repository are gzipped, because the fake credentials in them would otherwise look like real ones to secret

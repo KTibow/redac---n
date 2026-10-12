@@ -2,17 +2,19 @@
 <title id="t">Held-out test set: secrets caught vs. look-alikes destroyed</title><desc id="d">redac---n guessing off: 90.7% of secrets caught, 1.2% of keep values lost; redac---n guessing confident: 93.0% of secrets caught, 3.2% of keep values lost; redac---n guessing eager: 93.2% of secrets caught, 3.4% of keep values lost; gitleaks: 54.6% of secrets caught, 1.5% of keep values lost; betterleaks: 67.0% of secrets caught, 1.7% of keep values lost; kingfisher: 43.1% of secrets caught, 0.5% of keep values lost; trufflehog: 38.5% of secrets caught, 0.4% of keep values lost; noseyparker: 42.1% of secrets caught, 1.5% of keep values lost; detect-secrets: 47.2% of secrets caught, 15.2% of keep values lost; credsweeper: 70.1% of secrets caught, 15.2% of keep values lost; union(all 7): 84.2% of secrets caught, 28.6% of keep values lost; union(all but detect-secrets): 83.1% of secrets caught, 16.9% of keep values lost; gitleaks+betterleaks+kingfisher: 70.6% of secrets caught, 2.2% of keep values lost</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.hollow { fill: none; stroke: #898781; } .chain { fill: none; stroke: #c3c2b7; stroke-width: 1.5; }
 .k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
 .ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
 text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
-.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; } .panel { fill: #0b0b0b; font-size: 13px; font-weight: 600; }
 .tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
 .ours { fill: #0b0b0b; font-weight: 600; }
 @media (prefers-color-scheme: dark) {
   .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .other { fill: #a3a29c; } .hollow { stroke: #a3a29c; } .chain { stroke: #4a4a47; }
   .k0 { fill: #3987e5; } .k1 { fill: #d95926; } .k2 { fill: #199e70; } .k3 { fill: #5e5d58; } .gap { stroke: #1a1a19; }
   .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
-  text { fill: #c3c2b7; } .title, .ours { fill: #ffffff; }
+  text { fill: #c3c2b7; } .title, .panel, .ours { fill: #ffffff; }
 }
 </style>
 <rect width="760" height="460" rx="8" class="bg"/>

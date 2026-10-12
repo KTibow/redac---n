@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1096 932" width="1096" height="932" role="img" aria-labelledby="t">
+<title id="t">CredData's dev split by kind of value: secrets caught against false values hit</title>
+<style>
+.bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
+.hollow { fill: none; stroke: #898781; } .chain { fill: none; stroke: #c3c2b7; stroke-width: 1.5; }
+.k0 { fill: #2a78d6; } .k1 { fill: #eb6834; } .k2 { fill: #1baf7a; } .k3 { fill: #b9b8b2; } .gap { stroke: #fcfcfb; stroke-width: 2; }
+.ring { stroke: #fcfcfb; } .grid { stroke: #e1e0d9; stroke-width: 1; } .axis, .lead { stroke: #c3c2b7; stroke-width: 1; }
+text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; } .panel { fill: #0b0b0b; font-size: 13px; font-weight: 600; }
+.tick { fill: #898781; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ours { fill: #0b0b0b; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; } .accent { fill: #3987e5; } .accent-line { stroke: #3987e5; } .ring { stroke: #1a1a19; }
+  .other { fill: #a3a29c; } .hollow { stroke: #a3a29c; } .chain { stroke: #4a4a47; }
+  .k0 { fill: #3987e5; } .k1 { fill: #d95926; } .k2 { fill: #199e70; } .k3 { fill: #5e5d58; } .gap { stroke: #1a1a19; }
+  .grid { stroke: #2c2c2a; } .axis, .lead { stroke: #383835; }
+  text { fill: #c3c2b7; } .title, .panel, .ours { fill: #ffffff; }
+}
+</style>
+<rect width="1096" height="932" rx="8" class="bg"/>
+<text x="16" y="26" class="title">CredData's dev split by kind of value: secrets caught against false values hit</text>
+<text x="16" y="44">The repositories the fixes were made on: each labelled value, true or false, sorted by the ordinary-text chart's classifier. A false value is hit only if it is</text>
+<text x="16" y="60">redacted. Blue: redac---n (guessing off, confident, eager). Grey: other scanners; a line from gitleaks adds Betterleaks and Kingfisher, then TruffleHog</text>
+<text x="16" y="76">and Nosey Parker, then detect-secrets (the other six). Hollow: CredSweeper, which CredData's lines partly come from and whose model is trained on its labels.</text>
+<text x="16" y="92">√ scale across; up and left is better.</text>
+<text x="56" y="130" class="panel">credential-shaped <tspan class="tick">4,560 true, 10,661 false</tspan></text>
+<line class="grid" x1="56" x2="526" y1="442" y2="442"/><text class="tick" x="50" y="446" text-anchor="end">0%</text>
+<line class="grid" x1="56" x2="526" y1="367" y2="367"/><text class="tick" x="50" y="371" text-anchor="end">25%</text>
+<line class="grid" x1="56" x2="526" y1="292" y2="292"/><text class="tick" x="50" y="296" text-anchor="end">50%</text>
+<line class="grid" x1="56" x2="526" y1="217" y2="217"/><text class="tick" x="50" y="221" text-anchor="end">75%</text>
+<line class="grid" x1="56" x2="526" y1="142" y2="142"/><text class="tick" x="50" y="146" text-anchor="end">100%</text>
+<line class="grid" x1="506.1491081670033" x2="506.1491081670033" y1="142" y2="442"/><text class="tick" x="506.1491081670033" y="456" text-anchor="middle">20%</text>
+<line class="grid" x1="374.3034869299648" x2="374.3034869299648" y1="142" y2="442"/><text class="tick" x="374.3034869299648" y="456" text-anchor="middle">10%</text>
+<line class="grid" x1="281.07455408350165" x2="281.07455408350165" y1="142" y2="442"/><text class="tick" x="281.07455408350165" y="456" text-anchor="middle">5%</text>
+<line class="grid" x1="198.3496468501234" x2="198.3496468501234" y1="142" y2="442"/><text class="tick" x="198.3496468501234" y="456" text-anchor="middle">2%</text>
+<line class="grid" x1="156.65640058723253" x2="156.65640058723253" y1="142" y2="442"/><text class="tick" x="156.65640058723253" y="456" text-anchor="middle">1%</text>
+<line class="grid" x1="127.1748234250617" x2="127.1748234250617" y1="142" y2="442"/><text class="tick" x="127.1748234250617" y="456" text-anchor="middle">0.5%</text>
+<line class="grid" x1="56" x2="56" y1="142" y2="442"/><text class="tick" x="56" y="456" text-anchor="middle">0%</text>
+<polyline fill="none" class="chain" stroke-width="2" points="353.1325852019262,275.9473684210526 403.6850205512829,234.76315789473685 416.1710071097008,224.17105263157893 468.2172690743038,203.05263157894737"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="217.07337108437017,242 226.80933909421782,156.86842105263156 228.74570115418723,154.82894736842104"/>
+<circle cx="353.1325852019262" cy="275.9473684210526" r="4" class="other ring" stroke-width="1.5"><title>gitleaks: 55.4% caught, 8.7% lost</title></circle>
+<circle cx="379.9119430107311" cy="238.1184210526316" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 68.0% caught, 10.4% lost</title></circle>
+<circle cx="132.76058383775757" cy="429.7631578947368" r="4" class="other ring" stroke-width="1.5"><title>Kingfisher: 4.1% caught, 0.6% lost</title></circle>
+<circle cx="177.36913972581135" cy="432.0657894736842" r="4" class="other ring" stroke-width="1.5"><title>TruffleHog: 3.3% caught, 1.5% lost</title></circle>
+<circle cx="199.27463149830726" cy="364.17105263157896" r="4" class="other ring" stroke-width="1.5"><title>Nosey Parker: 25.9% caught, 2.0% lost</title></circle>
+<circle cx="311.3315504475156" cy="272.6578947368421" r="4" class="other ring" stroke-width="1.5"><title>detect-secrets: 56.4% caught, 6.4% lost</title></circle>
+<circle cx="144.27736283746296" cy="149.63157894736844" r="4" class="hollow" stroke-width="1.5"><title>CredSweeper (tuned on CredData): 97.5% caught, 0.8% lost</title></circle>
+<circle cx="403.6850205512829" cy="234.76315789473685" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 69.1% caught, 11.9% lost</title></circle>
+<circle cx="416.1710071097008" cy="224.17105263157893" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 72.6% caught, 12.8% lost</title></circle>
+<circle cx="468.2172690743038" cy="203.05263157894737" r="4" class="other ring" stroke-width="1.5"><title>the other six: 79.6% caught, 16.8% lost</title></circle>
+<circle cx="217.07337108437017" cy="242" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 66.7% caught, 2.6% lost</title></circle>
+<circle cx="226.80933909421782" cy="156.86842105263156" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 95.0% caught, 2.9% lost</title></circle>
+<circle cx="228.74570115418723" cy="154.82894736842104" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 95.7% caught, 2.9% lost</title></circle>
+<text x="234.80933909421782" y="160.86842105263156" text-anchor="start" class="ours" font-size="11">redac---n</text>
+<line class="lead" x1="144.27736283746296" y1="153.63157894736844" x2="152.27736283746296" y2="252.63157894736844"/>
+<text x="152.27736283746296" y="262.63157894736844" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
+<text x="460.2172690743038" y="195.05263157894737" text-anchor="end" font-size="11">the other six</text>
+<text x="371.9119430107311" y="242.1184210526316" text-anchor="end" font-size="11">Betterleaks</text>
+<text x="303.3315504475156" y="276.6578947368421" text-anchor="end" font-size="11">detect-secrets</text>
+<line class="lead" x1="353.1325852019262" y1="279.9473684210526" x2="361.1325852019262" y2="282.9473684210526"/>
+<text x="361.1325852019262" y="292.9473684210526" text-anchor="start" font-size="11">gitleaks</text>
+<text x="207.27463149830726" y="368.17105263157896" text-anchor="start" font-size="11">Nosey Parker</text>
+<text x="124.76058383775757" y="433.7631578947368" text-anchor="end" font-size="11">Kingfisher</text>
+<text x="185.36913972581135" y="436.0657894736842" text-anchor="start" font-size="11">TruffleHog</text>
+<text x="596" y="130" class="panel">hex <tspan class="tick">2,846 true, 613 false</tspan></text>
+<line class="grid" x1="596" x2="1066" y1="442" y2="442"/><text class="tick" x="590" y="446" text-anchor="end">0%</text>
+<line class="grid" x1="596" x2="1066" y1="367" y2="367"/><text class="tick" x="590" y="371" text-anchor="end">25%</text>
+<line class="grid" x1="596" x2="1066" y1="292" y2="292"/><text class="tick" x="590" y="296" text-anchor="end">50%</text>
+<line class="grid" x1="596" x2="1066" y1="217" y2="217"/><text class="tick" x="590" y="221" text-anchor="end">75%</text>
+<line class="grid" x1="596" x2="1066" y1="142" y2="142"/><text class="tick" x="590" y="146" text-anchor="end">100%</text>
+<line class="grid" x1="1028.0552826905366" x2="1028.0552826905366" y1="142" y2="442"/><text class="tick" x="1028.0552826905366" y="456" text-anchor="middle">50%</text>
+<line class="grid" x1="930.6685829002772" x2="930.6685829002772" y1="142" y2="442"/><text class="tick" x="930.6685829002772" y="456" text-anchor="middle">30%</text>
+<line class="grid" x1="869.2557536820036" x2="869.2557536820036" y1="142" y2="442"/><text class="tick" x="869.2557536820036" y="456" text-anchor="middle">20%</text>
+<line class="grid" x1="789.2209964267856" x2="789.2209964267856" y1="142" y2="442"/><text class="tick" x="789.2209964267856" y="456" text-anchor="middle">10%</text>
+<line class="grid" x1="732.6278768410018" x2="732.6278768410018" y1="142" y2="442"/><text class="tick" x="732.6278768410018" y="456" text-anchor="middle">5%</text>
+<line class="grid" x1="682.4110565381073" x2="682.4110565381073" y1="142" y2="442"/><text class="tick" x="682.4110565381073" y="456" text-anchor="middle">2%</text>
+<line class="grid" x1="639.2055282690536" x2="639.2055282690536" y1="142" y2="442"/><text class="tick" x="639.2055282690536" y="456" text-anchor="middle">0.5%</text>
+<line class="grid" x1="596" x2="596" y1="142" y2="442"/><text class="tick" x="596" y="456" text-anchor="middle">0%</text>
+<polyline fill="none" class="chain" stroke-width="2" points="815.3499934591945,183.42656359803232 815.3499934591945,183.00491918482078 824.8617981135933,181.21293042867183 1008.2172690743038,150.22206605762472"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="596,407.9522136331694 703.5724055824271,160.97399859451866 709.09247992557,160.65776528460998"/>
+<circle cx="815.3499934591945" cy="183.42656359803232" r="4" class="other ring" stroke-width="1.5"><title>gitleaks: 86.2% caught, 12.9% lost</title></circle>
+<circle cx="785.5614778938375" cy="183.6373858046381" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 86.1% caught, 9.6% lost</title></circle>
+<circle cx="638.7449395763747" cy="423.8692902319044" r="4" class="other ring" stroke-width="1.5"><title>Nosey Parker: 6.0% caught, 0.5% lost</title></circle>
+<circle cx="991.631298838829" cy="177.62895291637386" r="4" class="other ring" stroke-width="1.5"><title>detect-secrets: 88.1% caught, 41.9% lost</title></circle>
+<circle cx="757.8297294006684" cy="143.47575544624033" r="4" class="hollow" stroke-width="1.5"><title>CredSweeper (tuned on CredData): 99.5% caught, 7.0% lost</title></circle>
+<circle cx="815.3499934591945" cy="183.00491918482078" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 86.3% caught, 12.9% lost</title></circle>
+<circle cx="824.8617981135933" cy="181.21293042867183" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 86.9% caught, 14.0% lost</title></circle>
+<circle cx="1008.2172690743038" cy="150.22206605762472" r="4" class="other ring" stroke-width="1.5"><title>the other six: 97.3% caught, 45.5% lost</title></circle>
+<circle cx="596" cy="407.9522136331694" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 11.3% caught, 0.0% lost</title></circle>
+<circle cx="703.5724055824271" cy="160.97399859451866" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 93.7% caught, 3.1% lost</title></circle>
+<circle cx="709.09247992557" cy="160.65776528460998" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 93.8% caught, 3.4% lost</title></circle>
+<text x="695.5724055824271" y="164.97399859451866" text-anchor="end" class="ours" font-size="11">redac---n</text>
+<text x="765.8297294006684" y="147.47575544624033" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
+<line class="lead" x1="1008.2172690743038" y1="154.22206605762472" x2="1000.2172690743038" y2="193.22206605762472"/>
+<text x="1000.2172690743038" y="203.22206605762472" text-anchor="end" font-size="11">the other six</text>
+<text x="999.631298838829" y="181.62895291637386" text-anchor="start" font-size="11">detect-secrets</text>
+<line class="lead" x1="815.3499934591945" y1="187.42656359803232" x2="823.3499934591945" y2="190.42656359803232"/>
+<text x="823.3499934591945" y="200.42656359803232" text-anchor="start" font-size="11">gitleaks</text>
+<text x="777.5614778938375" y="187.6373858046381" text-anchor="end" font-size="11">Betterleaks</text>
+<text x="646.7449395763747" y="427.8692902319044" text-anchor="start" font-size="11">Nosey Parker</text>
+<text x="596" y="476" class="tick">Catch under 1%, not drawn (caught / lost):</text>
+<text x="596" y="490" class="tick">Kingfisher 0.2% / 0.00%, TruffleHog 0.3% / 0.65%</text>
+<text x="56" y="540" class="panel">word or placeholder <tspan class="tick">1,391 true, 6,788 false</tspan></text>
+<line class="grid" x1="56" x2="526" y1="852" y2="852"/><text class="tick" x="50" y="856" text-anchor="end">0%</text>
+<line class="grid" x1="56" x2="526" y1="777" y2="777"/><text class="tick" x="50" y="781" text-anchor="end">25%</text>
+<line class="grid" x1="56" x2="526" y1="702" y2="702"/><text class="tick" x="50" y="706" text-anchor="end">50%</text>
+<line class="grid" x1="56" x2="526" y1="627" y2="627"/><text class="tick" x="50" y="631" text-anchor="end">75%</text>
+<line class="grid" x1="56" x2="526" y1="552" y2="552"/><text class="tick" x="50" y="556" text-anchor="end">100%</text>
+<line class="grid" x1="419.6962776233659" x2="419.6962776233659" y1="552" y2="852"/><text class="tick" x="419.6962776233659" y="866" text-anchor="middle">5%</text>
+<line class="grid" x1="286.02172276295335" x2="286.02172276295335" y1="552" y2="852"/><text class="tick" x="286.02172276295335" y="866" text-anchor="middle">2%</text>
+<line class="grid" x1="218.64991998589636" x2="218.64991998589636" y1="552" y2="852"/><text class="tick" x="218.64991998589636" y="866" text-anchor="middle">1%</text>
+<line class="grid" x1="171.01086138147667" x2="171.01086138147667" y1="552" y2="852"/><text class="tick" x="171.01086138147667" y="866" text-anchor="middle">0.5%</text>
+<line class="grid" x1="56" x2="56" y1="552" y2="852"/><text class="tick" x="56" y="866" text-anchor="middle">0%</text>
+<polyline fill="none" class="chain" stroke-width="2" points="263.990944241281,674.7174694464414 288.75034707799233,660.6987778576563 468.2172690743037,605.7023723939612"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="206.34775027483082,582.4097771387492 206.34775027483082,581.9784327821711 206.34775027483082,581.9784327821711"/>
+<circle cx="263.990944241281" cy="674.7174694464414" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 59.1% caught, 1.6% lost</title></circle>
+<circle cx="244.3231168239184" cy="696.5003594536305" r="4" class="other ring" stroke-width="1.5"><title>Nosey Parker: 51.8% caught, 1.3% lost</title></circle>
+<circle cx="440.8351524561971" cy="650.3465132997843" r="4" class="other ring" stroke-width="1.5"><title>detect-secrets: 67.2% caught, 5.6% lost</title></circle>
+<circle cx="111.83775266288731" cy="565.371675053918" r="4" class="hollow" stroke-width="1.5"><title>CredSweeper (tuned on CredData): 95.5% caught, 0.1% lost</title></circle>
+<circle cx="263.990944241281" cy="674.7174694464414" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 59.1% caught, 1.6% lost</title></circle>
+<circle cx="288.75034707799233" cy="660.6987778576563" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 63.8% caught, 2.0% lost</title></circle>
+<circle cx="468.2172690743037" cy="605.7023723939612" r="4" class="other ring" stroke-width="1.5"><title>the other six: 82.1% caught, 6.4% lost</title></circle>
+<circle cx="206.34775027483082" cy="582.4097771387492" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 89.9% caught, 0.9% lost</title></circle>
+<circle cx="206.34775027483082" cy="581.9784327821711" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 90.0% caught, 0.9% lost</title></circle>
+<circle cx="206.34775027483082" cy="581.9784327821711" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 90.0% caught, 0.9% lost</title></circle>
+<text x="214.34775027483082" y="585.9784327821711" text-anchor="start" class="ours" font-size="11">redac---n</text>
+<text x="119.83775266288731" y="569.371675053918" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
+<text x="460.2172690743037" y="597.7023723939612" text-anchor="end" font-size="11">the other six</text>
+<text x="448.8351524561971" y="654.3465132997843" text-anchor="start" font-size="11">detect-secrets</text>
+<text x="255.990944241281" y="678.7174694464414" text-anchor="end" font-size="11">Betterleaks</text>
+<text x="252.3231168239184" y="700.5003594536305" text-anchor="start" font-size="11">Nosey Parker</text>
+<text x="56" y="886" class="tick">Catch under 1%, not drawn (caught / lost):</text>
+<text x="56" y="900" class="tick">gitleaks 0.9% / 0.00%, Kingfisher 0.9% / 0.01%, TruffleHog 0.1% / 0.16%</text>
+<text x="596" y="540" class="panel">other <tspan class="tick">859 true, 12,428 false</tspan></text>
+<line class="grid" x1="596" x2="1066" y1="852" y2="852"/><text class="tick" x="590" y="856" text-anchor="end">0%</text>
+<line class="grid" x1="596" x2="1066" y1="777" y2="777"/><text class="tick" x="590" y="781" text-anchor="end">25%</text>
+<line class="grid" x1="596" x2="1066" y1="702" y2="702"/><text class="tick" x="590" y="706" text-anchor="end">50%</text>
+<line class="grid" x1="596" x2="1066" y1="627" y2="627"/><text class="tick" x="590" y="631" text-anchor="end">75%</text>
+<line class="grid" x1="596" x2="1066" y1="552" y2="552"/><text class="tick" x="590" y="556" text-anchor="end">100%</text>
+<line class="grid" x1="978.4222985188392" x2="978.4222985188392" y1="552" y2="852"/><text class="tick" x="978.4222985188392" y="866" text-anchor="middle">10%</text>
+<line class="grid" x1="866.4134005596173" x2="866.4134005596173" y1="552" y2="852"/><text class="tick" x="866.4134005596173" y="866" text-anchor="middle">5%</text>
+<line class="grid" x1="767.0244511199683" x2="767.0244511199683" y1="552" y2="852"/><text class="tick" x="767.0244511199683" y="866" text-anchor="middle">2%</text>
+<line class="grid" x1="716.9325491356368" x2="716.9325491356368" y1="552" y2="852"/><text class="tick" x="716.9325491356368" y="866" text-anchor="middle">1%</text>
+<line class="grid" x1="681.5122255599841" x2="681.5122255599841" y1="552" y2="852"/><text class="tick" x="681.5122255599841" y="866" text-anchor="middle">0.5%</text>
+<line class="grid" x1="596" x2="596" y1="552" y2="852"/><text class="tick" x="596" y="866" text-anchor="middle">0%</text>
+<polyline fill="none" class="chain" stroke-width="2" points="691.1892593682908,824.7590221187427 851.3274262765208,819.1711292200233 861.9376465964607,814.6309662398137 1008.2172690743037,782.849825378347"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="691.1892593682908,672.139697322468 698.9114837733649,663.4086146682189 698.9114837733649,650.1373690337603"/>
+<circle cx="691.1892593682908" cy="824.7590221187427" r="4" class="other ring" stroke-width="1.5"><title>gitleaks: 9.1% caught, 0.6% lost</title></circle>
+<circle cx="846.2063925370348" cy="819.5203725261932" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 10.8% caught, 4.3% lost</title></circle>
+<circle cx="718.248755210173" cy="844.6658905704307" r="4" class="other ring" stroke-width="1.5"><title>Nosey Parker: 2.4% caught, 1.0% lost</title></circle>
+<circle cx="966.735356932149" cy="794.0256111757858" r="4" class="other ring" stroke-width="1.5"><title>detect-secrets: 19.3% caught, 9.4% lost</title></circle>
+<circle cx="661.9847304912378" cy="579.9394644935971" r="4" class="hollow" stroke-width="1.5"><title>CredSweeper (tuned on CredData): 90.7% caught, 0.3% lost</title></circle>
+<circle cx="851.3274262765208" cy="819.1711292200233" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 10.9% caught, 4.5% lost</title></circle>
+<circle cx="861.9376465964607" cy="814.6309662398137" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 12.5% caught, 4.8% lost</title></circle>
+<circle cx="1008.2172690743037" cy="782.849825378347" r="4" class="other ring" stroke-width="1.5"><title>the other six: 23.1% caught, 11.6% lost</title></circle>
+<circle cx="691.1892593682908" cy="672.139697322468" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 60.0% caught, 0.6% lost</title></circle>
+<circle cx="698.9114837733649" cy="663.4086146682189" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 62.9% caught, 0.7% lost</title></circle>
+<circle cx="698.9114837733649" cy="650.1373690337603" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 67.3% caught, 0.7% lost</title></circle>
+<text x="706.9114837733649" y="667.4086146682189" text-anchor="start" class="ours" font-size="11">redac---n</text>
+<text x="669.9847304912378" y="583.9394644935971" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
+<text x="1000.2172690743037" y="774.849825378347" text-anchor="end" font-size="11">the other six</text>
+<line class="lead" x1="966.735356932149" y1="798.0256111757858" x2="974.735356932149" y2="801.0256111757858"/>
+<text x="974.735356932149" y="811.0256111757858" text-anchor="start" font-size="11">detect-secrets</text>
+<line class="lead" x1="846.2063925370348" y1="823.5203725261932" x2="854.2063925370348" y2="826.5203725261932"/>
+<text x="854.2063925370348" y="836.5203725261932" text-anchor="start" font-size="11">Betterleaks</text>
+<text x="683.1892593682908" y="828.7590221187427" text-anchor="end" font-size="11">gitleaks</text>
+<text x="726.248755210173" y="848.6658905704307" text-anchor="start" font-size="11">Nosey Parker</text>
+<text x="596" y="886" class="tick">Catch under 1%, not drawn (caught / lost):</text>
+<text x="596" y="900" class="tick">Kingfisher 0.5% / 0.02%, TruffleHog 0.0% / 0.16%</text>
+</svg>
