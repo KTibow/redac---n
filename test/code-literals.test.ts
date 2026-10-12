@@ -135,6 +135,9 @@ test("SQL that sets a password hides the literal and keeps a password hash", () 
 	);
 	hidden("UPDATE users SET password = '@dmin_2024x' WHERE id = 1;", "@dmin_2024x");
 	hidden("CREATE USER app IDENTIFIED BY ':Hq3nT8wZ5rK2';", "Hq3nT8wZ5rK2");
+	// A keyword or a stand-in where the password goes is none.
+	kept("CREATE USER 'app'@'%' IDENTIFIED BY RANDOM PASSWORD;", "RANDOM PASSWORD");
+	kept("CREATE USER app WITH PASSWORD 'abcd1234';", "abcd1234");
 });
 
 test("call arguments and object fields that take a secret are hidden: setters, constructors, connect calls, basic auth, JWT and HMAC keys", () => {

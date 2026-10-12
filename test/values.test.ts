@@ -336,6 +336,10 @@ test("password hashes are kept whole by default and hidden whole with hashes: hi
 		strict.redact("password_hash: $2b$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jWMUW").text,
 		/^password_hash: \[REDACTED password hash #\w+\]$/,
 	);
+	assert.match(
+		strict.redact("GRANT ALL ON *.* TO 'bob'@'%' IDENTIFIED BY '*3F1A9C2E7B5D4F6A8C0E2B4D6F8A0C2E4B6D8F0A';").text,
+		/BY '\[REDACTED password hash #\w+\]';$/,
+	);
 });
 
 test("a SCRAM hash is kept by default", () => {

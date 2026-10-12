@@ -190,6 +190,23 @@ test("a ~/.netrc password is hidden", () => {
 	hidden("machine api.example.com login me password Tq8vR3nWx5", "Tq8vR3nWx5", { path: "~/.netrc" });
 });
 
+test("netrc's tokens in any order, over lines and past a comment, and not in prose or a reference", () => {
+	hidden("machine h password correct-horse login u", "correct-horse");
+	hidden("machine api.example.com\n  # deploy bot\n  login bob\n  password correct-horse\n", "correct-horse");
+	for (const t of [
+		"Rotate the build machine root password quarterly",
+		'{"error": "login or password incorrect"}',
+		"default login anonymous password guest",
+		"machine api.heroku.com login me@example.com password $HEROKU_API_KEY",
+	])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("ipsec.secrets' XAUTH and EAP passwords are hidden without a PSK in the file", () => {
+	hidden('alice : XAUTH "correct-horse"', "correct-horse");
+	hidden('carol : EAP "correct-horse"', "correct-horse");
+});
+
 test("a cookie jar line's session value is hidden", () => {
 	const pw = "Winter2024pass";
 	hidden(`.example.com\tTRUE\t/\tTRUE\t1999999999\t_myapp\t${pw}`, pw);

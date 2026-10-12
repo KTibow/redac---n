@@ -134,18 +134,47 @@ test("tool keys match whole, header breaks in all escaped forms, pem tail trim i
 	);
 });
 
-test("a phrase one word per line, deeply indented, is found", () => {
-	// A random 128-bit entropy and its checksum, as 12 words of the list.
+/** A random 128-bit entropy and its checksum, as 12 words of the BIP-39 list. */
+function randomPhrase(): string[] {
 	const entropy = randomBytes(16);
 	const bits =
 		[...entropy].map((b) => b.toString(2).padStart(8, "0")).join("") +
 		createHash("sha256").update(entropy).digest()[0].toString(2).padStart(8, "0").slice(0, 4);
 	const list = BIP39_WORDS.split(" ");
-	const words = Array.from({ length: 12 }, (_, i) => list[parseInt(bits.slice(i * 11, i * 11 + 11), 2)]);
+	return Array.from({ length: 12 }, (_, i) => list[parseInt(bits.slice(i * 11, i * 11 + 11), 2)]);
+}
+
+test("a phrase one word per line, deeply indented, is found", () => {
+	const words = randomPhrase();
 	for (const indent of [0, 12, 16]) {
 		const text = words.map((w) => " ".repeat(indent) + w).join("\n");
 		assert.ok(!r().redact(text).text.includes(words[5]), `indent ${indent}`);
 	}
+});
+
+test("a phrase is found on its own line, after a label anywhere on its line, in curly quotes and before a 13th word", () => {
+	const forms: ((p: string[]) => string)[] = [
+		([p]) => `Here is the seed for the old one\n${p}`,
+		([p]) => `Seed phrase: ${p}`,
+		([p]) => `Copy this seed phrase: ${p}`,
+		([p]) => `My seed is “${p}”`,
+		([p]) => `${p}. Keep it safe`,
+		// Several, one a line: past 30 words, and past 48.
+		(p) => p.slice(0, 3).join("\n"),
+		(p) => p.join("\n"),
+	];
+	for (const form of forms) {
+		const phrases = Array.from({ length: 5 }, randomPhrase);
+		const text = form(phrases.map((p) => p.join(" ")));
+		const out = r().redact(text).text;
+		// (Each hidden as a phrase, a wallet's key, not as another rule's credential.)
+		const shown = phrases.filter((p) => text.includes(p.join(" ")) && out.includes(p.slice(4, 8).join(" ")));
+		assert.ok(!shown.length && out.includes("[REDACTED seed phrase #"), out);
+	}
+	// A word list is no phrase: one word a line, or the list's own words in order, whose windows verify by chance.
+	const list = BIP39_WORDS.split(" ");
+	for (const text of [list.slice(0, 100).join("\n"), list.slice(32, 45).join(" ")])
+		assert.equal(r().redact(text).text, text);
 });
 
 test("a URL password is hidden and its endpoint kept", () => {

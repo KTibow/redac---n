@@ -183,3 +183,14 @@ test("percent-encoded text of its own is decoded, a single encoded token isn't",
 	assert.deepEqual(decoded("q=a%20b"), []);
 	assert.deepEqual(decoded("100% of a+long+file+name.txt"), []);
 });
+
+test("a sign-in link's token follows its segment and a word that qualifies it; a record's id and a commit are no token", () => {
+	hidden("https://example.com/confirm/account/a8f3k2m9x7q4w1e6r5t0", "a8f3k2m9x7q4w1e6r5t0");
+	kept("GET /verify/3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b 200", "3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b");
+	kept(
+		"https://github.com/acme/login/commit/3f9a2c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+		"3f9a2c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+	);
+	// (A web link's: a file's path is no link anyone opens.)
+	kept("file:///srv/app/reset/Xk9mQ2pLrT7vW3nB8yZ4cD6f.txt", "Xk9mQ2pLrT7vW3nB8yZ4cD6f.txt");
+});

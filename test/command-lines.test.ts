@@ -171,3 +171,69 @@ test("OpenSSL's pass phrase source and helm's --set list: the phrase after pass:
 	hidden("helm install db bitnami/postgresql --set auth.password=sun\\,shine9X,auth.database=app", "shine9X");
 	hidden("helm install db bitnami/postgresql --set adminPassword='p-NK,fXk9mQ2pLrT'", "fXk9mQ2pLrT");
 });
+
+test("a tool's own password word is read where its syntax puts it, and the words beside it are kept", () => {
+	hidden("vault login -method=ldap username=alice password=correct-horse", "correct-horse");
+	kept("vault login -method=ldap username=alice password=correct-horse", "username=alice");
+	hidden("rabbitmqctl change_password guest Xk9mQ2pLrT", "Xk9mQ2pLrT");
+	hidden("pulumi config set --secret db:pw correct-horse", "correct-horse");
+	hidden("pulumi -C infra config set --secret -s dev db:pw correct-horse", "correct-horse");
+	hidden("echo correct-horse | pulumi config set --secret db:pw", "correct-horse");
+	kept("pulumi config set aws:region us-east-1", "us-east-1");
+	hidden("openssl passwd -1 -salt xyz12 'correct horse'", "correct horse");
+	kept("openssl passwd -1 -salt xyz12 'correct horse'", "-salt xyz12");
+	for (const line of [
+		"schtasks /create /tn Backup /tr C:\\b.bat /sc daily /ru CORP\\svc /rp correct-horse",
+		"psexec \\\\srv01 -u admin -p correct-horse cmd",
+		"osql -S srv -U sa -P correct-horse",
+	])
+		hidden(line, "correct-horse");
+	// A wrapper's own options end where the command it runs starts: ssh's `-p` is a port.
+	hidden("sshpass -p Xk9mQ2pLrT ssh -p 2222 deploy@host", "Xk9mQ2pLrT");
+	kept("sshpass -p Xk9mQ2pLrT ssh -p 2222 deploy@host", "2222");
+	// A one-letter option with its value attached is a password only when it's the password's letter.
+	kept("mysql -hdb.internal -uadmin -pXk9mQ2pLrT", "-hdb.internal");
+	kept("mysql -u root -p appdb_production", "appdb_production");
+	kept("redis-cli -h cache -p6380 ping", "6380");
+	kept("smbclient //server/share -U alice", "alice");
+	// Only echo and printf print their operand into a pipe: cat prints the file it names.
+	kept("echo start && cat registry-pass | docker login -u bob --password-stdin", "registry-pass");
+});
+
+test("a command cut short before its password, which it then asks for, keeps its line", () => {
+	for (const t of [
+		"rabbitmqctl add_user bob",
+		"htpasswd -b .htpasswd admin",
+		"mongo -u admin -p",
+		"smbclient //srv/share -U",
+		"schtasks /create /tn Backup /ru CORP\\svc /rp",
+		"psexec \\\\srv01 -u admin -p",
+		"echo hello |",
+		'command: ["redis-server", "--requirepass", "--appendonly", "yes"]',
+	])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("a program's own password option takes its quoted value whole; a bare one ends at a path or a sentence's end", () => {
+	hidden("$ hydra -l admin -p 'Xk9(mP2vQ7' ssh://t", "Xk9(mP2vQ7");
+	hidden("$ xfreerdp /u:a /p:'a1B2c3D4/e5' /v:h", "a1B2c3D4/e5");
+	hidden("nmcli dev wifi connect Home password correct_horse", "correct_horse");
+	hidden("unrar x -pXk9mQ2pLrT archive.rar", "Xk9mQ2pLrT");
+	hidden("hurl --user bob:'$ecret99x' api.hurl", "$ecret99x");
+	hidden("Run `ssh-keygen -t ed25519 -N Kx9mQv2Lp7Rt` first", "Kx9mQv2Lp7Rt");
+	assert.match(r().redact("Here's how: hydra -l admin -p Winter2024.").text, /-p \[REDACTED password #\w+\]\.$/);
+	kept("crackmapexec smb 10.0.0.0/24 -u admin -p /tmp/pwlist", "/tmp/pwlist");
+	kept("nxc smb hosts.txt -u users.txt -p passwords.txt", "passwords.txt");
+	// (rar's `-p` alone asks for the password.)
+	kept("unrar x -p archive.rar", "archive.rar");
+	kept("rar a -p backup.rar docs/", "backup.rar");
+	// After a `password` word on any other command, only a password's shape.
+	kept("Avoid password re-use across accounts", "re-use");
+	kept("Store the password LastPass generated for you", "LastPass");
+});
+
+test("a command written as a list is read in single quotes and over CRLF and tabs, and keeps its quotes", () => {
+	hidden("subprocess.run(['redis-cli', '-a', 'correct-horse', 'ping'])", "correct-horse");
+	hidden('{\r\n\t"cmd": [\r\n\t\t"redis-cli",\r\n\t\t"-a",\r\n\t\t"correct-horse"\r\n\t]\r\n}', "correct-horse");
+	kept('{"cmd": ["redis-cli", "-a", "correct\\"horse"]}', '"-a", "[REDACTED');
+});

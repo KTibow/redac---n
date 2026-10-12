@@ -752,13 +752,13 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 	const names = (w: ShellWord, i: number) =>
 		(i === 0 || !/[/\\]/.test(w.text)) &&
 		(isWrapper(w.text) ||
-			/^(?:rabbitmqctl|htpasswd|https?|httpie|steamcmd|vault|lftp)$/.test(programName(w)) ||
+			/^(?:rabbitmqctl|htpasswd|https?|httpie|steamcmd|vault|lftp|pulumi|openssl)$/.test(programName(w)) ||
 			USER_PASSWORD.test(programName(w)) ||
 			!!passwordOptions(programName(w)));
 	const k = words.findIndex(names);
 	if (k < 0) return;
+	// (A wrapper alone, `sudo`, runs nothing: its name and its words are empty.)
 	const command = simpleCommand(words.slice(k));
-	if (!command.length) return;
 	const name = programName(command[0]);
 	const rest = command.slice(1);
 	// (`value` is the end of the word's text: `pw` of `--password='pw'`.)
@@ -783,6 +783,27 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 		const at = rest.findIndex((w) => w.text === "-u" || w.text === "--user");
 		const pair = rest[at + 1];
 		if (at >= 0 && pair?.text.includes(",")) addWord(pair, pair.text.slice(pair.text.indexOf(",") + 1));
+		return;
+	}
+	// `pulumi config set --secret <key> <value>`, the value the flag makes a secret (without one, it's read at a prompt
+	// or from stdin), past `--path` and options with a value: `-s dev`, `--config-file f`.
+	if (name === "pulumi") {
+		const set = rest.findIndex((w, i) => w.text === "set" && rest[i - 1]?.text === "config");
+		if (set < 0 || !rest.some((w) => w.text === "--secret")) return;
+		const operands = rest
+			.slice(set + 1)
+			.filter(
+				(w, i, after) =>
+					!w.text.startsWith("-") && !/^(?:-s|--stack|--config-file|--type)$/.test(after[i - 1]?.text ?? ""),
+			);
+		if (operands[1]) addWord(operands[1], operands[1].text);
+		return;
+	}
+	// `openssl passwd -6 <password>…`, which hashes the passwords it's given (`-salt` and `-in` take a value).
+	if (name === "openssl") {
+		if (rest[0]?.text !== "passwd") return;
+		for (const [i, w] of rest.entries())
+			if (i > 0 && !w.text.startsWith("-") && !/^-(?:salt|in)$/.test(rest[i - 1].text)) addWord(w, w.text);
 		return;
 	}
 	if (name === "rabbitmqctl") {
@@ -907,12 +928,12 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 
 /** Commands that read a password or a token from stdin, by their words (and `sudo`'s options before them). */
 const STDIN_SECRET =
-	/^(?:sudo(?:\s+-[A-Za-z]*S[A-Za-z]*)(?:\s|$)|(?:sudo(?:\s+-\S+)*\s+)?(?:(?:docker|podman|nerdctl|helm|oras|crane|skopeo|buildah)\s+(?:registry\s+)?login\b.*--password-stdin|gh\s+auth\s+login\b.*--with-token|gh\s+secret\s+set\b|(?:podman|docker)\s+secret\s+create\b|(?:npx\s+)?wrangler\s+secret\s+put\b|vercel\s+env\s+add\b|kubectl\s+create\s+secret\b|fly(?:ctl)?\s+secrets\s+(?:set|import)\b|netlify\s+env:set\b|vault\s+(?:login|kv\s+put|write)\b|chpasswd\b|passwd\b|openssl\b.*-pass(?:in|out)?\s+stdin))/;
+	/^(?:sudo(?:\s+-[A-Za-z]*S[A-Za-z]*)(?:\s|$)|(?:sudo(?:\s+-\S+)*\s+)?(?:(?:docker|podman|nerdctl|helm|oras|crane|skopeo|buildah)\s+(?:registry\s+)?login\b.*--password-stdin|gh\s+auth\s+login\b.*--with-token|gh\s+secret\s+set\b|(?:podman|docker)\s+secret\s+create\b|(?:npx\s+)?wrangler\s+secret\s+put\b|vercel\s+env\s+add\b|kubectl\s+create\s+secret\b|fly(?:ctl)?\s+secrets\s+(?:set|import)\b|netlify\s+env:set\b|pulumi\s+config\s+set\b.*--secret\b|vault\s+(?:login|kv\s+put|write)\b|chpasswd\b|passwd\b|openssl\b.*-pass(?:in|out)?\s+stdin))/;
 
 /**
  * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`,
  * `psexec -p pw`, `osql -P pw`) and positional ones (`net use Z: \\srv\share pw /user:CORP\alice`, `net user svc pw /add`).
- * (`*` asks for the password at a prompt.)
+ * (`*` asks for the password at a prompt: passwordAdder adds no run of `*`.)
  */
 function windowsPasswords(text: string, add: AddPassword) {
 	if (!/\b(?:cmdkey|schtasks|psexec|net|wmic|winrs|osql|sqlcmd|runas)\b|\/(?:pass|password|pwd):/i.test(text)) return;
@@ -940,14 +961,13 @@ function windowsPasswords(text: string, add: AddPassword) {
 						? /^-P$/
 						: undefined;
 		for (let k = 0; flag && k + 1 < rest.length; k++)
-			if (flag.test(rest[k].text) && rest[k + 1].text !== "*")
-				addTail(add, rest[k + 1], rest[k + 1].text, rest[k + 1].quoted);
+			if (flag.test(rest[k].text)) addTail(add, rest[k + 1], rest[k + 1].text, rest[k + 1].quoted);
 		// `net use [drive] \\share [password] /user:…` and `net user name [password] /add`: the positional word after the share or the name.
 		if (tool === "net" && /^(?:use|user)$/i.test(rest[0]?.text ?? "")) {
 			const positional = rest.slice(1).filter((w) => !/^\//.test(w.text));
 			const skip = rest[0].text.toLowerCase() === "use" ? positional.findIndex((w) => /^\\\\/.test(w.text)) + 1 : 1;
 			const pw = skip > 0 ? positional[skip] : undefined;
-			if (pw && pw.text !== "*" && !/^[A-Za-z]:$/.test(pw.text)) addTail(add, pw, pw.text, pw.quoted);
+			if (pw && !/^[A-Za-z]:$/.test(pw.text)) addTail(add, pw, pw.text, pw.quoted);
 		}
 	}
 }
@@ -987,8 +1007,8 @@ function oracleLogins(text: string, add: AddPassword) {
 
 /**
  * How command-line and config rules add a password: unless it's a reference (`$PASS`, `${PASS}`, `{{ pw }}`, a
- * `<placeholder>`, `%VAR%`) or a docs' placeholder. `quoted`: inside single quotes, where a shell expands nothing:
- * `-u 'admin:$q…'` is a literal. (In a shell, `$name` unquoted is expanded whatever the name.)
+ * `<placeholder>`, `%VAR%`), a docs' placeholder or a prompt's `*`. `quoted`: inside single quotes, where a shell
+ * expands nothing: `-u 'admin:$q…'` is a literal. (In a shell, `$name` unquoted is expanded whatever the name.)
  */
 function passwordAdder(out: Finding[]): AddPassword {
 	return (start, value, rule, quoted = false, end = start + value.length) => {
@@ -1014,7 +1034,7 @@ const USER_PASSWORD = /^(?:curl|curlie|xh|xhs|http|https|httpie|wget|grpcurl|hey
  */
 function cliPasswords(text: string, out: Finding[]) {
 	if (
-		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|-a |\||<<</i.test(
+		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
 			text,
 		)
 	)
@@ -1023,33 +1043,51 @@ function cliPasswords(text: string, out: Finding[]) {
 	// The password options of programs outside the tool table: `hydra -p`, `xfreerdp /p:`, `unrar x -p…`, `ssh-keygen -N`,
 	// and a `password <v>` word pair on any command line (`nmcli … password <v>`, `mysqladmin … password <v>`). (`-p` is
 	// a port, a path or a profile to most programs: only these say it is a password.)
-	// (Bare, or quoted as a shell quotes it: `-p 'Password123!'`, `/p:"Summer2024!"`.)
+	// (Bare, or quoted as a shell quotes it: `-p 'Password123!'`, `/p:"Summer2024!"`; in a line's inline code too,
+	// `` Run `hydra -p pw` ``.)
 	for (const m of text.matchAll(
-		/(?:^|[ \t])(-[pPNA]|\/p:|password[ \t]+)[ \t]?(?:'([^'\n]{6,64})'|"([^"\n]{6,64})"|([^\s'"`]{6,64}))(?=[\s;|&)]|$)/g,
+		/(?:^|[ \t])(-[pNA]|\/p:|password[ \t]+)([ \t]?)(?:'([^'\n]{6,64})'|"([^"\n]{6,64})"|([^\s'"`]{6,64}))(?=[\s;|&)`]|$)/g,
 	)) {
-		const pw = m[2] ?? m[3] ?? m[4];
-		const at = m.index + m[0].length - pw.length - (m[4] === undefined ? 1 : 0);
+		const [, option, blank] = m;
+		const pw = m[3] ?? m[4] ?? m[5];
+		const bare = m[5] !== undefined;
+		const at = m.index + m[0].length - pw.length - (bare ? 0 : 1);
 		const program = commandAt(text, at)?.command[0];
-		if (pw.startsWith("-") || !program || /[()/]|[.,;:]$|\.(?:txt|lst|list|dic|csv)$/i.test(pw)) continue;
+		// (A word list is no password: `nxc smb hosts -u users.txt -p passwords.txt`.)
+		if (pw.startsWith("-") || !program || /\.(?:txt|lst|list|dic|csv)$/i.test(pw)) continue;
 		const name = programName(program);
-		// (After a bare `password` word, on any command, only a password's shape: letters with a digit, or of both
-		// cases with a symbol, `Zebra-Lamp-Cloud`; not prose, `authentication;`, `re-use`. A program's own password
-		// option takes any value.)
+		const word = /^password/.test(option);
+		// (rar's `-p` takes its password attached, `-pPW`; alone it asks for one, and the archive's name follows,
+		// `rar a -p backup.rar`. A password written apart anyway, `-p Summer2024`, is still the one its writer meant.)
+		const takes =
+			word ||
+			(option === "/p:" && /^(?:(?:x|w|s)?freerdp3?|rdesktop)$/.test(name)) ||
+			(option === "-p" &&
+				(/^(?:hydra|medusa|twine|evil-winrm|crackmapexec|netexec|nxc|rpcclient|smbmap|enum4linux(?:-ng)?|useradd|usermod)$|^impacket-/.test(
+					name,
+				) ||
+					(/^(?:unrar|rar)$/.test(name) && !(blank && /\.(?:rar|r\d\d|zip|7z|exe|sfx)$/i.test(pw))))) ||
+			(option === "-N" && name === "ssh-keygen") ||
+			(option === "-A" && /^snmp/.test(name));
+		if (!takes) continue;
+		// A program's own password option or word takes any value, and quoted, all its quotes hold: `-p 'Xk9(mP2/vQ7'`.
+		// Otherwise a path or a call is no password (`-p /tmp/pwlist`, `password hash(pw1)`), and a sentence's
+		// punctuation is none of one (`hydra -p Winter2024.`); after a `password` word on any other command, only a
+		// password's shape is one: letters with a digit, or of both cases with a symbol, `Zebra-Lamp-Cloud`; not prose,
+		// `authentication`, `re-use`.
+		const own = !word || /^(?:nmcli|mysqladmin)$/.test(name);
+		const whole = own && !bare;
+		if (!whole && /[()/]/.test(pw)) continue;
+		const value = whole ? pw : pw.replace(/[.,;:]+$/, "");
 		if (
-			/^password/.test(m[1]) &&
-			!((/[A-Za-z]/.test(pw) && /\d/.test(pw)) || (/[a-z]/.test(pw) && /[A-Z]/.test(pw) && /[\W_]/.test(pw)))
+			!own &&
+			!(
+				(/[A-Za-z]/.test(value) && /\d/.test(value)) ||
+				(/[a-z]/.test(value) && /[A-Z]/.test(value) && /[\W_]/.test(value))
+			)
 		)
 			continue;
-		const takes =
-			/^password/.test(m[1]) ||
-			(m[1] === "/p:" && /^(?:(?:x|w|s)?freerdp3?|rdesktop)$/.test(name)) ||
-			(m[1] === "-p" &&
-				/^(?:hydra|medusa|unrar|rar|twine|evil-winrm|crackmapexec|netexec|nxc|rpcclient|smbmap|enum4linux(?:-ng)?|useradd|usermod)$|^impacket-/.test(
-					name,
-				)) ||
-			(m[1] === "-N" && name === "ssh-keygen") ||
-			(m[1] === "-A" && /^snmp/.test(name));
-		if (takes) add(at, pw, "structure:cli-password");
+		add(at, value, "structure:cli-password");
 	}
 	// `wandb login <key>`: a key as a command's argument.
 	for (const m of text.matchAll(/\bwandb[ \t]+login(?:[ \t]+--?[\w-]+)*[ \t]+([0-9a-f]{40}|local-[0-9a-f]{40,})\b/g))
@@ -1104,9 +1142,9 @@ function cliPasswords(text: string, out: Finding[]) {
 		add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
 	}
 	// A password written unquoted with a shell's operators in it (`-pXk9(mP2&vQ7`) runs to the next blank, as the person
-	// who wrote it reads it; the shell would have cut it at the operator.
+	// who wrote it reads it; the shell would have cut it at the operator. (Not past a quote: `"$(… pw)"` closes there.)
 	const toBlank: AddPassword = (start, value, rule, quoted, end = start + value.length) => {
-		const rest = /^[()&|;<>]+[^\s()&|;<>]\S*/.exec(text.slice(end, end + 4096))?.[0] ?? "";
+		const rest = /^[()&|;<>]+[^\s()&|;<>"'`]\S*/.exec(text.slice(end, end + 4096))?.[0] ?? "";
 		add(start, value + rest, rule, quoted, end + rest.length);
 	};
 	for (const line of text.matchAll(/^[^\n]*$/gm)) {
@@ -1158,22 +1196,26 @@ function listWords(text: string, at: number): ShellWord[] | undefined {
 		if (q === '"' || q === "'") {
 			const close = stringEnd(text, i);
 			if (close < 0) return undefined;
+			// (An escaped character is written as its whole escape, `\"`. The word is what its quotes hold: a value's span
+			// is never widened over them, so `"-a", "pa\"ss"` keeps its quotes.)
 			let value = "";
 			const map: number[] = [];
+			const ends: number[] = [];
 			for (let j = i + 1; j < close; j++) {
-				if (text[j] === "\\" && j + 1 < close) j++;
-				value += text[j];
 				map.push(j);
+				if (text[j] === "\\") j++;
+				value += text[j];
+				ends.push(j + 1);
 			}
 			words.push({
 				text: value,
-				start,
-				end: close + 1,
-				raw: text.slice(start, close + 1),
+				start: start + 1,
+				end: close,
+				raw: text.slice(start + 1, close),
 				quoted: true,
 				literalEnd: q === "'",
 				map,
-				ends: map.map((j) => j + 1),
+				ends,
 				substitutions: [],
 			});
 			i = close + 1;
@@ -1281,9 +1323,9 @@ function signInLinks(text: string, out: Finding[]) {
 		if (at < 0) continue;
 		const next = segments[at + 1]?.value ?? "";
 		if (SIGN_IN_SEGMENT.test(next) || /^(?:password|email|account|user)s?$/i.test(next)) at++;
+		// (A token right after it is taken first, read as an id or not.)
 		const id =
 			segments[at + 1] &&
-			!isSignInToken(segments[at + 1].value) &&
 			/^[A-Za-z0-9_=-]{1,24}$/.test(segments[at + 1].value) &&
 			!readsAsWords(segments[at + 1].value);
 		const token = segments.slice(at + 1, at + (id ? 3 : 2)).find((seg) => isSignInToken(seg.value));
@@ -1335,10 +1377,11 @@ function netrcLike(text: string, out: Finding[]) {
 	// tokens follow one another, as netrc writes them; prose that mentions a login and a password doesn't.
 	// Between tokens: blanks, a line break, a `\n` escape, or the end of one string of a JSON lines array and the next.
 	const SEP = String.raw`(?:[ \t]+|[ \t]*(?:\\n|\r?\n)(?:["'],?[ \t\r\n]{0,40}["'])?[ \t]*)`;
-	// (Or `machine <host> password <pw> login <user>`: netrc tokens may come in any order.)
+	// (Or `machine <host> password <pw> login <user>`: netrc tokens may come in any order. A word that joins the two is
+	// no user: `"login or password incorrect"`.)
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`(?:\b(?:machine${SEP}[^\s,;:]{1,200}|default)${SEP}|(?:^|\\n|["'])[ \t]*)(?:login${SEP}[^\s,;:]{1,200}${SEP}(?:account${SEP}\S{1,200}${SEP})?)?password[ \t]+([^\s"'\\]{3,500})`,
+			String.raw`(?:\b(?:machine${SEP}[^\s,;:]{1,200}|default)${SEP}|(?:^|\\n|["'])[ \t]*)(?:login${SEP}(?!(?:and|or|with|via|using|by|&)${SEP})[^\s,;:]{1,200}${SEP}(?:account${SEP}\S{1,200}${SEP})?)?password[ \t]+([^\s"'\\]{3,500})`,
 			"gm",
 		),
 	)) {
@@ -1366,8 +1409,9 @@ function sqlPasswords(text: string, out: Finding[]) {
 	const forms = [
 		/\bIDENTIFIED\s+(?:WITH\s+['"`]?\w+['"`]?\s+)?BY\s+(?!PASSWORD\b)(?:'((?:[^'\n]|'')+)'|"([^"\n]+)")/gi,
 		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too. (Up to a
-		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.)
-		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
+		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.
+		// Not MySQL's `IDENTIFIED BY RANDOM PASSWORD`, which makes one.)
+		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b|RANDOM\s+PASSWORD\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
 		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?'((?:[^'\n]|'')+)'/gi,
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*'((?:[^'\n]|'')+)'/gi,
 		// MySQL's current password, which a password change authenticates with: `IDENTIFIED BY 'new' REPLACE 'old'`.
@@ -1376,15 +1420,9 @@ function sqlPasswords(text: string, out: Finding[]) {
 	for (const re of forms) {
 		for (const m of text.matchAll(re)) {
 			const pw = m[1] ?? m[2];
-			// (A bind parameter, `:pw` or `?`, is never quoted and can't start the unquoted form: these are all literals.)
-			if (
-				pw.length < 3 ||
-				isInert(pw) ||
-				isPlaceholder(pw) ||
-				/^\*[0-9A-F]{40}$/.test(pw) ||
-				/^(?:password|identified|externally|globally|values|null)$/i.test(pw)
-			)
-				continue;
+			// (A bind parameter, `:pw` or `?`, is never quoted and can't start the unquoted form: these are all literals.
+			// MySQL's `*<40 hex>` is a hash, passwordHashes's.)
+			if (pw.length < 3 || isInert(pw) || isPlaceholder(pw) || /^\*[0-9A-F]{40}$/.test(pw)) continue;
 			const start = m.index + m[0].lastIndexOf(pw);
 			out.push({ start, end: start + pw.length, kind: "password", rule: "structure:sql-password", confidence: 0.95 });
 		}
@@ -1605,13 +1643,10 @@ function findPhrases(
 	out: Finding[],
 ) {
 	const long = words.length > 48;
-	// (Where the label words before word `i` on its line begin, carried forward: `label` is `i` when none precede it.)
-	let label = 0;
 	for (let i = 0; i < words.length; i++) {
 		const startsLine = i === 0 || words[i].lineBreakBefore;
-		if (startsLine || !LABEL_WORDS.has(words[i - 1].word)) label = i;
-		const afterLabel = label < i && (label === 0 || words[label].lineBreakBefore);
-		if (!startsLine && (long || !afterLabel)) continue;
+		// (A label may follow other list words on its line: `Copy this seed phrase: slow core …`.)
+		if (!startsLine && (long || !LABEL_WORDS.has(words[i - 1].word))) continue;
 		for (const n of [24, 21, 18, 15, 12]) {
 			if (i + n > words.length) continue;
 			const endsLine = i + n === words.length || words[i + n].lineBreakBefore;
