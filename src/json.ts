@@ -138,14 +138,20 @@ function pythonEscape(text: string, at: number): [decoded: string, length: numbe
 	return jsonEscape(text, at);
 }
 
+/** Whether a decoded literal is a document of its own: several lines, or a tab's columns. */
+function isOutputText(decoded: string): boolean {
+	return /\n.*\S/.test(decoded) || decoded.includes("\t");
+}
+
 /**
  * The single-quoted literals of a Python repr (`{'stdout': 'PGPASSWORD=…\n…', 'returncode': 0}`, a subprocess
- * result printed whole) that encode text of several lines: decoded and mapped as jsonStringLiterals' are.
+ * result printed whole) that are documents of their own, as jsonStringLiterals reads them: decoded and mapped as
+ * those are.
  */
 export function* pythonReprLiterals(text: string): Generator<{ decoded: string; map: number[] }> {
-	if (!/['\]][ \t]*:[ \t]*'|\('|, '/.test(text) || !/\\n/.test(text)) return;
+	if (!/['\]][ \t]*:[ \t]*'|\('|, '/.test(text) || !/\\[nt]/.test(text)) return;
 	for (const { decoded, map, escapes } of stringLiterals(text, "'"))
-		if (escapes > 0 && /\n.*\S/.test(decoded)) yield { decoded, map };
+		if (escapes > 0 && isOutputText(decoded)) yield { decoded, map };
 }
 
 /**
@@ -174,8 +180,7 @@ export function jsonStringLiterals(text: string): { decoded: string; map: number
 		else if (
 			escapes > 0 &&
 			decoded.length >= 20 &&
-			(/\n.*\S/.test(decoded.replace(/\n$/, "")) ||
-				decoded.includes("\t") ||
+			(isOutputText(decoded) ||
 				decoded.includes('"') ||
 				// (An escaped slash, PHP's `"https:\/\/…"`, only where JSON's syntax stands around the literal: in a sed
 				// script in a shell's string, `"s/^DB_PASSWORD=.*/DB_PASSWORD=a\/b/"`, it escapes the script's delimiter.)

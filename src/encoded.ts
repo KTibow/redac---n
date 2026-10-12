@@ -62,12 +62,15 @@ const HEX_SET = asciiSet("0123456789abcdefABCDEF");
 const MIN_HEX_RUN = 24;
 const MAX_HEX_RUN = 100000;
 
-/** The base64 values in `text`, whole: a run of the alphabet (base64 or base64url) with up to two `=` of padding, bounded by other characters. */
+/**
+ * The base64 values in `text`, whole: a run of the alphabet (base64 or base64url) with up to two `=` of padding, bounded
+ * by other characters, 16 characters with its padding (`V2ludGVyMjAyNCE=`, an 11-character password's).
+ */
 function* base64Runs(text: string): Generator<[start: number, end: number]> {
-	for (const [start, runEnd] of longRuns(text, BASE64_SET, MIN_BASE64_RUN)) {
+	for (const [start, runEnd] of longRuns(text, BASE64_SET, MIN_BASE64_RUN - 2)) {
 		let end = runEnd;
 		while (end < runEnd + 2 && text[end] === "=") end++;
-		if (/[A-Za-z0-9+/=_-]/.test(text[end] ?? "")) continue;
+		if (end - start < MIN_BASE64_RUN || /[A-Za-z0-9+/=_-]/.test(text[end] ?? "")) continue;
 		yield [start, end];
 	}
 }
@@ -209,8 +212,14 @@ function wrappedBase64(text: string): { text: string; start: number; end: number
 			run.text += body;
 			run.end = at + body.length;
 			run.lines++;
-			// (A shorter line, or padding, is the last.)
-			if (body.length < run.width || body.endsWith("=")) close();
+			// (A shorter line, or padding, is the last. A shorter line that more base64 no wider follows may open a blob of
+			// its own instead, after a value printed unwrapped (`base64 -w0`, then `base64`'s 76 columns): it's read both
+			// ways.)
+			if (body.length < run.width || body.endsWith("=")) {
+				close();
+				if (!body.endsWith("=") && body.length >= MIN_BASE64_RUN && continuesAfter(parts, i, body.length))
+					run = { text: body, start: at, end: at + body.length, width: body.length, lines: 1 };
+			}
 			continue;
 		}
 		close();
@@ -221,6 +230,12 @@ function wrappedBase64(text: string): { text: string; start: number; end: number
 	}
 	close();
 	return out;
+}
+
+/** Whether the line after `parts[i]` (text split on its line breaks, the breaks kept) is base64 no wider than `width`. */
+function continuesAfter(parts: string[], i: number, width: number): boolean {
+	const next = parts[i + 2]?.trim();
+	return !!next && next.length <= width && /^[A-Za-z0-9+/]+={0,2}$/.test(next);
 }
 
 /** Whether [start, end) is all that's on its line, apart from a log timestamp or prompt prefix. */

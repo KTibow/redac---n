@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
+import { randomBytes } from "./random.ts";
 
 test("a known value is hidden in its base64, hex and percent-encoded forms", () => {
 	const red = new Redactor({ fingerprintKey: "t", known: ["Wq7mN2vL9xK4"] });
@@ -158,6 +159,28 @@ test("a line of a wrapped base64 blob is not read as one token's base64", () => 
 	).toString("base64");
 	const wrapped = blob.match(/.{1,64}/g)!.join("\n");
 	assert.equal(r().redact(`data:\n${wrapped}\n`).text, `data:\n${wrapped}\n`);
+});
+
+test("base64 after a value printed unwrapped is a blob of its own, and a short value counts its padding", () => {
+	// (`base64 -w0 nonce.bin; base64 .env`: the password straddles the second blob's first two lines.)
+	const nonce = Buffer.from(Array.from({ length: 66 }, (_, i) => (i * 97 + 13) & 255)).toString("base64");
+	const env = Buffer.from(
+		"# deploy: ci-runner-7\nDATABASE_URL=postgres://app:Xk29fLq7Wm3Rt8Zp@db.internal:5432/app\nLOG_LEVEL=info\n",
+	).toString("base64");
+	hidden(`${nonce}\n${env.match(/.{1,76}/g)!.join("\n")}\n`, env.slice(76, 100));
+	hidden("$ echo -n 'Winter2024!' | base64\nV2ludGVyMjAyNCE=", "V2ludGVyMjAyNCE=");
+});
+
+test("a Python repr's strings are read as JSON's are: a tab's columns, and the decoded pass decides inside them", () => {
+	const off = new Redactor({ fingerprintKey: "t", guessing: "off" });
+	assert.ok(!off.redact("{'stdout': 'DB_PASSWORD\\tKx9mQv2Lp7Rt9Wz3', 'rc': 0}").text.includes("Kx9mQv2Lp7Rt9Wz3"));
+	// (A file's base64 in a repr: no line of it is a token of its own.)
+	for (let i = 0; i < 10; i++) {
+		const lines = randomBytes(300)
+			.toString("base64")
+			.match(/.{1,60}/g)!;
+		kept(`{'content': '${lines.join("\\n")}\\n', 'encoding': 'base64'}`, lines[0]);
+	}
 });
 
 test("a line that is only base64 of a generated token or a password is hidden, of an ID, an address or a link kept", () => {

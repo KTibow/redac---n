@@ -301,9 +301,9 @@ export class Redactor {
 		const plain = text.includes('"')
 			? withinLiterals(text, this.detectPlain(text, options))
 			: this.detectPlain(text, options);
-		// Percent-encoded text (a URL in `redirect=`, JSON in a query) and a Python repr's strings: each decoded, scanned,
-		// and mapped back.
-		const repr = depth >= 3 ? plain : this.withDecoded(plain, pythonReprLiterals(text), options, depth);
+		// A Python repr's strings (`{'stdout': '…\n…'}`) and percent-encoded text (a URL in `redirect=`, JSON in a query):
+		// each decoded, scanned, and mapped back.
+		const repr = depth >= 3 ? plain : this.withLiterals(plain, [...pythonReprLiterals(text)], options, depth);
 		const found =
 			depth >= 3 || this.without.has("percent-encoded")
 				? repr
@@ -311,20 +311,22 @@ export class Redactor {
 		if (depth >= 3 || !mayHoldJsonText(text) || this.without.has("json-literals")) return found;
 		// JSON-escaped text (a serialized request, a log of JSON, a tool result inside a transcript): every
 		// string literal holding escapes is decoded, scanned as the text it encodes, and mapped back.
-		const extra: Finding[] = [];
-		const literals = jsonStringLiterals(text);
-		for (const lit of literals) {
-			// Decoded, a literal may hold colour codes of its own (`\u001b[32m` in a JSON log of terminal output).
-			const inner = this.detectNormalized(lit.decoded, { ...options, hint: {} }, depth + 1);
-			for (const f of inner)
-				extra.push({
-					...f,
-					start: lit.map[f.start],
-					end: lit.map[f.end],
-					value: f.value ?? lit.decoded.slice(f.start, f.end),
-				});
-		}
+		return this.withLiterals(found, jsonStringLiterals(text), options, depth);
+	}
+
+	/**
+	 * `found`, with what detection finds in each of a text's decoded string literals (in text order, apart), mapped
+	 * back; inside a literal, the decoded pass decides.
+	 */
+	private withLiterals(
+		found: Finding[],
+		literals: { decoded: string; map: number[] }[],
+		options: Pass,
+		depth: number,
+	): Finding[] {
 		if (!literals.length) return found;
+		// (Decoded, a literal may hold colour codes of its own: `\u001b[32m` in a JSON log of terminal output.)
+		const extra = this.decodedFindings(literals, options, depth);
 		// Inside a decoded literal the decoded pass decides: the raw pass reads the literal through its escapes (`\"`
 		// before a value, `\n` for a line break) and can miss what makes a value public (a label on the line above, a
 		// quote that closed a string, a name the escapes hide). A raw finding inside one stays only where the decoded
@@ -359,12 +361,22 @@ export class Redactor {
 		options: Pass,
 		depth: number,
 	): Finding[] {
-		const extra: Finding[] = [];
+		const extra = this.decodedFindings(decodings, options, depth);
+		return extra.length ? merge([...found, ...extra]) : found;
+	}
+
+	/** What detection finds in each decoded text, mapped back to the text it was decoded from. */
+	private decodedFindings(
+		decodings: Iterable<{ decoded: string; map: number[] }>,
+		options: Pass,
+		depth: number,
+	): Finding[] {
+		const out: Finding[] = [];
 		for (const { decoded, map } of decodings) {
 			for (const f of this.detectNormalized(decoded, { ...options, hint: {} }, depth + 1))
-				extra.push({ ...f, start: map[f.start], end: map[f.end], value: f.value ?? decoded.slice(f.start, f.end) });
+				out.push({ ...f, start: map[f.start], end: map[f.end], value: f.value ?? decoded.slice(f.start, f.end) });
 		}
-		return extra.length ? merge([...found, ...extra]) : found;
+		return out;
 	}
 
 	private detectPlain(text: string, options: Pass): Finding[] {
