@@ -125,6 +125,33 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 	}
 });
 
+test("a hex dump's bytes are its hex columns, not a hex word in its text column or a hex line after it", () => {
+	const xxd = (text: string) =>
+		(
+			Buffer.from(text)
+				.toString("hex")
+				.match(/.{1,32}/g) ?? []
+		)
+			.map((h, k) => {
+				const groups = h.match(/.{1,4}/g)!.join(" ");
+				const ascii = Buffer.from(h, "hex")
+					.toString("latin1")
+					.replace(/[^ -~]/g, ".");
+				return `${(k * 16).toString(16).padStart(8, "0")}: ${groups.padEnd(39)}  ${ascii}`;
+			})
+			.join("\n");
+	// (The first row's text column starts `face `, and `password` runs on into the second.)
+	const dump = xxd("face id: off\npassword=Xk29fLq7Wm3Rt8Zp\n");
+	assert.ok(!r().redact(`$ xxd settings.txt\n${dump}\n`).text.includes(dump.split("\n")[1].slice(0, 40)), dump);
+	// (`xxd -p` puts 30 bytes on a line: the password runs on into the second. A binary file's dump comes first.)
+	const binary = Buffer.from(Array.from({ length: 40 }, (_, k) => (k * 37) % 256)).toString("hex");
+	const plain = Buffer.from("PORT=3000\nDB_PASSWORD=Xk29fLq7Wm3Rt8Zp\n")
+		.toString("hex")
+		.match(/.{1,60}/g)!;
+	const out = r().redact(`${binary.match(/.{1,60}/g)!.join("\n")}\n\n${plain.join("\n")}\n`).text;
+	assert.ok(out.startsWith(binary.slice(0, 60)) && !out.includes(plain[1]), out);
+});
+
 test("base64Binary strips padding in linear time", () => {
 	assert.equal(base64Binary("=".repeat(200_000) + "x"), undefined);
 	assertLinear("padding", (n) => base64Binary("=".repeat(n) + "x"), 100_000);

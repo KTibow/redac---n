@@ -134,3 +134,54 @@ test("a line of a wrapped base64 blob is not read as one token's base64", () => 
 	const wrapped = blob.match(/.{1,64}/g)!.join("\n");
 	assert.equal(r().redact(`data:\n${wrapped}\n`).text, `data:\n${wrapped}\n`);
 });
+
+test("a line that is only base64 of a generated token or a password is hidden, of an ID, an address or a link kept", () => {
+	const b64 = (value: string) => Buffer.from(value).toString("base64");
+	const line = (value: string) => `$ echo -n "$VALUE" | base64\n${b64(value)}\n`;
+	for (const value of ["kR7vQ2mXz9LpW4tN8sB3yH6c", "Liverpool#1892"]) hidden(line(value), b64(value));
+	for (const value of [
+		"e04423e4-7a67-4f9c-b291-99e63c1c2158",
+		"Jane.Doe42@Example.com",
+		"https://api.example.com/v1/Users/42",
+	])
+		kept(line(value), b64(value));
+	// (A blob wrapped over lines later in the text leaves the line before it its own.)
+	const blob = Buffer.from("LOG_LEVEL=info\nREGION=eu-west-1\n".repeat(6)).toString("base64");
+	const later = `$ base64 app.conf\n${blob.match(/.{1,64}/g)!.join("\n")}\n`;
+	hidden(line("kR7vQ2mXz9LpW4tN8sB3yH6c") + later, b64("kR7vQ2mXz9LpW4tN8sB3yH6c"));
+});
+
+test("base64 of text with tabs, CRLF line ends, another script or UTF-16 big-endian is read as text", () => {
+	const encoded = [
+		Buffer.from("DB_HOST=db\r\nDB_PASSWORD=Xk29fLq7Wm3R\r\nA=1\r\nB=2\r\n"),
+		Buffer.from("machine\tapi.example.com\tlogin\tme\tpassword\tXk29fLq7Wm3Rt8Zp\n"),
+		Buffer.from("# データベースの接続設定です\nDB_PASSWORD=Xk29fLq7Wm3R\n"),
+		// (Java's `getBytes("UTF-16")`: big-endian, after a byte-order mark.)
+		Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from("DB_PASSWORD=Xk29fLq7Wm3Rt8Zp", "utf16le").swap16()]),
+	].map((b) => b.toString("base64"));
+	for (const b64 of encoded) hidden(`data:\n  app.env: ${b64}\n`, b64.slice(-12));
+});
+
+test("base64 wrapped in a string literal is read to its last line, which the closing quote ends", () => {
+	// (The password is all of the last line, padded or not.)
+	for (const password of ["Xk29fLq7Wm3Rt8Zp", "Xk29fLq7Wm3Rt8Zp9"]) {
+		const b64 = Buffer.from(`PORT=30000\nNODE_ENV=production\nSMTP_PASSWORD=${password}\n`).toString("base64");
+		hidden(`const env = \`${b64.replace(/(.{60})/g, "$1\n")}\`;\n`, b64.slice(60));
+	}
+});
+
+test("base64 blobs one after another are read apart", () => {
+	// (`for f in app.conf .env; do base64 "$f"; done`: the first ends on a full line, padded; the second's first line
+	// ends at the password's `=`.)
+	const conf = Buffer.from(`${"LOG_LEVEL=info\nREGION=eu-west-1\n".repeat(3)}WORKERS=4\nTZ=UTC\n`).toString("base64");
+	const env = Buffer.from(
+		"PORT=3000\nNODE_ENV=production\nLOG_LEVEL=info\nDB_PASSWORD=Xk29fLq7Wm3Rt8Zp\nREGION=eu-west-1\n",
+	).toString("base64");
+	const wrap = (b64: string) => b64.match(/.{1,76}/g)!.join("\n");
+	const out = r().redact(`${wrap(conf)}\n${wrap(env)}\n`).text;
+	assert.ok(out.startsWith(wrap(conf)) && !out.includes(env.slice(76, 100)), out);
+	// (A padded value on one line, `base64 -w0`, wider than the blob's lines.)
+	const line = Buffer.from(`${"LOG_LEVEL=info\nREGION=eu-west-1\n".repeat(2)}WORKERS=16\nTZ=UTC\n`).toString("base64");
+	const after = r().redact(`${line}\n${wrap(env)}\n`).text;
+	assert.ok(after.startsWith(line) && !after.includes(env.slice(76, 100)), after);
+});

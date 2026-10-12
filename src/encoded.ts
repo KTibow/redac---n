@@ -45,9 +45,9 @@ function textOfBytes(bytes: Uint8Array | undefined, min = 8): string | undefined
 	return printable >= [...text].length * TEXT_SHARE ? text : undefined;
 }
 
-/** Hex digits as bytes, or undefined for an odd count or a character that isn't a hex digit. */
+/** Hex digits as bytes, or undefined for an odd count. */
 function hexBytes(hex: string): Uint8Array | undefined {
-	if (hex.length % 2 || !/^[0-9a-f]*$/i.test(hex)) return undefined;
+	if (hex.length % 2) return undefined;
 	const out = new Uint8Array(hex.length / 2);
 	for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
 	return out;
@@ -188,10 +188,7 @@ function wrappedBase64(text: string): { text: string; start: number; end: number
 		if (!run && parts[i].length < MIN_BASE64_RUN) continue;
 		const body = parts[i].trim();
 		const at = offset + parts[i].indexOf(body);
-		if (!body) {
-			close();
-			continue;
-		}
+		// (Any other line, a blank one too, ends a run; one with base64 at its end opens the next.)
 		if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body)) {
 			const head = base64End(body);
 			if (run && head > 0 && head <= run.width && /["'`)\]}>]/.test(body[head])) {
