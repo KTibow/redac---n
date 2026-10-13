@@ -1336,3 +1336,21 @@ test("a line of several pairs is no YAML value, and a comment after a sibling's 
 	kept("env:\n  - name: REQUEST_ID  # set by CI\n    value: Xk9fmQ2vLpzWq7Rt4NbYc8Hd\n", "Xk9fmQ2vLpzWq7Rt4NbYc8Hd");
 	assert.equal([...attributes("  - name: API_TOKEN  # from vault")][0].value.value, "API_TOKEN");
 });
+
+test("Bundler's name for a gem server's host holds its credentials; its other settings by gem or URL don't", () => {
+	for (const name of [
+		"BUNDLE_GEMS__CONTRIBSYS__COM",
+		"BUNDLE_ENTERPRISE__CONTRIBSYS__COM",
+		"BUNDLE_RUBYGEMS__PKG__GITHUB__COM",
+		"BUNDLE_GEMS__GRAPHQL__PRO",
+	])
+		assert.equal(nameClass(name), "credential", name);
+	for (const name of [
+		"BUNDLE_PATH",
+		"BUNDLE_BUILD__NOKOGIRI",
+		"BUNDLE_LOCAL__RACK",
+		"BUNDLE_GEM__TEST",
+		"BUNDLE_MIRROR__RUBYGEMS__ORG",
+	])
+		assert.notEqual(nameClass(name), "credential", name);
+});

@@ -22,6 +22,7 @@ import {
 	isSettingName,
 	isVendorName,
 	namesPasswordOrPin,
+	namesSession,
 	words,
 } from "./names.ts";
 import { lowerBound } from "./lines.ts";
@@ -51,27 +52,33 @@ import { isSessionCookie } from "./structure.ts";
 /**
  * Under a name the name rules didn't take, in a secret file: a value no setting has, under a vendor's bare word
  * (`STRIPE=<uuid>`, `OPENAI=Tiger1103#x`) or a name with a credential word that the in-text classifier reads otherwise
- * (`BASIC_AUTH=Harbor2291!`, `MY_SECRET_THING=…`): the file says its values are secrets. Not under a name a setting
- * has (`APP_URL`, `SSH_AUTH_SOCK`), nor a value that reads as a setting: words, numbers, versions, paths, hosts and URLs
- * (`DEBUG=true`, `REGION=us-east-1`). These findings still pass the decision stage (policy.ts), which keeps publishable
- * keys and other public values.
+ * (`BASIC_AUTH=Harbor2291!`, `MY_SECRET_THING=…`) or a session's (`INSTAGRAM_SESSION_ID`: names.ts namesSession): the
+ * file says its values are secrets. Not under a name a setting has (`APP_URL`, `SSH_AUTH_SOCK`), nor a value that reads
+ * as a setting: words, numbers, versions, paths, hosts and URLs (`DEBUG=true`, `REGION=us-east-1`). These findings
+ * still pass the decision stage (policy.ts), which keeps publishable keys and other public values.
  */
 function isOpaqueSetting(name: string, v: string, tokenUnderAnyName: boolean): boolean {
-	if (isSettingName(name) || isPodName(v)) return false;
+	if (!mayHoldOpaque(name, tokenUnderAnyName) || isPodName(v)) return false;
 	// (Under a name that says nothing, `admin:` in `config/secrets.staging.yml`, only a generated token or a made password
 	// is one, and only in a file that holds nothing else: `.env` has settings and public IDs (`GPG_KEY=<fingerprint>`).
 	// Not one a word and a hyphen lead, `gradle-<hash>`: a cache's key.)
-	if (!(isBareVendorWord(name) || hasCredentialWord(name)))
-		return (
-			tokenUnderAnyName &&
-			(isRandomToken(v, MIN_UNNAMED_TOKEN) || isMadePassword(v)) &&
-			!isSettingShaped(v) &&
-			!/^[a-z]{2,}-/i.test(v)
-		);
+	if (!(isBareVendorWord(name) || hasCredentialWord(name) || namesSession(name)))
+		return (isRandomToken(v, MIN_UNNAMED_TOKEN) || isMadePassword(v)) && !isSettingShaped(v) && !/^[a-z]{2,}-/i.test(v);
 	if (/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(v)) return true;
 	// (Letters alone are a word, `livemode`, unless random, `XGxAdcVIefCUMAVsDhkYhErsQwPz`. Digits with symbols are a
 	// password, `90210!@#`: a number a setting holds is setting-shaped.)
 	return !isSettingShaped(v) && (/[\d\W]/.test(v.replace(/[-_.]/g, "")) || isRandomToken(v));
+}
+
+/**
+ * Whether isOpaqueSetting can take a value under `name`, by the name alone: a session's, whose `ID` is no setting's;
+ * or not a setting's, and either a vendor's or credential's word, or any name in a file that holds only secrets.
+ */
+function mayHoldOpaque(name: string, tokenUnderAnyName: boolean): boolean {
+	return (
+		namesSession(name) ||
+		(!isSettingName(name) && (tokenUnderAnyName || isBareVendorWord(name) || hasCredentialWord(name)))
+	);
 }
 
 /** The shortest generated token taken as a secret under a name that says nothing of one: a 128-bit hex ID is 32; a 96-bit one, 24. */
@@ -265,6 +272,11 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 		if (!quoted && m[1].endsWith('"')) value = value.replace(/[ \t]*[,}\]][\s\S]*$/, "");
 		const comment = quoted ? -1 : value.search(/[ \t]#/);
 		if (comment >= 0) value = value.slice(0, comment).trimEnd();
+		// (A vendor's name alone holds the vendor's key, or where the vendor is: `NGROK=abc123def456.ngrok.io` is a host.)
+		const credential = (isCredentialName(name) && !(isVendorName(name) && HOST.test(value))) || /^pass$/i.test(name);
+		// (The name first: most of a large file's lines, a state file's `"name": "svc-0"`, are settings by it alone, and the
+		// value's checks cost more.)
+		if (!credential && !mayHoldOpaque(name, tokenUnderAnyName)) continue;
 		// (A reference in code, `password: process.env.DB_PASSWORD,` in a line `grep` found in source.)
 		if (
 			!value ||
@@ -275,8 +287,6 @@ function assignments(text: string, out: Finding[], tokenUnderAnyName: boolean) {
 			isSettingNumber(name, value)
 		)
 			continue;
-		// (A vendor's name alone holds the vendor's key, or where the vendor is: `NGROK=abc123def456.ngrok.io` is a host.)
-		const credential = (isCredentialName(name) && !(isVendorName(name) && HOST.test(value))) || /^pass$/i.test(name);
 		if (!credential && !isOpaqueSetting(name, value, tokenUnderAnyName)) continue;
 		const start = at(m, 4)[0] + (quoted ? 1 : 0);
 		out.push({
@@ -377,6 +387,41 @@ function htpasswd(text: string, out: Finding[]) {
 }
 
 /**
+ * Redis's ACL rules, `user worker on >password ~jobs:* +@all` (redis.conf, an aclfile): a password given or taken away,
+ * `>pw` and `<pw`, and one given or taken away as its SHA-256, `#<hash>` and `!<hash>`.
+ */
+function redisUsers(text: string, out: Finding[]) {
+	for (const line of text.matchAll(/^[ \t]*user[ \t]+\S+[ \t]+[^\r\n]+/gm))
+		for (const m of line[0].matchAll(/[ \t](?:[<>](\S+)|[#!]([0-9a-f]{64})(?![^ \t]))/dg)) {
+			const g = m[1] !== undefined ? 1 : 2;
+			const [start, end] = at(m, g);
+			out.push({
+				start: line.index + start,
+				end: line.index + end,
+				kind: g === 1 ? "password" : "password hash",
+				rule: "file:redis-acl",
+				confidence: 1,
+			});
+		}
+}
+
+/**
+ * A string literal of escaped bytes: key material as code writes binary, Symfony's vault key (`prod.decrypt.private.php`
+ * holds `return "\x8E\x1Fq\xC4…";`), a Python or C byte string. Read from 16 escaped bytes, half the string or more: fewer
+ * are a setting's control characters (`PS1="\x1b[32m$ "`).
+ */
+function escapedBytes(text: string, out: Finding[]) {
+	if (!/\\(?:x[0-9A-Fa-f]{2}|[0-7]{3})/.test(text)) return;
+	for (const m of text.matchAll(/"((?:\\.|[^"\\\r\n]){16,8192})"|'((?:\\.|[^'\\\r\n]){16,8192})'/dg)) {
+		const g = m[1] !== undefined ? 1 : 2;
+		const escaped = m[g].match(/\\(?:x[0-9A-Fa-f]{2}|[0-7]{3})/g)?.length ?? 0;
+		const bytes = m[g].replace(/\\(?:x[0-9A-Fa-f]{2}|[0-7]{3}|.)/g, ".").length;
+		if (escaped < 16 || escaped * 2 < bytes) continue;
+		out.push({ start: at(m, g)[0], end: at(m, g)[1], kind: "secret", rule: "file:bytes", confidence: 0.95 });
+	}
+}
+
+/**
  * Lines that are one token (a bare token file, `cut -d= -f2` output), after any line number a file viewer puts in
  * front (`cat -n`, an agent's Read tool `     3→`). Not a NAME, an assignment, a comment, a section or a rule, nor
  * a line inside a certificate or public-key block stored next to a private key: those are public.
@@ -416,6 +461,8 @@ const SECRET_FILE_READERS: ((text: string, out: Finding[], tokenUnderAnyName: bo
 	userlist,
 	cookiesTxt,
 	htpasswd,
+	redisUsers,
+	escapedBytes,
 	bareTokens,
 ];
 

@@ -748,9 +748,10 @@ function commandPasswords(words: ShellWord[], add: AddPassword) {
 function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | undefined {
 	// The command starts at its first word that names a tool or a wrapper: past a prompt, a timestamp or a CI log's
 	// prefix (`$ `, `2025-…Z ##[group]Run`, `xcrun`); a path names one only as the first word (`find /var/lib/mysql`
-	// runs find). Then past wrappers and assignments (shell.ts simpleCommand).
+	// runs find), or after a process listing's columns (`  73104 /usr/bin/redis-cli -a …`). Then past wrappers and
+	// assignments (shell.ts simpleCommand).
 	const names = (w: ShellWord, i: number) =>
-		(i === 0 || !/[/\\]/.test(w.text)) &&
+		(i === 0 || !/[/\\]/.test(w.text) || isProcessColumns(words.slice(0, i))) &&
 		(isWrapper(w.text) ||
 			/^(?:rabbitmqctl|htpasswd|https?|httpie|steamcmd|vault|lftp|pulumi|openssl|mkpasswd)$/.test(programName(w)) ||
 			USER_PASSWORD.test(programName(w)) ||
@@ -891,6 +892,22 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 		else if (/^(?:-U|--user=)[^%]*%/.test(w) && /^(?:smbclient|net|rpcclient)$/.test(name))
 			addWord(rest[i], w.slice(w.indexOf("%") + 1));
 	}
+}
+
+/**
+ * A process listing's columns before its command (`ps -eo pid,args`, `ps aux`, `pgrep -a`): a PID, and maybe a user
+ * first, then CPU and memory figures, sizes, a terminal, a state, a start time and a CPU time (`root 73104 0.0 0.1 …
+ * pts/0 Ss+ Oct10 0:00`).
+ */
+function isProcessColumns(words: ShellWord[]): boolean {
+	return (
+		words.some((w) => /^\d+$/.test(w.text)) &&
+		words.every(
+			(w, j) =>
+				/^(?:\d[\d.:,]*[KMG]?|\?|(?:pts|tty)\/?\w*|[RSDTtZIWXP][<NLsl+]*|[A-Z][a-z]{2}\d{1,2})$/.test(w.text) ||
+				(j === 0 && /^[a-z_][\w.-]*\+?$/.test(w.text)),
+		)
+	);
 }
 
 /**

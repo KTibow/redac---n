@@ -247,3 +247,18 @@ test("a command written as a list is read in single quotes and over CRLF and tab
 	hidden('{\r\n\t"cmd": [\r\n\t\t"redis-cli",\r\n\t\t"-a",\r\n\t\t"correct-horse"\r\n\t]\r\n}', "correct-horse");
 	kept('{"cmd": ["redis-cli", "-a", "correct\\"horse"]}', '"-a", "[REDACTED');
 });
+
+test("cypher-shell's -p is a password, and a process listing's command is read past its columns", () => {
+	const pw = "Xk2mP9vLqT";
+	hidden(`cypher-shell -a bolt://localhost:7687 -u neo4j -p ${pw} -f seed.cypher`, pw);
+	kept(`cypher-shell -a bolt://localhost:7687 -u neo4j -p ${pw} -f seed.cypher`, "-u neo4j");
+	const ps = { command: "ps -eo pid,args" };
+	hidden(
+		`  73104 /var/lib/neo4j/bin/cypher-shell -a bolt://localhost:7687 -u neo4j -p ${pw} -f /import/seed.cypher`,
+		pw,
+		ps,
+	);
+	hidden(`root     73104  0.0  0.1 pts/0 Ss+ Oct10 0:00 /usr/bin/redis-cli -a ${pw} ping`, pw, { command: "ps aux" });
+	// (A path after a command's own words is its argument: `find` runs, not mysql.)
+	kept(`find /var/lib/mysql -perm ${pw}`, pw);
+});

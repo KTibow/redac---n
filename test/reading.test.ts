@@ -405,3 +405,20 @@ test("tag characters and other invisible characters outside the basic plane are 
 	// (Nor does an entity decode to NUL, half a surrogate pair, or a character of two UTF-16 units.)
 	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
 });
+
+test("a username and password in one value teach the password too, and a base64 token is not split", () => {
+	const redactor = r();
+	redactor.learn("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n", { hint: { path: ".env" } });
+	const ps = "  73104 /opt/neo4j/bin/neo4j-admin --verbose Xk2mP9vLqT";
+	assert.ok(!redactor.redact(ps).text.includes("Xk2mP9vLqT"));
+	// (Within one text too, as a repeat.)
+	hidden("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n---\nconnecting with Xk2mP9vLqT\n", "connecting with Xk2mP9vLqT", {
+		path: ".env",
+	});
+	// (A secret key with a slash in it is one value: its other occurrence is one placeholder, not two.)
+	const aws = r();
+	const key = "wJalrXUtnFEMIx/K7MDENGxbPxRfiCYzEXAMPLKEYq";
+	aws.learn(`AWS_SECRET_ACCESS_KEY=${key}\n`, { hint: { path: ".env" } });
+	assert.equal(aws.redact(`key ${key} end`).findings.length, 1);
+	assert.equal(aws.known.size, 1);
+});

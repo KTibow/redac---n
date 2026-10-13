@@ -668,6 +668,54 @@ const isSessionIdName = (name: string): boolean =>
 	(name !== "Session-ID" && SESSION_ID.test(name)) || SESSION_COOKIE.test(name);
 
 /**
+ * The owners of sessions that are no web login: a terminal's, a desktop's, a remote shell's (`ITERM_SESSION_ID`,
+ * `WT_SESSION`, `XDG_SESSION_ID`, `DESKTOP_SESSION`), as an environment's listing shows them.
+ */
+const LOCAL_SESSION_OWNERS = new Set([
+	"TMUX",
+	"SCREEN",
+	"ZELLIJ",
+	"BYOBU",
+	"DESKTOP",
+	"XDG",
+	"SSH",
+	"TERM",
+	"ITERM",
+	"TERMINAL",
+	"WT",
+	"KITTY",
+	"WEZTERM",
+	"KONSOLE",
+	"DBUS",
+	"SHELL",
+	"LOGIN",
+	"VNC",
+	"X11",
+]);
+
+/**
+ * Whether a name names a session or its ID, whoever's session it is: `INSTAGRAM_SESSION_ID`, `LINKEDIN_SESSION`,
+ * `tiktokSessionId`; not a terminal's or a desktop's (LOCAL_SESSION_OWNERS). Read so only in a secret file, which says
+ * its values are secrets: elsewhere a session's ID under another's name is as often a checkout's or an agent's
+ * (`CHECKOUT_SESSION_ID`, `CLAUDE_SESSION_ID`), and only the names isSessionIdName knows are credentials.
+ */
+export function namesSession(name: string): boolean {
+	const w = words(name);
+	if (w.at(-1) === "ID") w.pop();
+	return /^(?:SESSION|SESSIONID|SESS|SESSID)$/.test(w.at(-1) ?? "") && !w.some((x) => LOCAL_SESSION_OWNERS.has(x));
+}
+
+/**
+ * Bundler's setting for a gem server's credentials, named by its host (`.` written `__`, `-` `___`):
+ * `BUNDLE_GEMS__CONTRIBSYS__COM`, `BUNDLE_RUBYGEMS__PKG__GITHUB__COM`. Its value is `user:password` or a token. Not
+ * Bundler's own settings that take a gem's or a URL's name the same way (`BUNDLE_BUILD__NOKOGIRI`, `BUNDLE_LOCAL__RACK`,
+ * `BUNDLE_MIRROR__…`, `BUNDLE_GEM__TEST`).
+ */
+function isBundlerHostName(name: string): boolean {
+	return /^BUNDLE_(?!(?:BUILD|LOCAL|MIRROR|GEM)__)[A-Z0-9]+(?:_{2,3}[A-Z0-9]+)*__[A-Z]{2,6}$/.test(name);
+}
+
+/**
  * Data files' extensions: as a key, a data file's name maps to its checksum (`"data.csv": "<sha256>"` in a lockfile or a
  * registry). A config file's name maps to its contents (a Kubernetes Secret's `config.yaml`, `default_user.conf`).
  */
@@ -1244,8 +1292,8 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// A file's path names the file, whatever words it holds (`lib/pin.rb`, `manifests/pin.pp` in a checksum manifest).
 	// (A bare file name is read below, after the PIN's: it may be a Kubernetes Secret's key, `pin.txt`.)
 	if (name.includes("/") && isFileName(name)) return "neutral";
-	// A vendor's name holds that vendor's key.
-	if (isVendorName(name)) return "credential";
+	// A vendor's name holds that vendor's key; Bundler's name for a gem server's host, that server's credentials.
+	if (isVendorName(name) || isBundlerHostName(name)) return "credential";
 	// Unity's serialized localization keys and names; a list item's key (Sanity's and React's `_key`); a generated
 	// fixture's, numbered with zeros (`tagKey000003`); Postman's per-request UUID.
 	if (/^m_(?:Key|KeyId|Name|Id)$|[a-z](?:Key|Token|Secret)0\d{4,}$/.test(name) || /^_+key$|^postman-token$/i.test(name))

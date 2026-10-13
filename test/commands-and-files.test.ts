@@ -13,6 +13,7 @@ import { Redactor } from "../src/index.ts";
 import { isSecretFile, printsSecret } from "../src/commands.ts";
 import { findInSecretFile, openScopes } from "../src/secretfile.ts";
 import { b62, hidden, kept, r } from "./helpers.ts";
+import { randomBytes } from "./random.ts";
 
 const FILE = { secretFile: true };
 
@@ -709,4 +710,54 @@ test("another occurrence of a guess is judged where it stands", () => {
 	const pub = "rC6LxV3uCapgW94Y9+Wq/lsyx4zf04YAIuEZjQoHgWW=";
 	const out = r().redact(`$ cat key.txt\n${pub}\n\n[Peer]\nPublicKey = ${pub}\nAllowedIPs = 10.8.0.9/32`).text;
 	assert.ok(out.includes(`PublicKey = ${pub}`), out);
+});
+
+test("Symfony's vault key, a string of escaped bytes, is hidden; a prompt's few control bytes are kept", () => {
+	const key = Array.from(randomBytes(64), (b) => `\\x${b.toString(16).toUpperCase().padStart(2, "0")}`).join("");
+	const file = `<?php // prod.decrypt.private on Tue, 14 Jul 2026 09:12:44 +0000\nreturn "${key}";\n`;
+	hidden(file, key.slice(0, 40), { path: "config/secrets/prod/prod.decrypt.private.php" });
+	kept(file, "prod.decrypt.private on Tue, 14 Jul 2026", {
+		command: "cat config/secrets/prod/prod.decrypt.private.php",
+	});
+	// (Its public half is public; a Python byte string reads the same as PHP's.)
+	assert.ok(!isSecretFile("config/secrets/prod/prod.encrypt.public.php"));
+	hidden(`SIGNING_SEED = b'${key}'\n`, key.slice(0, 40), FILE);
+	kept('PS1="\\x1b[32m\\u@\\h\\x1b[0m $ "\nNODE_ENV=production\n', "\\x1b[32m", FILE);
+});
+
+test("Redis's ACL rules hide the passwords they give and take away, and their hashes; the rest of the rule stays", () => {
+	const conf =
+		"requirepass R3dis-Requ1re-pw\nuser worker on >R3dis-Acl-worker-pw ~jobs:* +@all\nuser old off <R3dis-Old-pw\n";
+	for (const pw of ["R3dis-Requ1re-pw", "R3dis-Acl-worker-pw", "R3dis-Old-pw"])
+		hidden(conf, pw, { path: "deploy/redis/redis.conf" });
+	kept(conf, "user worker on >[REDACTED", { path: "deploy/redis/redis.conf" });
+	kept(conf, "~jobs:* +@all", { path: "deploy/redis/redis.conf" });
+	const hash = Array.from(randomBytes(32), (b) => b.toString(16).padStart(2, "0")).join("");
+	hidden(`user default on #${hash} ~* &* +@all\n`, hash, { path: "/etc/redis/users.acl" });
+	// (nginx's `user` directive is no ACL rule.)
+	kept("user www-data;\nworker_processes auto;\n", "www-data", FILE);
+});
+
+test("Bundler's credentials for a gem server are hidden in its config and learned, its settings kept", () => {
+	const config =
+		'---\nBUNDLE_PATH: "vendor/bundle"\nBUNDLE_JOBS: "8"\nBUNDLE_BUILD__NOKOGIRI: "--use-system-libraries"\nBUNDLE_GEMS__CONTRIBSYS__COM: "c3a91f0e:5d27b4e8"\n';
+	assert.ok(isSecretFile("/home/dana/.bundle/config") && isSecretFile(".bundle/config"));
+	hidden(config, "5d27b4e8", { path: "/home/dana/.bundle/config" });
+	for (const setting of ['BUNDLE_PATH: "vendor/bundle"', 'BUNDLE_JOBS: "8"', '"--use-system-libraries"'])
+		kept(config, setting, { path: "/home/dana/.bundle/config" });
+	// `bundle config` prints the setting under the host's name, after the file was read.
+	const redactor = r();
+	redactor.learn(config, { hint: { path: "/home/dana/.bundle/config" } });
+	const listing = 'gems.contribsys.com\nSet for the current user (/home/dana/.bundle/config): "c3a91f0e:5d27b4e8"\n';
+	assert.ok(!redactor.redact(listing, { hint: { command: "bundle config" } }).text.includes("5d27b4e8"));
+});
+
+test("in a secret file a session's ID is hidden under anyone's name, a terminal's or a desktop's session kept", () => {
+	const cookie = "58291746033%3AqZt7Ym2LkP4xVn%3A11%3AAYcR8vJ2kLmN0pQ5sT7uW9xZ1bD3fH5jK7mN9pR";
+	const env = `INSTAGRAM_USERNAME=acme.shop\nINSTAGRAM_SESSION_ID=${cookie}\n`;
+	hidden(env, "AYcR8vJ2kLmN0pQ5sT7uW9xZ1bD3fH5jK7mN9pR", { path: ".env" });
+	kept(env, "INSTAGRAM_USERNAME=acme.shop", { path: ".env" });
+	const listing =
+		"TERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nITERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nWT_SESSION=3c1d2e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\nXDG_SESSION_ID=2\nDESKTOP_SESSION=ubuntu\nSESSION_STORE=redis\n";
+	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
 });

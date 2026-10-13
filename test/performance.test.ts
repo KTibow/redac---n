@@ -69,3 +69,25 @@ test("a long camel-case name costs what a short one does", () => {
 	// A name rule that reads a name two ways backtracks exponentially in its parts.
 	assertLinear("a camel-case name", (n) => r().redact(`is${"PasswordStrengthIndicator".repeat(n)}Visible: false`), 2);
 });
+
+test("a large state file read as a secret file costs about what its text costs read plainly", () => {
+	// (Each line a name and a setting's value: the secret-file readers judge the name first.)
+	const records = Array.from(
+		{ length: 1500 },
+		(_, i) =>
+			`    {\n      "name": "svc_${i}",\n      "fqdn": "svc-${i}.internal.acme.io",\n      "id": "Z0123456789ABCDEFGHIJ_svc-${i}.internal.acme.io_CNAME",\n      "ttl": 300,\n      "type": "CNAME"\n    }`,
+	);
+	const state = `{\n  "version": 4,\n  "resources": [\n${records.join(",\n")}\n  ]\n}\n`;
+	const best = (run: () => void) => {
+		let t = Infinity;
+		for (let i = 0; i < 3; i++) {
+			const start = performance.now();
+			run();
+			t = Math.min(t, performance.now() - start);
+		}
+		return t;
+	};
+	const plain = best(() => r().detect(state));
+	const file = best(() => r().detect(state, { hint: { path: "infra/terraform.tfstate", secretFile: true } }));
+	assert.ok(file < 1.5 * plain, `${file.toFixed(0)} ms as a secret file, ${plain.toFixed(0)} ms plainly`);
+});

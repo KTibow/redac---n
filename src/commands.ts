@@ -38,7 +38,7 @@ const SECRET_FILE = [
 	/^\.?vault[_-]?pass(?:word)?(?:\.txt)?$/i,
 	/(?:^|[_.-])(?:pass(?:word|wd|phrase|code)?|secret|token|pin(?:[_-]?code)?)(?:\.txt)?$/i,
 	/^(?:pap|chap)-secrets(?:[-_.][\w-]+)?$/,
-	/^(_netrc|rclone\.conf|cookies\.txt|keystore\.properties|wp-config\.php|\.?htpasswd|redis\.conf|sentinel\.conf|keyfile|userlist\.txt)$/i,
+	/^(_netrc|rclone\.conf|cookies\.txt|keystore\.properties|wp-config\.php|\.?htpasswd|redis\.conf|sentinel\.conf|users\.acl|keyfile|userlist\.txt)$/i,
 	/(^|[-_.])secrets?(\.[\w-]{1,40})?\.(json|ya?ml|toml|env|ini|properties)$/i,
 	/\.(tfvars|tfstate)(\.json|\.backup)?$/,
 	/^kubeconfig(\..+)?$|\.kubeconfig$/,
@@ -50,6 +50,8 @@ const SECRET_FILE = [
 ];
 const SECRET_DIR =
 	/(^|\/)\.(aws|ssh|gnupg|docker|kube|azure)\/|(^|\/)\.config\/(gcloud|gh|rclone|sops)\/|(^|\/)\.?secrets\//;
+/** Secret files by their directory and name: Bundler's config, which holds gem servers' credentials (names.ts isBundlerHostName). */
+const SECRET_PATH = /(^|\/)\.bundle\/config$/;
 // (Also a key's public half by its name, `cache-pub-key.pem`, `server.pub.pem`, `public.key`; and a certificate's,
 // `fullchain.pem`, `cert.pem`, but not a private key's container named for its certificate, `cert.key`, `server.crt.p12`,
 // `cert-key.pem`.
@@ -62,7 +64,7 @@ export function isSecretFile(path: string): boolean {
 	path = path.replace(/\\/g, "/"); // Windows paths
 	const name = path.slice(path.lastIndexOf("/") + 1);
 	if (!name || EXAMPLE_FILE.test(name) || NOT_SECRET_PATH.test(path)) return false;
-	return SECRET_FILE.some((r) => r.test(name)) || SECRET_DIR.test(path);
+	return SECRET_FILE.some((r) => r.test(name)) || SECRET_DIR.test(path) || SECRET_PATH.test(path);
 }
 
 /**
@@ -829,6 +831,7 @@ const TOOLS: [RegExp, ToolSpec][] = [
 	[/^(?:supabase|altool)$/, { flags: new Set(["-p", "--password"]), next: "always", attached: false }],
 	[/^mosquitto_(?:pub|sub|rr)$/, { flags: new Set(["-P", "--pw"]), next: "always", attached: false }],
 	[/^beeline$/, { flags: new Set(["-p"]), next: "always", attached: false }],
+	[/^cypher-shell$/, { flags: new Set(["-p", "--password"]), next: "always", attached: false }],
 	[/^az$/, { flags: new Set(["-p", "--password"]), next: "always", attached: false, subcommand: "login" }],
 	[/^gh$/, { flags: new Set(["-b", "--body"]), next: "always", attached: false, subcommand: "secret" }],
 	[/^(?:zip|unzip|zipcloak)$/, { flags: new Set(["-P", "--password"]), next: "always", attached: false }],
