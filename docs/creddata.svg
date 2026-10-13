@@ -24,7 +24,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <text x="16" y="76">and Nosey Parker, then detect-secrets (the other six). Hollow: CredSweeper, which CredData's lines partly come from and whose model is trained on its labels. √ scale across; up and left is better.</text>
 <text x="16" y="116" class="title">Dev split (the fixes were made on it)</text>
 <text x="16" y="606" class="title">Test split (never seen by the fixes)</text>
-<text x="56" y="148" class="panel">credential-shaped <tspan class="tick">4,560 true, 10,661 false</tspan></text>
+<text x="56" y="148" class="panel">credential-shaped <tspan class="tick">4,560 true, 10,669 false</tspan></text>
 <line class="grid" x1="56" x2="436" y1="490" y2="490"/><text class="tick" x="50" y="494" text-anchor="end">0%</text>
 <line class="grid" x1="56" x2="436" y1="407.5" y2="407.5"/><text class="tick" x="50" y="411.5" text-anchor="end">25%</text>
 <line class="grid" x1="56" x2="436" y1="325" y2="325"/><text class="tick" x="50" y="329" text-anchor="end">50%</text>
@@ -37,7 +37,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <line class="grid" x1="137.3817706875497" x2="137.3817706875497" y1="160" y2="490"/><text class="tick" x="137.3817706875497" y="504" text-anchor="middle">1%</text>
 <line class="grid" x1="56" x2="56" y1="160" y2="490"/><text class="tick" x="56" y="504" text-anchor="middle">0%</text>
 <polyline fill="none" class="chain" stroke-width="2" points="296.23485612070624,307.3421052631579 337.1070378925266,262.0394736842105 347.2020908546517,250.38815789473685 389.28204733667116,227.15789473684208"/>
-<polyline fill="none" class="accent-line" stroke-width="2" points="192.2899265227932,269.56578947368416 194.3259053847075,176.28289473684208 195.88895957820986,174.03947368421052"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="192.23881939564785,269.56578947368416 194.2740347893205,176.28289473684208 195.83650285579614,174.03947368421052"/>
 <circle cx="296.23485612070624" cy="307.3421052631579" r="4" class="other ring" stroke-width="1.5"><title>gitleaks: 55.4% caught, 8.7% lost</title></circle>
 <circle cx="317.88625179591025" cy="265.73026315789474" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 68.0% caught, 10.4% lost</title></circle>
 <circle cx="118.0617486347827" cy="476.5394736842105" r="4" class="other ring" stroke-width="1.5"><title>Kingfisher: 4.1% caught, 0.6% lost</title></circle>
@@ -48,10 +48,10 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <circle cx="337.1070378925266" cy="262.0394736842105" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 69.1% caught, 11.9% lost</title></circle>
 <circle cx="347.2020908546517" cy="250.38815789473685" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 72.6% caught, 12.8% lost</title></circle>
 <circle cx="389.28204733667116" cy="227.15789473684208" r="4" class="other ring" stroke-width="1.5"><title>the other six: 79.6% caught, 16.8% lost</title></circle>
-<circle cx="192.2899265227932" cy="269.56578947368416" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 66.8% caught, 2.8% lost</title></circle>
-<circle cx="194.3259053847075" cy="176.28289473684208" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 95.1% caught, 2.9% lost</title></circle>
-<circle cx="195.88895957820986" cy="174.03947368421052" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 95.7% caught, 3.0% lost</title></circle>
-<text x="202.3259053847075" y="180.28289473684208" text-anchor="start" class="ours" font-size="11">redac---n</text>
+<circle cx="192.23881939564785" cy="269.56578947368416" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 66.8% caught, 2.8% lost</title></circle>
+<circle cx="194.2740347893205" cy="176.28289473684208" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 95.1% caught, 2.9% lost</title></circle>
+<circle cx="195.83650285579614" cy="174.03947368421052" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 95.7% caught, 3.0% lost</title></circle>
+<text x="202.2740347893205" y="180.28289473684208" text-anchor="start" class="ours" font-size="11">redac---n</text>
 <line class="lead" x1="127.37318697497005" y1="172.39473684210526" x2="135.37318697497005" y2="187.39473684210526"/>
 <text x="135.37318697497005" y="197.39473684210526" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
 <text x="381.28204733667116" y="219.15789473684208" text-anchor="end" font-size="11">the other six</text>
@@ -135,7 +135,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <text x="928" y="524" class="tick">Catch under 1%, not drawn (caught / lost):</text>
 <text x="928" y="538" class="tick">gitleaks 0.9% / 0.00%, Kingfisher 0.9% / 0.01%</text>
 <text x="928" y="552" class="tick">TruffleHog 0.1% / 0.16%</text>
-<text x="1364" y="148" class="panel">other <tspan class="tick">859 true, 12,428 false</tspan></text>
+<text x="1364" y="148" class="panel">other <tspan class="tick">859 true, 12,420 false</tspan></text>
 <line class="grid" x1="1364" x2="1744" y1="490" y2="490"/><text class="tick" x="1358" y="494" text-anchor="end">0%</text>
 <line class="grid" x1="1364" x2="1744" y1="407.5" y2="407.5"/><text class="tick" x="1358" y="411.5" text-anchor="end">25%</text>
 <line class="grid" x1="1364" x2="1744" y1="325" y2="325"/><text class="tick" x="1358" y="329" text-anchor="end">50%</text>
@@ -148,7 +148,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <line class="grid" x1="1433.1375440697743" x2="1433.1375440697743" y1="160" y2="490"/><text class="tick" x="1433.1375440697743" y="504" text-anchor="middle">0.5%</text>
 <line class="grid" x1="1364" x2="1364" y1="160" y2="490"/><text class="tick" x="1364" y="504" text-anchor="middle">0%</text>
 <polyline fill="none" class="chain" stroke-width="2" points="1440.9615288509585,460.034924330617 1570.4349403937827,453.8882421420256 1579.0134163971384,448.8940628637951 1697.282047336671,413.9348079161816"/>
-<polyline fill="none" class="accent-line" stroke-width="2" points="1434.7106781186549,291.7694994179278 1443.9037882995256,282.1653084982538 1443.9037882995256,267.5669383003492"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="1434.7334476179146,291.7694994179278 1443.929518066188,282.1653084982538 1443.929518066188,267.5669383003492"/>
 <circle cx="1440.9615288509585" cy="460.034924330617" r="4" class="other ring" stroke-width="1.5"><title>gitleaks: 9.1% caught, 0.6% lost</title></circle>
 <circle cx="1566.294530136326" cy="454.2724097788126" r="4" class="other ring" stroke-width="1.5"><title>Betterleaks: 10.8% caught, 4.3% lost</title></circle>
 <circle cx="1462.8394191060975" cy="481.9324796274738" r="4" class="other ring" stroke-width="1.5"><title>Nosey Parker: 2.4% caught, 1.0% lost</title></circle>
@@ -157,10 +157,10 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <circle cx="1570.4349403937827" cy="453.8882421420256" r="4" class="other ring" stroke-width="1.5"><title>gitleaks + Betterleaks + Kingfisher: 10.9% caught, 4.5% lost</title></circle>
 <circle cx="1579.0134163971384" cy="448.8940628637951" r="4" class="other ring" stroke-width="1.5"><title>the other five but detect-secrets: 12.5% caught, 4.8% lost</title></circle>
 <circle cx="1697.282047336671" cy="413.9348079161816" r="4" class="other ring" stroke-width="1.5"><title>the other six: 23.1% caught, 11.6% lost</title></circle>
-<circle cx="1434.7106781186549" cy="291.7694994179278" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 60.1% caught, 0.5% lost</title></circle>
-<circle cx="1443.9037882995256" cy="282.1653084982538" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 63.0% caught, 0.7% lost</title></circle>
-<circle cx="1443.9037882995256" cy="267.5669383003492" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 67.4% caught, 0.7% lost</title></circle>
-<text x="1451.9037882995256" y="286.1653084982538" text-anchor="start" class="ours" font-size="11">redac---n</text>
+<circle cx="1434.7334476179146" cy="291.7694994179278" r="5" class="accent ring" stroke-width="1.5"><title>guessing off: 60.1% caught, 0.5% lost</title></circle>
+<circle cx="1443.929518066188" cy="282.1653084982538" r="5" class="accent ring" stroke-width="1.5"><title>guessing confident: 63.0% caught, 0.7% lost</title></circle>
+<circle cx="1443.929518066188" cy="267.5669383003492" r="5" class="accent ring" stroke-width="1.5"><title>guessing eager: 67.4% caught, 0.7% lost</title></circle>
+<text x="1451.929518066188" y="286.1653084982538" text-anchor="start" class="ours" font-size="11">redac---n</text>
 <text x="1425.3493565673837" y="194.73341094295694" text-anchor="start" font-size="11">CredSweeper (tuned on CredData)</text>
 <text x="1689.282047336671" y="405.9348079161816" text-anchor="end" font-size="11">the other six</text>
 <line class="lead" x1="1663.7434800728013" y1="430.22817229336437" x2="1671.7434800728013" y2="433.22817229336437"/>

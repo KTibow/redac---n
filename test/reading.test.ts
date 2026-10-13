@@ -406,7 +406,7 @@ test("tag characters and other invisible characters outside the basic plane are 
 	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
 });
 
-test("a username and password in one value teach the password too, and a base64 token is not split", () => {
+test("a login under a name that says so teaches its password too; a base64 key or a signature is not split", () => {
 	const redactor = r();
 	redactor.learn("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n", { hint: { path: ".env" } });
 	const ps = "  73104 /opt/neo4j/bin/neo4j-admin --verbose Xk2mP9vLqT";
@@ -421,4 +421,8 @@ test("a username and password in one value teach the password too, and a base64 
 	aws.learn(`AWS_SECRET_ACCESS_KEY=${key}\n`, { hint: { path: ".env" } });
 	assert.equal(aws.redact(`key ${key} end`).findings.length, 1);
 	assert.equal(aws.known.size, 1);
+	// (Nor is a signature's `abc:<id>`: a `:` in a secret makes no login unless its name says so.)
+	const php =
+		"$url = 'https://cloud.laravel.com/api/jobs/test-job-id?signature=abc:test-job-id';\n$this->assertSame('test-job-id', $job->id);\n";
+	kept(php, "assertSame('test-job-id'");
 });

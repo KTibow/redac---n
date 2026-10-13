@@ -21,7 +21,7 @@ import { findFormats } from "./formats.ts";
 import { type JsonNode, parseJson, TOOL_COMMAND_KEYS, TOOL_CONTENT_KEYS, TOOL_PATH_KEYS } from "./json.ts";
 import { shellLine } from "./shell.ts";
 import type { Redactor } from "./index.ts";
-import { isLearnable, isNeverSecretShape, merge, secretValue } from "./spans.ts";
+import { isLearnable, isNeverSecretShape, loginPassword, merge, secretValue } from "./spans.ts";
 import { occurrences } from "./repeats.ts";
 import { isCredentialName } from "./names.ts";
 import { isNamedSecret } from "./named.ts";
@@ -618,7 +618,10 @@ export function redactValue<T>(
 		if (isNamedKeySecret(leaf, keep) && !isNeverSecretShape(leaf.text)) learned.push([leaf.text, leaf.key]);
 		for (const f of found(leaf).filter(keep)) {
 			const secret = secretValue(leaf.text, f);
-			if (isLearnable(f, secret)) learned.push([secret, f.kind]);
+			if (!isLearnable(f, secret)) continue;
+			learned.push([secret, f.kind]);
+			const password = loginPassword(f, secret);
+			if (password) learned.push([password, f.kind]);
 		}
 	}
 	const remember = options.learn !== false;

@@ -8,6 +8,8 @@ import type { Finding } from "./types.ts";
 import { backslashesBefore, escapeLength, UNQUOTED_READ } from "./syntax.ts";
 import { leadingUrl } from "./urls.ts";
 import { isPath } from "./values.ts";
+import { isReplaceable } from "./known.ts";
+import { namesLogin } from "./names.ts";
 import { continuesAcrossWraps, isGuess, isWholeLine, layerOf, PLACEHOLDER_RULE } from "./rules.ts";
 
 /** An Amazon Resource Name: `arn:aws:iam::483920176654:role/deploy`, in any partition. */
@@ -30,6 +32,19 @@ export function isNeverSecretShape(value: string): boolean {
 	return (
 		!/^https?$/i.test(url.scheme) || (!/[?#]/.test(value) && url.segments.every((s) => s.end - s.start < TOKEN_SEGMENT))
 	);
+}
+
+/**
+ * The password of a finding that is a login: a username and a password in one value, `user:password` or
+ * `user/password`, under a name that says it holds one (names.ts namesLogin: `NEO4J_AUTH=neo4j/…`, Bundler's
+ * `BUNDLE_<HOST>: "user:…"`). Learned and repeated on its own too, as a client takes it (`cypher-shell -u neo4j -p
+ * <it>`). Not a `:` or `/` inside another secret (a signature's `abc:<id>`), nor a URL's (its password is read in the
+ * URL); before a `/`, only a user's lower-case name (`neo4j/…`, not a base64 key's `wJalrXUtnFEMI/K7MDENG…`).
+ */
+export function loginPassword(f: Finding, value: string): string | undefined {
+	if (!f.name || !namesLogin(f.name) || value.includes("://")) return undefined;
+	const pair = /^(?:[\w.@+-]{1,64}:|[a-z][a-z0-9._-]{0,31}\/)([^\s/:]\S*)$/.exec(value);
+	return pair && isReplaceable(pair[1]) ? pair[1] : undefined;
 }
 
 /**

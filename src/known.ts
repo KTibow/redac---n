@@ -217,22 +217,11 @@ export class KnownValues {
 		return this.values.size;
 	}
 
-	/**
-	 * Adds a secret value, and the password of a username and password in one (pairedPassword). Values too short or too
-	 * ordinary to replace everywhere are ignored. (One already held keeps its first label.)
-	 */
+	/** Adds a secret value. Values too short or too ordinary to replace everywhere are ignored. (One already held keeps its first label.) */
 	add(value: string, label = "known secret"): boolean {
 		value = value.trim();
 		if (!isReplaceable(value)) return false;
-		const password = pairedPassword(value);
-		if (password) this.insert(password, label);
-		this.insert(value, label);
-		return true;
-	}
-
-	/** Holds `value` (replaceable, trimmed) and the forms output turns it into. */
-	private insert(value: string, label: string) {
-		if (this.values.has(value)) return;
+		if (this.values.has(value)) return true;
 		this.values.add(value);
 		this.version++;
 		// The first label given for a form is kept, for full and short forms alike.
@@ -264,6 +253,7 @@ export class KnownValues {
 				form(end);
 			}
 		}
+		return true;
 	}
 
 	/**
@@ -346,17 +336,6 @@ export class KnownValues {
 		}
 		return out;
 	}
-}
-
-/**
- * The password of a value that is a username and a password, `user:password` (Bundler's `BUNDLE_<HOST>`, a credentials
- * file's line) or `user/password` (`NEO4J_AUTH`), when the password alone is worth hiding: a client takes it on its own
- * (`cypher-shell -u neo4j -p <it>`). Not a URL's (a userinfo's password is read in the URL), nor a base64 token's piece:
- * before a `/`, only a user's lower-case name (`neo4j/…`, not `wJalrXUtnFEMI/K7MDENG…`).
- */
-export function pairedPassword(value: string): string | undefined {
-	const pair = /^(?:[\w.@+-]{1,64}:|[a-z][a-z0-9._-]{0,31}\/)([^\s/:]\S*)$/.exec(value);
-	return pair && !value.includes("://") && isReplaceable(pair[1]) ? pair[1] : undefined;
 }
 
 /** Plain words and very short values would match ordinary text everywhere. */

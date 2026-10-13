@@ -21,7 +21,17 @@ import { findEncoded, findHexDumps } from "./encoded.ts";
 import { jsonLiteralSpans, jsonStringLiterals, mayHoldJsonText, pythonReprLiterals } from "./json.ts";
 import { repeats } from "./repeats.ts";
 import { RedactionStream } from "./stream.ts";
-import { covered, isLearnable, toWordEnd, trimmedToValue, merge, overlaps, secretValue, wrapped } from "./spans.ts";
+import {
+	covered,
+	isLearnable,
+	loginPassword,
+	toWordEnd,
+	trimmedToValue,
+	merge,
+	overlaps,
+	secretValue,
+	wrapped,
+} from "./spans.ts";
 import { isGuess, isVouched, layerOf, needsJudging, PLACEHOLDER_RULE } from "./rules.ts";
 import { lowerBound } from "./lines.ts";
 import {
@@ -540,7 +550,10 @@ export class Redactor {
 		const before = this.known.size;
 		for (const f of this.detect(text, options)) {
 			const value = secretValue(text, f);
-			if (isLearnable(f, value, options.minConfidence)) this.known.add(value, f.kind);
+			if (!isLearnable(f, value, options.minConfidence)) continue;
+			this.known.add(value, f.kind);
+			const password = loginPassword(f, value);
+			if (password) this.known.add(password, f.kind);
 		}
 		return this.known.size - before;
 	}

@@ -1,9 +1,8 @@
 /** Values found once with confidence, hidden wherever else they appear in the same text. */
 import { KeywordSet } from "./aho.ts";
-import { pairedPassword } from "./known.ts";
 import { continuesToken } from "./syntax.ts";
 import { isBenignValue } from "./values.ts";
-import { covered, secretValue } from "./spans.ts";
+import { covered, loginPassword, secretValue } from "./spans.ts";
 import { isGuess, layerOf, PLACEHOLDER_RULE, REPEATED_GUESS } from "./rules.ts";
 import type { Finding } from "./types.ts";
 
@@ -42,8 +41,8 @@ export function repeatable(text: string, found: Finding[]): Map<string, Remember
 		if (isBenignValue(v)) continue;
 		const remembered = { kind: f.kind, value: v, ...(isGuess(f.rule) ? { guess: true } : {}) };
 		values.set(v, remembered);
-		// (And a password paired with its username, `neo4j/<password>`, where it turns up alone.)
-		const password = pairedPassword(v);
+		// (And a login's password, `NEO4J_AUTH=neo4j/<password>`, where it turns up alone.)
+		const password = loginPassword(f, v);
 		if (password && !isBenignValue(password) && !values.has(password))
 			values.set(password, { ...remembered, value: password });
 		// (As it is written here too, when that's another form of it, and as a URL writes it: `Delta2018%26` in a URL,

@@ -706,6 +706,30 @@ export function namesSession(name: string): boolean {
 }
 
 /**
+ * Words that name a login, a username and its password together: `NEO4J_AUTH`, `BASIC_AUTH`, `REGISTRY_CREDENTIALS`,
+ * `CURLOPT_USERPWD`.
+ */
+const LOGIN_WORDS = new Set([
+	"AUTH",
+	"BASICAUTH",
+	"CREDENTIAL",
+	"CREDENTIALS",
+	"CRED",
+	"CREDS",
+	"LOGIN",
+	"USERPASS",
+	"USERPWD",
+]);
+
+/**
+ * Whether a name's value may be a login, `user:password` or `user/password` (spans.ts loginPassword): by a word of
+ * LOGIN_WORDS, or Bundler's name for a host.
+ */
+export function namesLogin(name: string): boolean {
+	return isBundlerHostName(name) || words(name).some((w) => LOGIN_WORDS.has(w));
+}
+
+/**
  * Bundler's setting for a gem server's credentials, named by its host (`.` written `__`, `-` `___`):
  * `BUNDLE_GEMS__CONTRIBSYS__COM`, `BUNDLE_RUBYGEMS__PKG__GITHUB__COM`. Its value is `user:password` or a token. Not
  * Bundler's own settings that take a gem's or a URL's name the same way (`BUNDLE_BUILD__NOKOGIRI`, `BUNDLE_LOCAL__RACK`,
