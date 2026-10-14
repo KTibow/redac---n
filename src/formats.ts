@@ -183,6 +183,9 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 		/\b(LLM(?:\|\d{15,16}\||_\d{15,16}_)[A-Za-z0-9_-]{20,255})(?![A-Za-z0-9_-])/,
 		["llm|", "llm_"],
 	],
+	// Baseten's keys since October 2026: `b10_`, the key's visible ID, a dot and the secret. (Older keys have no prefix; the
+	// random layer hides their secret half.)
+	["Baseten API key", /\b(b10_[A-Za-z0-9]{8}\.[A-Za-z0-9]{32})\b/, ["b10_"]],
 	["Tavily API key", /\b(tvly-(?:dev-|prod-)?[A-Za-z0-9]{24,48})\b/, ["tvly-"]],
 	["Fireworks API key", /\b(fw_[A-Za-z0-9]{24,48})\b/, ["fw_"]],
 	["NVIDIA API key", /\b(nvapi-[A-Za-z0-9_-]{60,72})/, ["nvapi-"]],

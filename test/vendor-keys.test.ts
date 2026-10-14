@@ -140,6 +140,18 @@ test("a Meta Model API key is hidden bare, with pipes or underscores, and its do
 	kept("LLM_202401011200001_add_column_to_users_table", "add_column");
 });
 
+test("Baseten, Moonshot and Zhipu keys are hidden whole in prose", () => {
+	for (const key of [
+		"b10\x5fbEICjvuD.fSmj7gsdzguoneJQGGgx0S3tgwNUVENr",
+		"\x73k-by1cJvdvsMjDgstzAU4nyJqG0axgSmT0Wn7VXbr3nuPatxjb",
+		"\x73k-kyIOJdUVSMj706D9gFUo3y1qg0axa6fMTG8nuV83RNNUpgD8",
+		"b9a417dd63ad0669a74391c0aaf806fb\x2e6GEN7vEncNnuCGT8",
+		"291417d763a7066ea74391500a8adfb6\x2eGwn7v83RbNU4GDXj",
+	])
+		hidden(`here is my key ${key} try it`, key);
+	kept("b10\x5fabcd1234.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef", "abcd1234");
+});
+
 test("an Elasticsearch encoded API key is hidden", () => {
 	hidden(
 		'{"id":"VuaCfGcBCdbkQm-e5aOx","name":"filebeat-edge","api_key":"9895ofo_JwQ36cFgBMoWCM","encoded":"VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6OTg5NW9mb19Kd1EzNmNGZ0JNb1dDTQ=="}',
