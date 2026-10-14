@@ -176,6 +176,13 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 	["Replicate token", /\b(r8_[A-Za-z0-9]{37,40})\b/, ["r8_"]],
 	["Perplexity API key", /\b(pplx-[A-Za-z0-9]{40,64})\b/, ["pplx-"]],
 	["xAI API key", /\b(xai-[A-Za-z0-9]{70,90})\b/, ["xai-"]],
+	// Meta's Model API (Muse Spark): `LLM|`, the app's ID and a base64url secret, or the same with underscores. Bare, the
+	// ID's 15 or 16 digits leave too little entropy for the random layer to take the whole for a key.
+	[
+		"Meta Model API key",
+		/\b(LLM(?:\|\d{15,16}\||_\d{15,16}_)[A-Za-z0-9_-]{20,255})(?![A-Za-z0-9_-])/,
+		["llm|", "llm_"],
+	],
 	["Tavily API key", /\b(tvly-(?:dev-|prod-)?[A-Za-z0-9]{24,48})\b/, ["tvly-"]],
 	["Fireworks API key", /\b(fw_[A-Za-z0-9]{24,48})\b/, ["fw_"]],
 	["NVIDIA API key", /\b(nvapi-[A-Za-z0-9_-]{60,72})/, ["nvapi-"]],

@@ -129,6 +129,17 @@ test("Resend and Airtable keys are hidden without a name", () => {
 	);
 });
 
+test("a Meta Model API key is hidden bare, with pipes or underscores, and its docs' elided example is kept", () => {
+	// Bare, the app ID's digits make the whole read as an ID to the random layer.
+	const under = "LLM\x5f2914177763170669__a-4nj0GXstW7v5nuAxAfjwtMyv";
+	hidden(under, under);
+	const pipes = "LLM\x7c607358788850350|nx9Kd8sLq2PzW7vB4mYtR5LJY";
+	hidden(pipes, pipes);
+	hidden(`https://api.example.com/?access_token=${encodeURIComponent(pipes)}`, "nx9Kd8sLq2PzW7vB4mYtR5LJY");
+	kept("LLM\x7c607358788850350|nx9.....LJY", "607358788850350|nx9");
+	kept("LLM_202401011200001_add_column_to_users_table", "add_column");
+});
+
 test("an Elasticsearch encoded API key is hidden", () => {
 	hidden(
 		'{"id":"VuaCfGcBCdbkQm-e5aOx","name":"filebeat-edge","api_key":"9895ofo_JwQ36cFgBMoWCM","encoded":"VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6OTg5NW9mb19Kd1EzNmNGZ0JNb1dDTQ=="}',
