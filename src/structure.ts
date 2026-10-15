@@ -435,12 +435,16 @@ export function isSessionCookie(name: string, value: string): boolean {
 	return !(ANALYTICS_COOKIE.test(name) || /^(?:GA|GS)\d\.\d\.|^fb\.\d\.|^-?[\d.]+$/.test(value));
 }
 
-/** Google's app passwords, as Google writes them: `Your app password for your device: qwhz kfmt vbnr xplo`. */
+/**
+ * Google's app passwords, as Google writes them: `Your app password for your device: qwhz kfmt vbnr xplo`. (Sixteen
+ * random letters: four words of four letters are the sentence going on, `app password: this will work with most…`.)
+ */
 function appPasswords(text: string, out: Finding[]) {
 	if (!/app[ -]?password/i.test(text)) return;
 	for (const m of text.matchAll(
 		/app[ -]?password\b[^\n:]{0,60}:[ \t]*["'`*]{0,2}([a-z]{4} [a-z]{4} [a-z]{4} [a-z]{4})\b/gi,
 	)) {
+		if (m[1].split(" ").every((word) => readsAsWords(word))) continue;
 		const start = m.index + m[0].length - m[1].length;
 		out.push({ start, end: start + m[1].length, kind: "password", rule: "structure:app-password", confidence: 0.95 });
 	}
