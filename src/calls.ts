@@ -300,8 +300,10 @@ const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\
 
 /**
  * A converter's callee, up to its `(`: one that makes a value of the string it is given, `hexStringToUint8Array(`,
- * `bytes.fromhex(`, `Buffer.from(`, `new TextEncoder().encode(`, `Secret::new(`, `SecretString::from(`, Go's `[]byte(`.
+ * `bytes.fromhex(`, `Buffer.from(`, `new TextEncoder().encode(`, `Secret::new(`, `SecretString::from(`, Go's `[]byte(`;
+ * or a digest that is given a password to hash, `MD5(`, `crypt(`, `hashlib.sha256(`, whose input is the password still.
  */
+const DIGEST = /^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|sha(?:1|2|224|256|384|512)?|crypt|digest|hashpw)[ \t]*\(/i;
 const CONVERTER =
 	/^(?:new[ \t]+)?(?:\[\])?(?:[\w.]|::|\(\)){0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes?|String|str|Uint8Array|parse|Parse)(?:[\w.]|::){0,40}\(/;
 
@@ -312,7 +314,7 @@ const CONVERTER =
  */
 export function convertedLiteral(text: string, at: number): (Literal & { close: number }) | undefined {
 	const head = text.slice(at, at + 120);
-	const converter = CONVERTER.exec(head);
+	const converter = CONVERTER.exec(head) ?? DIGEST.exec(head);
 	if (
 		!converter ||
 		/(?:^(?:new[ \t]+)?|\.|::)(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0])

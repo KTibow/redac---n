@@ -121,18 +121,28 @@ function* copyCells(text: string, wants?: (table: string, columns: string[]) => 
 
 /**
  * The string a row's value gives its column, read through SQL's own ways of writing one: a prefix (`N'…'`, `E'…'`,
- * calls.ts reads those, as it reads the functions a value is stored through, `crypt('…', gen_salt('bf'))`, `MD5('…')`),
- * dollar quoting (`$$…$$`, `$body$…$body$`) and a cast (`'…'::text`). Undefined for any other expression, and for a
- * number.
+ * calls.ts reads those), dollar quoting (`$$…$$`, `$body$…$body$`), a cast (`'…'::text`) and the functions a value is
+ * stored through (`crypt('…', gen_salt('bf'))`, `MD5('…')`, `encode(digest('…', 'sha256'), 'hex')`), which are given it
+ * first. Undefined for any other expression, and for a number.
  */
-function sqlLiteral(text: string, value: Argument): Literal | undefined {
+function sqlLiteral(text: string, value: Argument, depth = 0): Literal | undefined {
 	if (value.literal) return value.literal;
 	const literal = literalAt(text, value.start);
 	if (literal && literal.end < value.end) {
 		const rest = text.slice(literal.end + 1, value.end);
 		return CAST_TAIL.test(rest) ? literal : undefined;
 	}
-	return undefined;
+	// (A function's first argument, read the same way, not too deep to stay cheap: the functions a value is stored
+	// through, `encode(digest('…', 'sha256'), 'hex')`, are given it first.)
+	const call = /^[A-Za-z_][\w.]{0,60}[ \t]*\(/.exec(value.text);
+	if (
+		!call ||
+		depth >= 3 ||
+		!CAST_TAIL.test(text.slice(closingBracket(text, value.start + call[0].length) + 1, value.end))
+	)
+		return undefined;
+	const first = callArguments(text, value.start + call[0].length)?.[0];
+	return first && sqlLiteral(text, first, depth + 1);
 }
 
 /** What may follow a string and leave it the value: Postgres' casts, `::text`, `::character varying(255)`, `::bytea[]`. */

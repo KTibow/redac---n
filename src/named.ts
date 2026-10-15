@@ -671,8 +671,40 @@ function namedValue(
 	namedFinding(out, value.start, value.end, name, rule, confidence);
 }
 
+/** A plural credential's name (`passwords`, `secrets`, `api_keys`): an object under it maps names to credentials. */
+const isPluralCredential = (name: string) => /[^s]s$/i.test(name) && isCredentialName(name);
+
+/**
+ * Values in a JSON object under a plural credential's name, keyed by whose or which they are (`{"securityKeys":
+ * {"S0_Legacy": …}}`, `{"secrets": {"prod": …}}`): each is judged under the parent's name, as a list's items are under
+ * the list's. Only when every value in it is a string and a secret under that name: an object of settings,
+ * `"secrets": {"enabled": "true"}`, holds other things; nor a lower-case word, a setting's choice more often than a
+ * password.
+ */
+function parentMaps(text: string, out: Finding[]) {
+	if (!text.includes("{") || !/(?:words|wds|secrets|credentials|tokens|keys|phrases)"[ \t]*:[ \t]*\{/i.test(text))
+		return;
+	for (const doc of jsonDocuments(text)) {
+		const walk = (v: JsonNode) => {
+			if (v.kind === "array") v.items.forEach(walk);
+			if (v.kind !== "object") return;
+			for (const [k, x] of v.entries) {
+				if (x.kind !== "object" || !isPluralCredential(k) || !x.entries.every(([, y]) => y.kind === "string")) {
+					walk(x);
+					continue;
+				}
+				const values = x.entries.filter(([key]) => !isCredentialName(key)).map(([, y]) => y as JsonNode & Span);
+				if (values.length && values.every((y) => !/^\p{Ll}+$/u.test(y.value) && isNamedSecret(k, `"${y.value}"`, true)))
+					for (const y of values) namedFinding(out, y.start, y.end, k, "named:parent-map", 0.85);
+			}
+		};
+		walk(doc);
+	}
+}
+
 /** The rules, each a reader of one syntax; findNamed runs them all. */
 const RULES: ((text: string, out: Finding[]) => void)[] = [
+	parentMaps,
 	assignments,
 	flags,
 	xmlElements,

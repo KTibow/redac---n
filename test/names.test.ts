@@ -1679,3 +1679,11 @@ test("a value ends where the syntax around it resumes: a page's markup, a shell 
 	hidden("DB_PASSWORD=${DB_PASSWORD:-Kx9mQ2pLw7vR} ./run.sh", "Kx9mQ2pLw7vR");
 	hidden('docker run -e "DB_PASSWORD=Kx9mQ2pLw7vR;Host=db" app', "Kx9mQ2pLw7vR");
 });
+
+test("a JSON object under a plural credential's name holds credentials keyed by whose they are", () => {
+	const keys =
+		'{"securityKeys": {"S0_Legacy": "0E1C8DA2F3B54C6A9D7E8F1029384756", "S2_Unauthenticated": "5C14D038A1B2C3D4E5F60718293A4B5C"}}';
+	hidden(keys, "0E1C8DA2F3B54C6A9D7E8F1029384756");
+	hidden(keys, "5C14D038A1B2C3D4E5F60718293A4B5C");
+	kept('{"secrets": {"provider": "vault", "mode": "strict"}}', "vault");
+});

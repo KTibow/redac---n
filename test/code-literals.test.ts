@@ -552,3 +552,8 @@ test("a credential a chained assertion expects to equal a literal is that litera
 	kept('self.assertEqual(cfg.password_hash_scheme, "pbkdf2_sha256")', "pbkdf2_sha256");
 	kept("expect(cfg.passwordMinLength).toBe(12)", "toBe(12)");
 });
+
+test("C and C++ wide and UTF-8 literals are read as strings", () => {
+	hidden('std::wstring password = L"Zq8vT3mK9xLw";', "Zq8vT3mK9xLw");
+	hidden('const char8_t* api_secret = u8"Zq8vT3mK9xLwPr2Y";', "Zq8vT3mK9xLwPr2Y");
+});
