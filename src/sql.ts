@@ -125,7 +125,7 @@ function* copyCells(text: string, wants?: (table: string, columns: string[]) => 
  * functions a value is stored through (`crypt('…', gen_salt('bf'))`, `MD5('…')`, `encode(digest('…', 'sha256'),
  * 'hex')`), which are given it first. Undefined for any other expression, and for a number.
  */
-export function sqlLiteral(text: string, value: Argument, depth = 0): Literal | undefined {
+function sqlLiteral(text: string, value: Argument, depth = 0): Literal | undefined {
 	if (value.literal) return value.literal;
 	const dollar = /^\$([A-Za-z_]\w{0,30})?\$/.exec(value.text);
 	if (dollar) {

@@ -91,7 +91,7 @@ export interface ShellGroup {
 	then?: ShellOperator;
 }
 
-export type ShellOperator = "|" | "|&" | "||" | "&&" | ";" | "&" | "\n" | "";
+type ShellOperator = "|" | "|&" | "||" | "&&" | ";" | "&" | "\n" | "";
 
 export interface ShellCommand {
 	/** The command as written, and where it starts and ends (offset added). */
