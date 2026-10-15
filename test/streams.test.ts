@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { b62, r } from "./helpers.ts";
+import { b62, privateKeyLines, r } from "./helpers.ts";
 
 test("a stream equals whole-text redaction at every cut and never leaks a key across chunks", () => {
 	const tok = `ghp_${b62(36)}`;
@@ -83,6 +83,51 @@ test("a value named long before is hidden in a stream as in redact()", () => {
 	for (let i = 0; i < text.length; i += 4000) out += s.write(text.slice(i, i + 4000));
 	out += s.end();
 	assert.ok(!out.includes(pw));
+});
+
+test("a private key with no line break after its END line streams as redact() reads it", () => {
+	const key = privateKeyLines().join("\n");
+	const words = (n: number) => "word ".repeat(n);
+	for (const [before, after] of [
+		[10_000, 4_000],
+		[1_000, 10_000],
+		[2_400, 2_400],
+	]) {
+		for (const text of [
+			`${words(before)}${key} ${words(after)}`,
+			`${words(before)}${key}${JSON.stringify({ a: words(after) })}`,
+		]) {
+			const whole = r().redact(text).text;
+			for (const chunk of [100_000, 1000, 5000]) {
+				const s = r().stream({ holdback: 8192 });
+				let out = "";
+				for (let i = 0; i < text.length; i += chunk) out += s.write(text.slice(i, i + chunk));
+				assert.equal(out + s.end(), whole);
+			}
+		}
+	}
+});
+
+test("a command's hint ends at a prompt in its output however far back the prompt has scrolled", () => {
+	const filler = "2026-01-02T03:04:05Z INFO request handled in 12ms path=/api/v1/users/1234\n".repeat(1000);
+	const hint = { command: "cat .env" };
+	for (const later of ["settings:\n  key: value\n  mode: fast\n", "NODE_ENV=production\nLOG_LEVEL=debug\n"]) {
+		const text = `DB_HOST=db.internal\nAPI_KEY=Kx9mQ2vL8nRt4zWp7yUc\n$ ls -la\ntotal 8\n${filler}${later}${filler}`;
+		const whole = r().redact(text, { hint }).text;
+		assert.ok(!whole.includes("Kx9mQ2vL8nRt4zWp7yUc") && whole.includes(later));
+		for (const chunk of [4000, 50_000]) {
+			const s = r().stream({ hint, holdback: 8192 });
+			let out = "";
+			for (let i = 0; i < text.length; i += chunk) out += s.write(text.slice(i, i + chunk));
+			assert.equal(out + s.end(), whole);
+		}
+	}
+	// With no prompt, the whole output is the file's.
+	const text = `API_KEY=Kx9mQ2vL8nRt4zWp7yUc\n${filler}LATE_TOKEN=Wq3mZ8vK2nLp\n`;
+	const s = r().stream({ hint, holdback: 8192 });
+	let out = "";
+	for (let i = 0; i < text.length; i += 4000) out += s.write(text.slice(i, i + 4000));
+	assert.ok(!(out + s.end()).includes("Wq3mZ8vK2nLp"));
 });
 
 test("a stream cut between a JSON key and its number hides the number", () => {
