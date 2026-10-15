@@ -1036,8 +1036,20 @@ function oracleLogins(text: string, add: AddPassword) {
 	if (!/oracle|expdp|impdp|\bexp\b|\bimp\b|rman|sqlldr|dgmgrl|tkprof|\bconn(?:ect)?\b/i.test(text)) return;
 	// (Oracle's tools as a command, at a line's start or after a prompt or an operator: `dvc exp run` runs dvc.)
 	const LOGIN =
-		/(?:jdbc:oracle:(?:thin|oci):|(?:^|[;&|(]|\$ )[ \t]*(?:sudo[ \t]+)?(?:expdp|impdp|exp|imp|rman|sqlldr|dgmgrl|tkprof)\b[^\n]{0,400}?[ \t](?:(?:target|auxiliary|userid|catalog)[ \t=]+)?["']?|^[ \t]*(?:SQL>[ \t]*)?conn(?:ect)?[ \t]+["']?)([A-Za-z_][\w$#]{0,30})\/((?:[^\s\/@'"]|@(?=[^\s\/@'"]*@)){3,})(?=@|["']?[ \t]*(?:as[ \t]+sys\w*)?[ \t]*;?\r?$)/gim;
-	for (const m of text.matchAll(LOGIN)) add(m.index + m[0].length - m[2].length, m[2], "structure:cli-password");
+		/(?:jdbc:oracle:(?:thin|oci):|(?:^|[;&|(]|\$ )[ \t]*(?:sudo[ \t]+)?(?:expdp|impdp|exp|imp|rman|sqlldr|dgmgrl|tkprof)\b[^\n]{0,400}?[ \t](?:(?:target|auxiliary|userid|catalog)[ \t=]+)?["']?|^[ \t]*(?:SQL>[ \t]*)?conn(?:ect)?[ \t]+["']?)([A-Za-z_][\w$#]{0,30})\/((?:[^\s\/@'"]|@(?=[^\s\/@'"]*@)){3,})(?=@|["']?(?:[ \t]|;?\r?$))/gim;
+	for (const m of text.matchAll(LOGIN))
+		if (endsLogin(text, m.index + m[0].length, m[2])) add(m.index + m[0].length - m[2].length, m[2], "structure:cli-password");
+}
+
+/**
+ * Whether an Oracle login's `user/password` ends at `end`: at its `@db`, the line's end or an operator, or before the
+ * command's next word (`expdp system/pw directory=DP`, `sqlplus scott/pw @run.sql`, `rman target sys/pw nocatalog`).
+ * Before a next word, plain words are a sentence's `input/output` (`Connect input/output ports to the board`).
+ */
+function endsLogin(text: string, end: number, password: string): boolean {
+	const after = /^["']?([ \t]*)/.exec(text.slice(end, end + 2))!;
+	const rest = text.slice(end + after[0].length, end + after[0].length + 8);
+	return !after[1] || /^(?:@|;|[\r\n]|$|as[ \t]+sys)/i.test(rest) || !isWordsValue(password);
 }
 
 /**
@@ -1178,10 +1190,10 @@ function cliPasswords(text: string, out: Finding[]) {
 	}
 	// `sqlplus user/password@db` (the last `@` ends a password that has one, `scott/pa@ss@orcl`).
 	for (const m of text.matchAll(
-		/(?:^|[;&|(\s]|\$ )sqlplus[ \t]+(?:-\w+[ \t]+)*["']?[\w.$#-]{1,60}\/((?:[^\s@'"]|@(?=[^\s@'"]*@)){3,4096})(?=@|[ \t]+as[ \t]+sys|["']?[ \t]*$|["']?[ \t]*[;&|\n])/gm,
+		/(?:^|[;&|(\s]|\$ )sqlplus[ \t]+(?:-\w+[ \t]+)*["']?[\w.$#-]{1,60}\/((?:[^\s@'"]|@(?=[^\s@'"]*@)){3,4096})(?=@|["']?(?:[ \t]|$|[;&|\n]))/gm,
 	)) {
-		const pw = m[1] ?? m[2];
-		add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
+		const pw = m[1];
+		if (endsLogin(text, m.index + m[0].length, pw)) add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
 	}
 	// A password written unquoted with a shell's operators in it (`-pXk9(mP2&vQ7`) runs to the next blank, as the person
 	// who wrote it reads it; the shell would have cut it at the operator. (Not past a quote: `"$(… pw)"` closes there.)

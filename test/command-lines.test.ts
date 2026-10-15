@@ -122,6 +122,19 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");
+	// An Oracle login with no `@db`, before the command's next word: an option, a script, a redirect.
+	for (const line of [
+		"expdp system/Hx7mQ2pLvRt9 directory=DP dumpfile=a.dmp",
+		"impdp scott/Hx7mQ2pLvRt9 schemas=HR directory=DP",
+		"sqlldr userid=scott/Hx7mQ2pLvRt9 control=a.ctl",
+		"rman target sys/Hx7mQ2pLvRt9 nocatalog",
+		"sqlplus -S scott/Hx7mQ2pLvRt9 @/opt/run.sql arg1",
+		"sqlplus scott/Hx7mQ2pLvRt9 < run.sql",
+		"sqlplus scott/Hx7mQ2pLvRt9 <<EOF\nselect 1 from dual;\nEOF",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	for (const line of ["Connect input/output ports to the board", "sqlplus input/output files are written here"])
+		assert.equal(r().redact(line).text, line);
 	hidden("::add-mask::correct horse battery staple", "horse battery staple");
 	// (What a workflow masks is secret whatever its shape, a version's included.)
 	hidden('echo "::add-mask::v1.2.3"', "v1.2.3");
