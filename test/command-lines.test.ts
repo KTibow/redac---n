@@ -350,10 +350,3 @@ test("cypher-shell's -p is a password, and a process listing's command is read p
 	// (A path after a command's own words is its argument: `find` runs, not mysql.)
 	kept(`find /var/lib/mysql -perm ${pw}`, pw);
 });
-
-test("a dash a word processor typed before a flag is the flag's, and prose's dashes stay", () => {
-	hidden("mysql \u2013u root \u2013pXk29fLmq81Zt\n", "Xk29fLmq81Zt");
-	hidden("curl \u2013u admin:Xk29fLmq81Zt https://x.example.com\n", "Xk29fLmq81Zt");
-	hidden("mysql -u root \u2014password Xk29fLmq81Zt\n", "Xk29fLmq81Zt");
-	kept("Run it twice \u2013 once per region \u2014 then compare.", "\u2013 once per region \u2014 then");
-});

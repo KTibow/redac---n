@@ -156,9 +156,7 @@ const NEEDS_PASS_TWO = (text: string) =>
 	HAS_LINE_NUMBER.test(text) || PREFIXED.test(text) || LINE_END_MARK_TEST.test(text);
 const NEEDS_PASS_THREE = (text: string) =>
 	INLINE_TAG_TEST.test(text) ||
-	/[\u00a0\u2000-\u200a\u2018\u2019\u201c-\u201e\u202f\u3000\uff1a\uff1d]|[\u2010-\u2015\u2212][A-Za-z]|\\\r?\n/.test(
-		text,
-	) ||
+	/[\u00a0\u2000-\u200a\u2018\u2019\u201c-\u201e\u202f\u3000\uff1a\uff1d]|\\\r?\n/.test(text) ||
 	ENTITY.test(text) ||
 	JOINT.test(text);
 
@@ -502,18 +500,6 @@ function unspell(text: string): Normalized {
 			i++;
 			continue;
 		}
-		// A dash a word processor typed for a command line's (`mysql –u root –pV`, `—password V`): after a blank, before a
-		// letter. An em dash stands for two, as `--` turns into one.
-		if (
-			((c >= 0x2010 && c <= 0x2015) || c === 0x2212) &&
-			/^\s?$/.test(text[i - 1] ?? "") &&
-			/[A-Za-z]/.test(text[i + 1] ?? "")
-		) {
-			w.emit("-", i, i + 1);
-			if (c === 0x2014) w.emit("-", i, i + 1);
-			i++;
-			continue;
-		}
 		// Full-width colon and equals sign.
 		if (c === 0xff1a || c === 0xff1d) {
 			w.emit(c === 0xff1a ? ":" : "=", i, i + 1);
@@ -521,8 +507,12 @@ function unspell(text: string): Normalized {
 			continue;
 		}
 		// Typographic quotes, as a word processor's or a chat app's autocorrect writes them in pasted JSON and config
-		// (`“password”: “…”`, German `„…“`): the straight quotes the syntax means.
-		if (c === 0x2018 || c === 0x2019 || (c >= 0x201c && c <= 0x201e)) {
+		// (`“password”: “…”`, German `„…“`): the straight quotes the syntax means. (Not an apostrophe inside a word, which
+		// quotes nothing: Corsican `chjave d’accessu`, `it’s`.)
+		if (
+			(c === 0x2018 || c === 0x2019 || (c >= 0x201c && c <= 0x201e)) &&
+			!(c === 0x2019 && /\p{L}/u.test(text[i - 1] ?? "") && /\p{L}/u.test(text[i + 1] ?? ""))
+		) {
 			w.emit(c <= 0x2019 ? "'" : '"', i, i + 1);
 			i++;
 			continue;

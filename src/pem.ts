@@ -151,20 +151,13 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 			// (Base64 has `=` only as its padding, at the end: `password=Zq7m…` after a cut certificate, or on its BEGIN
 			// line in a log, is a setting.)
 			if (/=[^=]/.test(text.slice(lineFrom, j))) break;
-			// (A blank line separates the headers from the material; once material has begun, it ends the block, unless
-			// every line is followed by one, as by a tool that doubled the breaks: the next line is the next full line
-			// of material, or the END line.)
-			if (run === 0 && material > 0 && doubledBreak(text, j, lastRun)) {
-				i = j;
-				continue;
-			}
+			// (A blank line separates the headers from the material; once material has begun, it ends the block.)
 			if (run === 0 && (material > 0 || !breakAt(text, j))) break;
 		}
 		// The line's ending: blanks, a closing quote, a comma. (Not a `+`: before the line's break, breakAt reads it as an
 		// operator, `"…" +⏎`; after a blank, it starts the next line's material in a key joined by blanks.)
 		const runEnd = j;
-		// (Not into the next string of a compact array of lines, whose `","` is the break.)
-		while (j < text.length && " \t\"',;".includes(text[j]) && !(text[j] === '"' && breakAt(text, j) > 0)) j++;
+		while (j < text.length && " \t\"',;".includes(text[j])) j++;
 		// A line of material is all armor: what follows is the line's end, the END line, or (in a key whose line breaks
 		// became blanks) more material after a full run. A word that only starts like it (`hello world`) ends the block;
 		// a full run that something else follows is the last material, cut where output was shortened (`…AB…`,
@@ -186,29 +179,6 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		i = j;
 	}
 	return { end, material };
-}
-
-/**
- * Whether the empty line at `at` (after a line of material `width` long) is a doubled break: the line after it is
- * a full line of material (as wide as the one before), or a shorter last line or the END line, each after the same
- * kind of empty line.
- */
-function doubledBreak(text: string, at: number, width: number): boolean {
-	const brk = breakAt(text, at);
-	if (width < 40 || !brk) return false;
-	let j = at + brk;
-	while (j < text.length && j - at < 40 && (text[j] === " " || text[j] === "\t")) j++;
-	if (endsAt(text, j)) return true;
-	let k = j;
-	while (k < text.length && isArmorChar(text.charCodeAt(k))) k++;
-	const run = k - j;
-	const after = breakAt(text, k);
-	if (run === 0 || !after) return false;
-	return (
-		run >= width ||
-		(run >= 4 &&
-			(endLineNext(text, k, undefined) || (breakAt(text, k + after) > 0 && endLineNext(text, k + after, undefined))))
-	);
 }
 
 /**
@@ -273,13 +243,8 @@ function breakAt(text: string, i: number): number {
 	const escaped = escapedBreakAt(text, i);
 	let j = i + escaped;
 	while (j < text.length && j - i < 40 && CONTINUATION.includes(text[j])) j++;
-	// (CRs before the LF: `\r\n`, and a terminal's `\r\r\n` from output captured through a pty, `docker exec -t`, `ssh -t`.)
-	let k = j;
-	while (k < text.length && k - j < 4 && text[k] === "\r") k++;
-	if (text[k] === "\n") return k + 1 - i;
-	// One line of a compact JSON array of lines (`["-----BEGIN …-----","MIIE…","…"]`): a quote, a comma, a quote.
-	const item = /^"[ \t]*,[ \t]*"/.exec(text.slice(i + escaped, i + escaped + 24));
-	return item ? escaped + item[0].length : escaped;
+	if (text[j] === "\r" && text[j + 1] === "\n") return j + 2 - i;
+	return text[j] === "\n" ? j + 1 - i : escaped;
 }
 
 /** The length of an escaped line break at `i` (`\n`, `\\n`, `\r\n` escaped), or 0. */

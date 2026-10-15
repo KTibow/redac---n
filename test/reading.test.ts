@@ -123,10 +123,6 @@ test("spaces of other widths, full-width signs and line continuations, and backs
 	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
 	// An entity escaped twice (JSON in an attribute escaped twice) is the character.
 	assert.equal(normalize("{&amp;quot;a&amp;quot;:1} &amp;amp;lt;").text, '{"a":1} <');
-	// A word processor's dashes before a command line's flags; prose's dashes stay.
-	assert.equal(normalize("mysql –u root —password x −p").text, "mysql -u root --password x -p");
-	for (const prose of ["pages 10–12 — see above", "a well‑known value", "Paris–Berlin"])
-		assert.equal(normalize(prose).text, prose);
 });
 
 test("typographic quotes, as autocorrect writes pasted JSON and config, are read as the straight ones", () => {
@@ -137,6 +133,9 @@ test("typographic quotes, as autocorrect writes pasted JSON and config, are read
 	// (The quotes themselves stay as written around the placeholder, and prose keeps its apostrophes.)
 	kept("{“password”: “Winter2024!kz”}", "“password”: “");
 	kept("The password’s rules don’t change: “at least 12 characters”.", "“at least 12 characters”");
+	// (An apostrophe inside a word quotes nothing: a locale's label for the password, Corsican's.)
+	assert.equal(normalize("chjave d’accessu").text, "chjave d’accessu");
+	kept("  login_activities:\n    authentication_methods:\n      password: chjave d’accessu\n", "chjave d’accessu");
 });
 
 test("wrapped base64 with a prefix on the first line and a suffix on the last", () => {
