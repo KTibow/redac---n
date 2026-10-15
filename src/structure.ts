@@ -966,14 +966,16 @@ const STDIN_SECRET =
 	/^(?:sudo(?:\s+-[A-Za-z]*S[A-Za-z]*)(?:\s|$)|(?:sudo(?:\s+-\S+)*\s+)?(?:(?:docker|podman|nerdctl|helm|oras|crane|skopeo|buildah)\s+(?:registry\s+)?login\b.*--password-stdin|gh\s+auth\s+login\b.*--with-token|gh\s+secret\s+set\b|(?:podman|docker)\s+secret\s+create\b|(?:npx\s+)?wrangler\s+secret\s+put\b|vercel\s+env\s+add\b|kubectl\s+create\s+secret\b|fly(?:ctl)?\s+secrets\s+(?:set|import)\b|netlify\s+env:set\b|pulumi\s+config\s+set\b.*--secret\b|vault\s+(?:login|kv\s+put|write)\b|chpasswd\b|passwd\b|openssl\b.*-pass(?:in|out)?\s+stdin))/;
 
 /**
- * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`,
+ * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`, `/p pw`,
  * `psexec -p pw`, `osql -P pw`) and positional ones (`net use Z: \\srv\share pw /user:CORP\alice`, `net user svc pw /add`).
  * (`*` asks for the password at a prompt: passwordAdder adds no run of `*`.)
  */
 function windowsPasswords(text: string, add: AddPassword) {
 	if (!/\b(?:cmdkey|schtasks|psexec|net|wmic|winrs|osql|sqlcmd|runas)\b|\/(?:pass|password|pwd):/i.test(text)) return;
 	for (const m of text.matchAll(/^[^\n]*$/gm)) {
-		const ws = shellWords(m[0], m.index, { backslash: false });
+		// (Past a cmd or PowerShell prompt, `C:\Users\bob> ` or `PS C:\> `, whose `>` is no redirect.)
+		const prompt = /^[ \t]*(?:PS )?[A-Za-z]:\\[^>\n<|]{0,200}>[ \t]*/.exec(m[0])?.[0].length ?? 0;
+		const ws = shellWords(m[0].slice(prompt), m.index + prompt, { backslash: false });
 		const command = ws.findIndex((w) =>
 			/^(?:cmdkey|schtasks|psexec(?:64)?|net|wmic|winrs|osql|sqlcmd)(?:\.exe)?$/i.test(w.text),
 		);
@@ -986,10 +988,11 @@ function windowsPasswords(text: string, add: AddPassword) {
 		if (command < 0) continue;
 		const tool = ws[command].text.toLowerCase().replace(/\.exe$/, "");
 		const rest = ws.slice(command + 1);
-		// A switch followed by its value: `/rp pw` (schtasks), `-p pw` (psexec), `-P pw` (osql, sqlcmd).
+		// A switch followed by its value: `/rp pw` and `/p pw` (schtasks: the run-as user's, and the remote one's of
+		// `/u`), `-p pw` (psexec), `-P pw` (osql, sqlcmd).
 		const flag =
 			tool === "schtasks"
-				? /^\/rp$/i
+				? /^\/r?p$/i
 				: /^psexec/.test(tool)
 					? /^-p$/
 					: /^(?:osql|sqlcmd)$/.test(tool)

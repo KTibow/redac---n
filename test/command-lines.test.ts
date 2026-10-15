@@ -112,8 +112,16 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		["net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
 		["net user svc Harbor#2291x /add", S],
 		["winrs -r:srv -u:admin -p:Harbor#2291x ipconfig", S],
+		// After a cmd or PowerShell prompt, whose `>` is no redirect; and schtasks' `/p` for its `/u`.
+		["C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
+		["C:\\>net user svc Harbor#2291x /add", S],
+		["PS C:\\> psexec \\\\srv -u admin -p Harbor#2291x cmd", S],
+		["C:\\Users\\bob> sqlcmd -U sa -P Harbor#2291x", S],
+		["schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup /tr C:\\b.bat /sc daily", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	kept("C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", "C:\\Users\\bob> net use Z:");
+	kept("schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup", "/tn Backup");
 	for (const [t, v, hint] of [
 		["crypto isakmp key Harbor#2291x address 0.0.0.0", S],
 		[" ip ospf message-digest-key 1 md5 Harbor#2291x", S],
