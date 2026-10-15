@@ -24,6 +24,9 @@ appwrite, pocketbase, directus, keycloak-quickstarts, harbor, woodpecker, coder 
 aidev/: AIDev (hao-li/AIDev, CC-BY-4.0), pull requests written by coding agents: titles and bodies, and
 review comments with their diff hunks (the first 40,000 rows of each).
 
+final7 (built 2026-10-15): Kwai-Klear train-00017, nebius train-00006; litellm, dify, n8n, rails, django,
+spring-boot, jellyfin, prometheus, vault, sentry-javascript, nextcloud and esphome.
+
 Records are {src, text} chunks of at most 8,000 characters, deduplicated by their first 300.
 
     python3 -I scripts/build-final.py [set]

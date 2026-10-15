@@ -54,6 +54,7 @@ in them would otherwise read as real ones to secret scanners.
 | 2026-10-09 | PyPI READMEs and release metadata (MIT): 60.0 M chars | data agent | 8.76 per M chars balanced (about 275 false) | 11.12 per M |
 | 2026-10-09 | "Hiding in Plain Sight" obfuscation benchmark (MIT): 12,150 obfuscated credentials | data agent | balanced 79.3 (90.4 without encoded AWS key IDs; zero-width-separated: 0 of 810) | detect-secrets 71.3 |
 | 2026-10-15 | holdout9.jsonl, 300 cases, 518 secrets, 530 keeps, 300 contexts | three blind template writers (the 2026 AI and agent ecosystem: MCP client configs, model providers, vector stores, inference platforms; JVM and .NET business applications; SaaS integrations: commerce, payments, messaging, auth, CMS) + seeded filler (seed 9090). The JVM/.NET writer was stopped by a safety classifier after 60 of 120 templates, and a fourth writer (one tool's output in many presentations) before writing any; neither was retried | 89.8/4.0 · 94.0/7.9 · 94.2/8.1 | not run |
+| 2026-10-15 | final7, 205 M chars of real text | 12 more repositories (litellm, dify, n8n, rails, django, spring-boot, jellyfin, prometheus, vault, sentry-javascript, nextcloud, esphome), Kwai-Klear train-00017, nebius train-00006; scored after the code-fence fix and before any other change of this round | 4.09 · 4.83 · not run per M chars (SHA/UUID 0.14 · 0.19) | not run |
 
 ## What each set became after its blind run
 
