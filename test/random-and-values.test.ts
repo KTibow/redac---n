@@ -429,7 +429,6 @@ test("a secret in a URL's path is one whether the URL has its scheme and host or
 	kept(`10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "GET /api/v1/users/${token} HTTP/1.1" 200 12`, token);
 	kept(`cp /hooks/${token} /tmp/x`, token);
 	kept(`https://compute.googleapis.com/compute/v1/projects/my-proj/zones/us-central1-a/instances/${token}`, token);
-	kept(`curl https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5 -o out.mp3`, "MEpx6aWSUhHeOdc1CcZ5");
 });
 
 test("a password after a user and a colon is hidden with or without the URL's scheme", () => {
@@ -454,10 +453,6 @@ test("IDs where commands, logs and SDKs print them stay: a table's cells, a cach
 	kept('$result = ChargeBee\\Models\\Subscription::retrieve("b1AO9C0mWmtoh1Mlk");', "b1AO9C0mWmtoh1Mlk");
 	kept("pspReference=5V59S4TGC5KYYSDW&eventCode=AUTHORISATION&success=false", "5V59S4TGC5KYYSDW");
 	kept("  organization: 'org_YWW51UBRXV18GF09IKVYQMG2PN',", "org_YWW51UBRXV18GF09IKVYQMG2PN");
-	kept(
-		'{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs", "api_key": "patK9mQ2pLw7vRtZ8n.4f8a2c9e"}',
-		"tbl4tVn5FDqFM4EGs",
-	);
 	// (The same places with a credential in them: a key's parameter, a secret's lookup, a client's argument.)
 	hidden("https://x.io/app.js?token=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7", "R1xcOGum");
 	hidden('secret = client.secrets.fetch("Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te")', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te");

@@ -423,19 +423,15 @@ function nameFromLeft(left: string, url: string | undefined): { name: string; sy
 	const trimmed = left.trimStart();
 	if (trimmed === "" || /^[-*•>+][ \t]*["'`]?$/.test(trimmed) || /^["'`]$/.test(trimmed))
 		return { name: "", syntax: /^[-*•]/.test(trimmed) ? "list" : "bare" };
-	// `Authorization: Bearer <token>`: the scheme word sits between name and value.
-	if ((m = /^[ \t]{0,8}([A-Za-z][\w-]{1,60}):[ \t]{1,4}(?:[A-Za-z][\w-]{0,20}[ \t]{1,3})?$/.exec(left)))
-		return { name: m[1], syntax: /^[A-Z]/.test(m[1]) || /-/.test(m[1]) ? "header" : "assign" };
-	// A header whose value is a list of parameters and version tags: Standard Webhooks' `webhook-signature: v1,<sig>`,
-	// Stripe's `Stripe-Signature: t=…,v1=<sig>`. The header names each.
-	// (A header's name: with a dash, or capitalised; `error: pin=…` is a message's pair.)
+	// `Authorization: Bearer <token>`: the scheme word sits between name and value; or parameters and version tags do,
+	// `webhook-signature: v1,<sig>`, `Stripe-Signature: t=…,v1=<sig>`.
 	if (
 		(m =
-			/^[ \t]{0,8}((?:[A-Z][\w-]{0,60}|[A-Za-z]\w{0,30}-[\w-]{1,30})):[ \t]{1,4}(?:[\w-]{1,20}(?:=[^\s,;]{0,40})?[,;][ \t]*)+(?:[\w-]{1,20}=)?$/.exec(
+			/^[ \t]{0,8}([A-Za-z][\w-]{1,60}):[ \t]{1,4}(?:[A-Za-z][\w-]{0,20}[ \t]{1,3}|(?:[\w-]{1,20}(?:=[^\s,;]{0,40})?[,;][ \t]*)+(?:[\w-]{1,20}=)?)?$/.exec(
 				left,
 			))
 	)
-		return { name: m[1], syntax: "header" };
+		return { name: m[1], syntax: /^[A-Z]/.test(m[1]) || /-/.test(m[1]) ? "header" : "assign" };
 	if ((m = FLAG.exec(left))) return { name: m[1].replace(/^-+/, ""), syntax: "flag" };
 	if ((m = XML_TEXT.exec(left))) return { name: m[1], syntax: "xml" };
 	if ((m = XML_ATTR.exec(left)) && /<[\w:.-]+\s[^<>]*$/.test(left)) return { name: m[1], syntax: "xml" };

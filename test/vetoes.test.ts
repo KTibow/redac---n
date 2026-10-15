@@ -280,16 +280,8 @@ const SAMPLES: [reason: string, text: string, token: string][] = [
 	["lookup-id", '$s = ChargeBee\\Models\\Subscription::retrieve("b1AO9C0mWmtoh1Mlk");', "b1AO9C0mWmtoh1Mlk"],
 	["lookup-id", 'const s = await stripe.subscriptions.retrieve("Kx9mQ2vL7pZrTq8Wn3Xc4Y");', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	["lookup-id", "user = User.objects.findById('Kx9mQ2vL7pZrTq8Wn3Xc4Y')", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
-	// IDs by their documented prefixes: WorkOS's and Clerk's organizations, Airtable's bases and tables.
+	// IDs by their documented prefixes: WorkOS's and Clerk's organizations.
 	["object-id", "organization: 'org_YWW51UBRXV18GF09IKVYQMG2PN',", "org_YWW51UBRXV18GF09IKVYQMG2PN"],
-	["object-id", '{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs"}', "appx4ZUkcFSHS2ONg"],
-	["object-id", '{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs"}', "tbl4tVn5FDqFM4EGs"],
-	// A REST path's resource named in words.
-	[
-		"collection-id",
-		"curl https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5 -o out.mp3",
-		"MEpx6aWSUhHeOdc1CcZ5",
-	],
 	// A name that says reference or organization says ID.
 	["name-identifier", "pspReference=5V59S4TGC5KYYSDW&eventCode=AUTHORISATION", "5V59S4TGC5KYYSDW"],
 	["name-hash", "SENTRY_RELEASE=63a66e12bb6436fe91488485a79d81f6f8966a55", "63a66e12bb6436fe91488485a79d81f6f8966a55"],
@@ -346,9 +338,8 @@ const NOT: [reason: string, text: string, token: string][] = [
 	["cache-buster", "https://api.acme.io/v1/export?v=Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	["lookup-id", 'secret = client.secrets.fetch("Kx9mQ2vL7pZrTq8Wn3Xc4Y")', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	["lookup-id", 'const c = new Client("Kx9mQ2vL7pZrTq8Wn3Xc4Y")', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
-	// A resource named in words that names a credential, or a plural that is a hook's, is no collection.
+	// A plural that is a hook's is no collection.
 	["collection-id", "curl https://api.acme.io/v1/api-keys/Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
-	["collection-id", "curl https://api.acme.io/v1/reset-token/Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	// A key encoded twice decodes to a token, not text, though its base64 has a slash.
 	[
 		"base64-text",

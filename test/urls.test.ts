@@ -239,7 +239,7 @@ test("a long random token is hidden under a collection's plural and before a fee
 		),
 	])
 		hidden(text, token);
-	// IDs services generate are shorter (Spotify's 22, Firestore's 20, ElevenLabs' voice 20), and an image or a page
+	// IDs services generate are shorter (Spotify's 22, Firestore's 20), and an image or a page
 	// asset is named by its ID on any host.
 	for (const [text, id] of [
 		["https://api.spotify.com/v1/tracks/4uLU6hMCjMI75M1A2tKUQC", "4uLU6hMCjMI75M1A2tKUQC"],
@@ -247,7 +247,6 @@ test("a long random token is hidden under a collection's plural and before a fee
 			"https://firestore.googleapis.com/v1/projects/p/databases/x/documents/users/aB3dE5fG7hI9jK1lM3nO",
 			"aB3dE5fG7hI9jK1lM3nO",
 		],
-		["https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5?output_format=mp3", "MEpx6aWSUhHeOdc1CcZ5"],
 		...["png", "jpg", "webp", "css"].map((ext) => [`https://example.com/u/${token}.${ext}`, token]),
 	])
 		kept(text, id);

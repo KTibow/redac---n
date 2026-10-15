@@ -395,11 +395,7 @@ const isUserinfo = (f: Features) => /^[^\s"'<>@?#/]*@[\w-]+(?:\.[\w-]+)+/.test(f
  */
 function urlPathId(f: Features): string | undefined {
 	if (f.ctx.syntax !== "path" || f.secretFile || isHookUrl(f) || isUserinfo(f)) return undefined;
-	// (A collection is a plural, or a resource's name in words, `/v1/text-to-speech/<voice id>`; not a credential's.)
-	const collection =
-		(/^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) ||
-			(/^[a-z]{3,}(?:-[a-z]+)+$/.test(f.ctx.pathParent) && !/key|token|secret|auth|pass/.test(f.ctx.pathParent))) &&
-		!isHookSegment(f.ctx.pathParent);
+	const collection = /^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) && !isHookSegment(f.ctx.pathParent);
 	if (f.ctx.nameClass === "credential" && !collection) return undefined;
 	const mediaHost =
 		/:\/\/(?:[\w-]+\.)*[\w-]*(?:img|image|images|cdn|static|media|pic|pics|photo|photos|thumb|thumbs|resiz|assets?)[\w-]*\.[\w.-]+\/[^\s"']*$/i.test(
@@ -688,12 +684,8 @@ const VETOES: Veto[] = [
 	["password-hash", (f, t) => isPasswordHashPart(f.ctx.left, t, f.ctx.right)],
 	// AWS unique IDs of roles, users, groups, policies and instance profiles, and CloudFront key pair IDs.
 	["aws-unique-id", (_, t) => /^(?:AROA|AIDA|AGPA|ANPA|ANVA|AIPA|APKA)[A-Z0-9]{12,20}$/.test(t)],
-	// (In a key's place the same prefixes are credentials: Resend `re_…`, Wompi `prod_events_…`. Airtable's bases,
-	// tables, fields, records and views: three letters and 14 characters, `appx4ZUkcFSHS2ONg`.)
-	[
-		"object-id",
-		(f, t) => (OBJECT_ID.test(t) || /^(?:app|tbl|fld|rec|viw|wsp|usr|sel)[A-Za-z0-9]{14}$/.test(t)) && !keyPlace(f),
-	],
+	// (In a key's place the same prefixes are credentials: Resend `re_…`, Wompi `prod_events_…`.)
+	["object-id", (f, t) => OBJECT_ID.test(t) && !keyPlace(f)],
 	["hash-prefix", (f) => f.ctx.hashPrefix],
 	// Signatures by name, Gemini's `thoughtSignature` among them; a `sig` only when longer than an HMAC key; a mail's
 	// DKIM or ARC signature (`b=`), which every receiving server checks.
@@ -877,15 +869,14 @@ const VETOES: Veto[] = [
 	],
 	// A Solana address near Solana's words. (Other blockchain addresses and content IDs are `inert`'s: values.ts.) Not
 	// under a credential's name, nor where an RPC provider's URL takes its key: after the API's version
-	// (`solana-devnet.g.alchemy.com/v2/<key>`), or in a key's parameter.
+	// (`solana-devnet.g.alchemy.com/v2/<key>`). (A key's parameter, `?api-key=`, is a credential's name.)
 	[
 		"public-address",
 		(f, t, cred) =>
 			/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t) &&
 			/solana|devnet|mainnet-beta|lamports|phantom|pubkey/i.test(f.ctx.near) &&
 			!cred &&
-			!(f.ctx.inUrl && /\/v\d{1,2}\/$/.test(f.ctx.left)) &&
-			!/[?&](?:api[-_]?key|key|token)=$/i.test(f.ctx.left),
+			!(f.ctx.inUrl && /\/v\d{1,2}\/$/.test(f.ctx.left)),
 	],
 	["timestamp", (_, t) => /^\d{8}T\d{6}Z$/.test(t)],
 	// A Google Drive file's ID near Drive's words.
