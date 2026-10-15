@@ -1001,13 +1001,23 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 const STDIN_SECRET =
 	/^(?:sudo(?:\s+-[A-Za-z]*S[A-Za-z]*)(?:\s|$)|(?:sudo(?:\s+-\S+)*\s+)?(?:(?:docker|podman|nerdctl|helm|oras|crane|skopeo|buildah)\s+(?:registry\s+)?login\b.*--password-stdin|gh\s+auth\s+login\b.*--with-token|gh\s+secret\s+set\b|(?:podman|docker)\s+secret\s+create\b|(?:npx\s+)?wrangler\s+secret\s+put\b|vercel\s+env\s+add\b|kubectl\s+create\s+secret\b|fly(?:ctl)?\s+secrets\s+(?:set|import)\b|netlify\s+env:set\b|pulumi\s+config\s+set\b.*--secret\b|vault\s+(?:login|kv\s+put|write)\b|chpasswd\b|passwd\b|openssl\b.*-pass(?:in|out)?\s+stdin))/;
 
+/** Windows' commands that run against another computer as another user, `/s srv /u CORP\bob /p pw`. */
+const REMOTE_USER_TOOLS =
+	/^(?:schtasks|setx|taskkill|tasklist|systeminfo|getmac|bootcfg|gpresult|openfiles|eventcreate|eventquery|eventtriggers|driverquery|waitfor)(?:\.exe)?$/i;
+
 /**
- * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`, `/p pw`,
- * `psexec -p pw`, `osql -P pw`) and positional ones (`net use Z: \\srv\share pw /user:CORP\alice`, `net user svc pw /add`).
- * (`*` asks for the password at a prompt: passwordAdder adds no run of `*`.)
+ * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`,
+ * `psexec -p pw`, `osql -P pw`, and the remote user's `/u CORP\bob /p pw` that schtasks, setx, taskkill, tasklist,
+ * systeminfo, getmac, bootcfg, gpresult and their kin share) and positional ones (`net use Z: \\srv\share pw
+ * /user:CORP\alice`, `net user svc pw /add`). (`*` asks for the password at a prompt: passwordAdder adds no run of `*`.)
  */
 function windowsPasswords(text: string, add: AddPassword) {
-	if (!/\b(?:cmdkey|schtasks|psexec|net|wmic|winrs|osql|sqlcmd|runas)\b|\/(?:pass|password|pwd):/i.test(text)) return;
+	if (
+		!/\b(?:cmdkey|schtasks|psexec|net|wmic|winrs|osql|sqlcmd|runas)\b|\/(?:pass|password|pwd):|[ \t]\/[uU][ \t]/i.test(
+			text,
+		)
+	)
+		return;
 	for (const m of text.matchAll(/^[^\n]*$/gm)) {
 		// (Past a cmd or PowerShell prompt, `C:\Users\bob> ` or `PS C:\> `, whose `>` is no redirect.)
 		const prompt = /^[ \t]*(?:PS )?[A-Za-z]:\\[^>\n<|]{0,200}>[ \t]*/.exec(m[0])?.[0].length ?? 0;
@@ -1021,21 +1031,38 @@ function windowsPasswords(text: string, add: AddPassword) {
 			const glued = /^(?:\/(?:pass|password|pwd)|-p):(.+)$/i.exec(w.text);
 			if (glued && (w.text[0] === "/" || /^winrs/i.test(ws[command]?.text ?? ""))) addTail(add, w, glued[1], w.quoted);
 		}
+		// A switch's value is the next word of the same command, written as a value: not past an operator (`/P | sort`,
+		// `/p; then`) nor a syntax's placeholder (`/p [password]`, `/p <password>`).
+		const value = (k: number) => {
+			const [w, v] = [ws[k], ws[k + 1]];
+			return v && /^[ \t]*$/.test(m[0].slice(w.end - m.index, v.start - m.index)) && !/^[[<|;&>]/.test(v.text)
+				? v
+				: undefined;
+		};
+		// The remote user's password, `/u CORP\bob /p pw`, on the commands that take them (not in prose: `use the /u and /p
+		// fields`).
+		const remote = ws.findIndex((w) => REMOTE_USER_TOOLS.test(w.text));
+		for (let k = Math.max(2, remote + 3); remote >= 0 && k + 1 < ws.length; k++)
+			if (/^\/p$/i.test(ws[k].text) && /^\/u$/i.test(ws[k - 2].text) && value(k - 2) && value(k)) {
+				const pw = value(k)!;
+				addTail(add, pw, pw.text, pw.quoted);
+			}
 		if (command < 0) continue;
 		const tool = ws[command].text.toLowerCase().replace(/\.exe$/, "");
 		const rest = ws.slice(command + 1);
-		// A switch followed by its value: `/rp pw` and `/p pw` (schtasks: the run-as user's, and the remote one's of
-		// `/u`), `-p pw` (psexec), `-P pw` (osql, sqlcmd).
+		// A switch followed by its value: `/rp pw` (schtasks' run-as user's), `-p pw` (psexec), `-P pw` (osql, sqlcmd).
 		const flag =
 			tool === "schtasks"
-				? /^\/r?p$/i
+				? /^\/rp$/i
 				: /^psexec/.test(tool)
 					? /^-p$/
 					: /^(?:osql|sqlcmd)$/.test(tool)
 						? /^-P$/
 						: undefined;
-		for (let k = 0; flag && k + 1 < rest.length; k++)
-			if (flag.test(rest[k].text)) addTail(add, rest[k + 1], rest[k + 1].text, rest[k + 1].quoted);
+		for (let k = command + 1; flag && k + 1 < ws.length; k++) {
+			const pw = flag.test(ws[k].text) ? value(k) : undefined;
+			if (pw) addTail(add, pw, pw.text, pw.quoted);
+		}
 		// `net use [drive] \\share [password] /user:…` and `net user name [password] /add`: the positional word after the share or the name.
 		if (tool === "net" && /^(?:use|user)$/i.test(rest[0]?.text ?? "")) {
 			const positional = rest.slice(1).filter((w) => !/^\//.test(w.text));

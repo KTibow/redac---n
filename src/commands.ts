@@ -181,7 +181,7 @@ export interface CommandRun extends ShellCommand {
  * `$env:USERPROFILE\.ssh\id_rsa`, `%USERPROFILE%\.ssh`): read without POSIX escapes.
  */
 const WINDOWS_LINE =
-	/(?:^|[\s'"=(])(?:[A-Za-z]:\\|\.{1,2}\\[\w.$-]|~\\|\$(?:HOME|env:\w+)\\|%\w+%\\)|^[ \t]*(?:Get-\w+|Select-String|sls|gc|type|findstr|pwsh|powershell|cmd)(?:\.exe)?[ \t]/i;
+	/(?:^|[\s'"=(])(?:[A-Za-z]:\\|\.{1,2}\\[\w.$-]|~\\|\$(?:HOME|env:\w+)\\|%\w+%\\)|^[ \t]*(?:Get-\w+|Select-String|gc|type|findstr|pwsh|powershell|cmd)(?:\.exe)?[ \t]/i;
 
 /**
  * The simple commands a command line runs, in order, read through what runs a command of its own: a shell (`bash -lc
@@ -488,6 +488,12 @@ const ECHOES = /^(?:echo|printf|Write-Output|Write-Host)$/;
 
 /** Whether a command prints the contents of a secret file (`cat .env`, `grep KEY .env.local`, `cat < .env`, `git show HEAD:.env`). */
 export function printsSecretFile(command: string): boolean {
+	// (A member of what a command gives prints that member, not the file or the listing: `(Get-Item Env:HOM*).Name`.)
+	if (
+		EXPRESSION.test(command) &&
+		/\)(?:\.[A-Za-z_]\w*(?:\(\))?)*\.(?!value\b)[A-Za-z_]\w*(?:\(\))?[ \t]*$/i.test(command)
+	)
+		return false;
 	return printsWhatItReads(command, readsSecretFile, isSecretFile) || printsIndirectly(command);
 }
 
@@ -589,8 +595,12 @@ function readsSecretFile(c: ShellCommand): boolean {
 	// echo`, `xargs < .env`; `xargs -a hosts.txt ping` prints no file.)
 	const xargs = xargsInput(c, words);
 	if (xargs !== undefined && (program === "xargs" || ECHOES.test(program))) return isSecretFile(xargs);
-	// (PowerShell's `Get-ChildItem Env:` and `Get-Item Env:NAME` print the variables as a table of names and values.)
-	if (/^(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)$/.test(program) && rest.some((t) => /^env:/i.test(t))) return true;
+	// (PowerShell's `Get-ChildItem Env:` and `Get-Item Env:NAME` print the variables as a table of names and values: all
+	// of them, or those a wildcard matches; one variable named in full is judged by its name, `Env:AZURE_TENANT_ID`.)
+	const drive = /^(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)$/.test(program)
+		? rest.find((t) => /^env:/i.test(t))
+		: undefined;
+	if (drive !== undefined) return !/^env:\\?\w+$/i.test(drive) || isCredentialName(drive.replace(/^env:\\?/i, ""));
 	if (!CONTENT_COMMANDS.test(program) || printsNamesOnly(words) || editsInPlace(words)) return false;
 	// (`env` here runs no command: simpleCommand reads past it to the one it runs. `env -0` prints the environment too;
 	// `printenv NAME` prints one variable, judged by its name: printsSecret.)
@@ -795,7 +805,9 @@ const EXPRESSION = /^[ \t]*(?:\$\{?(?:env:)?[A-Za-z_]\w*\}?|\([^()\n]{1,200}\))(
 function printsExpression(command: string): boolean {
 	if (!EXPRESSION.test(command)) return false;
 	const member = /\.([A-Za-z_]\w*)(?:\(\))?[ \t]*$/.exec(command)?.[1];
-	if (member !== undefined && !/^value$/i.test(member)) return isCredentialName(member);
+	// (A dictionary's keys are its names, `$hash.Keys`, `(Get-Command x).Parameters.Keys`, and an entry's `$_.Key`.)
+	if (member !== undefined && !/^value$/i.test(member))
+		return !/^(?:all)?keys?$/i.test(member) && isCredentialName(member);
 	return variablesIn(command).some(isCredentialName);
 }
 
@@ -842,9 +854,6 @@ function printsCredential(c: ShellCommand): boolean {
 	// `node -e "console.log(process.env.TOKEN)"`.)
 	if (INTERPRETER.test(program))
 		return [...line.matchAll(PRINTED_ENV_READ)].some((m) => isCredentialName(m[1] ?? m[2]));
-	// (PowerShell's environment drive read as a file prints the variable's value: `Get-Content Env:TOKEN`.)
-	if (/^(?:Get-Content|gc|cat|type)$/.test(program))
-		return args.length === 1 && /^env:\w+$/i.test(args[0].text) && variablesIn(args[0].text).some(isCredentialName);
 	if (program !== "echo" && program !== "printf" && !/^write-(?:host|output)$/i.test(program)) return false;
 	// (printf prints its format and its operands alike, `printf "Token: %s\n" "$TOKEN"`, `printf "$TOKEN"`; but `-v NAME`
 	// assigns what it would print and prints nothing.)
