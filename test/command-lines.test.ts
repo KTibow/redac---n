@@ -166,6 +166,12 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	const pw = "vbrzzeN7T9J2xk";
 	hidden(`127.0.0.1:6379> AUTH ${pw}\nOK`, pw);
 	hidden(`127.0.0.1:6379> CONFIG GET requirepass\n1) "requirepass"\n2) "${pw}"`, pw);
+	// A Redis ACL rule's password, added or removed, in a session and in an ACL file.
+	hidden(`127.0.0.1:6379> ACL SETUSER bob on >${pw} ~* +@all`, pw);
+	hidden(`ACL SETUSER bob <${pw}`, pw);
+	hidden(`user bob on >${pw} ~* +@all`, pw);
+	kept("user default on nopass ~* +@all", "nopass ~* +@all");
+	kept("user bob is logged in > out.txt", "out.txt");
 	hidden(`java -Dspring.datasource.password=${pw} -jar app.jar`, pw);
 	hidden(`echo '${pw}' | sudo -S apt update`, pw);
 	hidden(`echo ${pw} | docker login -u bob --password-stdin`, pw);

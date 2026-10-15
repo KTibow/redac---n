@@ -10,7 +10,7 @@ import { lineEnd, lineStart } from "./lines.ts";
 import { armoredBlocks, pemTail } from "./pem.ts";
 import { inJwk, jsonDocuments, type JsonNode } from "./json.ts";
 import { blockLines, siblingValue, yamlLines } from "./yaml.ts";
-import { isUrl, queryParams, readUserinfo, URL_SCHEME, urls } from "./urls.ts";
+import { isUrl, PARAM_START, queryParams, readUserinfo, URL_SCHEME, urls } from "./urls.ts";
 import { naturalness } from "./charlm.ts";
 import { bip39, isNamedSecret } from "./named.ts";
 import { FILE_EXTENSION, isCredentialName, isSettingName, nameClass, namesPasswordOrPin } from "./names.ts";
@@ -397,7 +397,7 @@ export function isPlaceholderBasic(b64: string): boolean {
 /** Signatures and tokens in signed URLs (S3/GCS presigned, Azure SAS, CloudFront) and credentials in query strings and form bodies. */
 function signedUrls(text: string, out: Finding[]) {
 	const NAMES = String.raw`X-Amz-Signature|X-Amz-Security-Token|X-Goog-Signature|X-Goog-Credential|sig|Signature|access_token|id_token|refresh_token|auth_token|token|apikey|api_key|key|client_secret|password|code|appid|app_key|private_token|access_key|sasl_password|db_password|secret|passwd|pwd`;
-	if (!new RegExp(String.raw`[?&](?:${NAMES})=`, "i").test(text)) return;
+	if (!new RegExp(String.raw`${PARAM_START}(?:${NAMES})=`, "i").test(text)) return;
 	for (const { name: n, value } of queryParams(text, NAMES)) {
 		const name = n.toLowerCase();
 		const v = value.value;
@@ -553,7 +553,10 @@ function harmlessBase64(v: string, key = ""): boolean {
 	const t = d.trim();
 	return (
 		!namesPasswordOrPin(key) &&
-		((d.length < 40 && ((isWordsValue(t) && (isSettingName(key) || t.split(/[_-]/).length < 3)) || /^(?:true|false|\d+)$/.test(t) || HOST_NAME.test(t))) ||
+		((d.length < 40 &&
+			((isWordsValue(t) && (isSettingName(key) || t.split(/[_-]/).length < 3)) ||
+				/^(?:true|false|\d+)$/.test(t) ||
+				HOST_NAME.test(t))) ||
 			isPlainUrl(t, key))
 	);
 }
@@ -949,7 +952,12 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 			// (The echo may come after a line's own prefix, which a shell doesn't run: a workflow's `- run: echo …`, a
 			// Dockerfile's `RUN echo …`.)
 			const all = simpleCommand(c.words);
-			const words = all.slice(Math.max(0, all.findIndex((w) => /^(?:echo|printf)$/.test(programName(w)))));
+			const words = all.slice(
+				Math.max(
+					0,
+					all.findIndex((w) => /^(?:echo|printf)$/.test(programName(w))),
+				),
+			);
 			const program = programName(words[0]);
 			if (c.then !== "|" || !/^(?:echo|printf)$/.test(program) || !commands[k + 1]) return;
 			// (A format alone with `%s` in it prints no value. Nor its options: echo's `-n`, printf's `--` before its format.)
@@ -1045,7 +1053,8 @@ function oracleLogins(text: string, add: AddPassword) {
 	const LOGIN =
 		/(?:jdbc:oracle:(?:thin|oci):|(?:^|[;&|(]|\$ )[ \t]*(?:sudo[ \t]+)?(?:expdp|impdp|exp|imp|rman|sqlldr|dgmgrl|tkprof)\b[^\n]{0,400}?[ \t](?:(?:target|auxiliary|userid|catalog)[ \t=]+)?["']?|^[ \t]*(?:SQL>[ \t]*)?conn(?:ect)?[ \t]+["']?)([A-Za-z_][\w$#]{0,30})\/((?:[^\s\/@'"]|@(?=[^\s\/@'"]*@)){3,})(?=@|["']?(?:[ \t]|;?\r?$))/gim;
 	for (const m of text.matchAll(LOGIN))
-		if (endsLogin(text, m.index + m[0].length, m[2])) add(m.index + m[0].length - m[2].length, m[2], "structure:cli-password");
+		if (endsLogin(text, m.index + m[0].length, m[2]))
+			add(m.index + m[0].length - m[2].length, m[2], "structure:cli-password");
 }
 
 /**
@@ -1200,7 +1209,8 @@ function cliPasswords(text: string, out: Finding[]) {
 		/(?:^|[;&|(\s]|\$ )sqlplus[ \t]+(?:-\w+[ \t]+)*["']?[\w.$#-]{1,60}\/((?:[^\s@'"]|@(?=[^\s@'"]*@)){3,4096})(?=@|["']?(?:[ \t]|$|[;&|\n]))/gm,
 	)) {
 		const pw = m[1];
-		if (endsLogin(text, m.index + m[0].length, pw)) add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
+		if (endsLogin(text, m.index + m[0].length, pw))
+			add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
 	}
 	// A password written unquoted with a shell's operators in it (`-pXk9(mP2&vQ7`) runs to the next blank, as the person
 	// who wrote it reads it; the shell would have cut it at the operator. (Not past a quote: `"$(… pw)"` closes there.)
@@ -1467,20 +1477,30 @@ function netrcLike(text: string, out: Finding[]) {
  */
 function sqlPasswords(text: string, out: Finding[]) {
 	if (!/IDENTIFIED|PASSWORD/i.test(text)) return;
+	// A string literal, its quote doubled or escaped by a backslash (MySQL's default, Postgres' `E'…'`): `'Hx7m\'Q2pL'`.
+	// (A backslash alone may end it: `'C:\'`.)
+	const single = String.raw`'((?:\\[^\n]|[^'\\\n]|'')+\\?)'`;
+	const double = String.raw`"((?:\\[^\n]|[^"\\\n])+\\?)"`;
 	const forms = [
-		/\bIDENTIFIED\s+(?:WITH\s+['"`]?\w+['"`]?\s+)?BY\s+(?!PASSWORD\b)(?:'((?:[^'\n]|'')+)'|"([^"\n]+)")/gi,
+		new RegExp(
+			String.raw`\bIDENTIFIED\s+(?:WITH\s+['"${"`"}]?\w+['"${"`"}]?\s+)?BY\s+(?!PASSWORD\b)(?:${single}|${double})`,
+			"gi",
+		),
 		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too. (Up to a
 		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.
 		// Not MySQL's `IDENTIFIED BY RANDOM PASSWORD`, which makes one.)
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b|RANDOM\s+PASSWORD\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
-		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?'((?:[^'\n]|'')+)'/gi,
-		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*'((?:[^'\n]|'')+)'/gi,
+		new RegExp(String.raw`\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?${single}`, "gi"),
+		new RegExp(String.raw`\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*E?${single}`, "gi"),
 		// MySQL's current password, which a password change authenticates with: `IDENTIFIED BY 'new' REPLACE 'old'`.
-		/\bIDENTIFIED\s+BY\s+'(?:[^'\n]|'')+'\s+REPLACE\s+'((?:[^'\n]|'')+)'/gi,
+		new RegExp(String.raw`\bIDENTIFIED\s+BY\s+'(?:\\[^\n]|[^'\\\n]|'')+\\?'\s+REPLACE\s+${single}`, "gi"),
 	];
-	for (const re of forms) {
+	for (const [k, re] of forms.entries()) {
 		for (const m of text.matchAll(re)) {
 			const pw = m[1] ?? m[2];
+			// The quoted `IDENTIFIED BY '…'` in a statement that makes or changes a user, grants to one or links to a
+			// database as one (from its start, the last `;` before it): prose says a record "is identified by 'order_id'".
+			if (k === 0 && !inUserStatement(text, m.index)) continue;
 			// (A bind parameter, `:pw` or `?`, is never quoted and can't start the unquoted form: these are all literals.
 			// MySQL's `*<40 hex>` is a hash, passwordHashes's.)
 			if (pw.length < 3 || isInert(pw) || isPlaceholder(pw) || /^\*[0-9A-F]{40}$/.test(pw)) continue;
@@ -1491,11 +1511,22 @@ function sqlPasswords(text: string, out: Finding[]) {
 }
 
 /**
+ * Whether `at` is in a SQL statement that makes or changes a user or a role, grants to one, or links to a database as
+ * one: `CREATE USER`, `ALTER ROLE`, `GRANT … TO`, `CREATE DATABASE LINK … CONNECT TO`, `SET PASSWORD`. (Read back to
+ * the statement's start, the last `;`, at most 600 characters: a statement written over several lines too.)
+ */
+function inUserStatement(text: string, at: number): boolean {
+	const before = text.slice(Math.max(0, at - 600), at);
+	const statement = before.slice(before.lastIndexOf(";") + 1);
+	return /\b(?:(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)|GRANT\b|CONNECT\s+TO|SET\s+PASSWORD)\b/i.test(statement);
+}
+
+/**
  * Redis sessions: `AUTH [user] pw`, `CONFIG SET requirepass pw`, and replies that pair a credential name
  * with its value (`1) "requirepass"` / `2) "pw"`, `GET api_token` then `"pw"`).
  */
 function redisSessions(text: string, out: Finding[]) {
-	if (!/\bAUTH\b|requirepass|masterauth|\d\) "|> ?GET /i.test(text)) return;
+	if (!/\bAUTH\b|requirepass|masterauth|\d\) "|> ?GET |SETUSER|^[ \t]*user[ \t]/im.test(text)) return;
 	const add = (start: number, value: string, rule: string) => {
 		if (value.length < 4 || isInert(value)) return;
 		out.push({ start, end: start + value.length, kind: "password", rule, confidence: 0.9 });
@@ -1518,6 +1549,14 @@ function redisSessions(text: string, out: Finding[]) {
 	)) {
 		const v = m[1] ?? m[2] ?? m[3];
 		add(m.index + m[0].length - v.length - (m[3] === undefined ? 1 : 0), v, "structure:redis-auth");
+	}
+	// ACL rules, `ACL SETUSER bob on >pw ~* +@all` and an ACL file's `user bob on >pw …`: a password added (`>pw`) or
+	// removed (`<pw`). (A `#<hex>` is its hash, passwordHashes's.)
+	for (const m of text.matchAll(/(?:\bSETUSER|^[ \t]*user)[ \t]+\S+([^\n]*)/gim)) {
+		const rules = m[1];
+		if (!/SETUSER/i.test(m[0]) && !/[ \t](?:on|off)(?=[ \t]|$)/.test(rules)) continue;
+		const base = m.index + m[0].length - rules.length;
+		for (const r of rules.matchAll(/(?<=[ \t])[<>](\S+)/g)) add(base + r.index + 1, r[1], "structure:redis-acl");
 	}
 	// Array replies: a credential-named element followed by its value.
 	for (const m of text.matchAll(
@@ -1575,7 +1614,9 @@ function passwordHashes(text: string, out: Finding[]) {
 		out.push({ start, end: start + value.length, kind: "password hash", rule, confidence: 0.95 });
 	for (const m of text.matchAll(PASSWORD_HASH_IN_TEXT)) add(m.index, m[0], "structure:password-hash");
 	// MySQL `*<40 hex>` and Redis ACL `#<64 hex>` only where a password is being talked about.
-	for (const m of text.matchAll(/^[^\n]*(?:password|passwd|authentication_string|\buser\s+\S+\s+on\b)[^\n]*$/gim)) {
+	for (const m of text.matchAll(
+		/^[^\n]*(?:password|passwd|authentication_string|(?:\buser|\bSETUSER)\s+\S+\s+(?:on|off)\b)[^\n]*$/gim,
+	)) {
 		for (const h of m[0].matchAll(/(?<![\w*#])(?:\*[0-9A-F]{40}|#[0-9a-f]{64})\b/g))
 			add(m.index + h.index + 1, h[0].slice(1), "structure:hash-field");
 	}
@@ -1638,8 +1679,24 @@ export function findStructure(text: string): Finding[] {
 	vpnSecrets(text, out);
 	passwordHashes(text, out);
 	configPasswords(text, out);
-	return out;
+	// The stand-ins every common-password list starts with (`hunter2`, `test123`, `mypassword`) after a config's or a
+	// statement's password keyword are docs', as under a password's name (values.ts isTestValue): SQL's `PASSWORD '…'`,
+	// a netrc's `password …`, Redis' `AUTH …`, HAProxy's, a VPN's PSK. (Not a command line's option, `-p`, `pass:`, nor
+	// a URL's password field, which no name labels.)
+	return out.filter((f) => !STAND_IN_RULES.has(f.rule) || !isTestValue(f.value ?? text.slice(f.start, f.end)));
 }
+
+/** The rules whose password follows a keyword that names it (findStructure keeps a stand-in there). */
+const STAND_IN_RULES = new Set([
+	"structure:sql-password",
+	"structure:netrc",
+	"structure:redis-auth",
+	"structure:redis-reply",
+	"structure:redis-acl",
+	"structure:haproxy",
+	"structure:ipsec",
+	"structure:openvpn",
+]);
 
 /**
  * A BIP-39 seed phrase: 12 to 24 words of the English list whose checksum verifies (1 in 16 to 1 in 256 for
@@ -1714,10 +1771,7 @@ function findPhrases(words: Phrase, list: Map<string, number>, out: Finding[]) {
 		const startsLine = i === 0 || words[i].lineBreakBefore;
 		if (startsLine) lineStart = i;
 		// (A label may follow other list words on its line: `Copy this seed phrase: slow core …`.)
-		if (
-			!startsLine &&
-			(long || (!LABEL_WORDS.has(words[i - 1].word) && !(words[i].opensValue && i - lineStart <= 2)))
-		)
+		if (!startsLine && (long || (!LABEL_WORDS.has(words[i - 1].word) && !(words[i].opensValue && i - lineStart <= 2))))
 			continue;
 		for (const n of [24, 21, 18, 15, 12]) {
 			if (i + n > words.length) continue;

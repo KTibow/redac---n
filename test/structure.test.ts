@@ -163,8 +163,16 @@ test("a phrase is found on its own line, after a label or a command on its line,
 		// Quoted after list words that start the line, a command's; numbered `1) word`, one a line.
 		([p]) => `echo "${p}" | wallet import`,
 		([p]) => `save salt '${p}'`,
-		([p]) => p.split(" ").map((w, i) => `${i + 1}) ${w}`).join("\n"),
-		([p]) => p.split(" ").map((w, i) => `(${i + 1}) ${w}`).join("\n"),
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `${i + 1}) ${w}`)
+				.join("\n"),
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `(${i + 1}) ${w}`)
+				.join("\n"),
 		// Several, one a line: past 30 words, and past 48.
 		(p) => p.slice(0, 3).join("\n"),
 		(p) => p.join("\n"),
@@ -513,7 +521,11 @@ test("a connection string's template, reference or code is no password; its lite
 test("a connection string written from its password on ends the password at its first ;", () => {
 	for (const [line, secret, rest] of [
 		["Password=Hx7mQ2pL9vRt;Server=db;Database=app;User Id=sa", "Hx7mQ2pL9vRt", ";Server=db;Database=app;User Id=sa"],
-		["ClientSecret=Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6;TenantId=abc;ClientId=def", "Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6", ";TenantId=abc;ClientId=def"],
+		[
+			"ClientSecret=Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6;TenantId=abc;ClientId=def",
+			"Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6",
+			";TenantId=abc;ClientId=def",
+		],
 		['export CONN="Pwd=Hx7mQ2pL9vRt;Server=db;Database=app"', "Hx7mQ2pL9vRt", ';Server=db;Database=app"'],
 	]) {
 		hidden(line, secret);

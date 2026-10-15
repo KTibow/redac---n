@@ -43,7 +43,7 @@ import {
 import { lineEnd as lineEndAt, lineStart as lineStartAt, lowerBound, splitLines } from "./lines.ts";
 import { BIP39_WORDS } from "./bip39-data.ts";
 import { insertCells } from "./sql.ts";
-import { isUrl, queryParams, urls } from "./urls.ts";
+import { isUrl, PARAM_NAME, PARAM_START, queryParams, urlAround, urls } from "./urls.ts";
 import { blockExtent, isBlockIndicator, yamlLines } from "./yaml.ts";
 import { naturalness } from "./charlm.ts";
 import { clientSdkAt, isPlaceholder } from "./public.ts";
@@ -1168,6 +1168,17 @@ function assignedValue(
 		logfmt = false,
 	}: { wholeLine: boolean; envLine: boolean; shell: boolean; pairQuote: number; logfmt?: boolean },
 ): [number, number] | undefined {
+	// A URL's query parameter: its value ends where the URL's own reading of it does (urls.ts queryParams), at an angle
+	// bracket, a quote or the next pair (`<a href=https://x.io/cb?token=…>reset</a>`, a Link header's `<…?access_token=…>`).
+	// (Not a template's or a variable's, read whole below: `?token={{ .Token }}`, `?key=${API_KEY}`.)
+	if (
+		!/^[{$%]/.test(text[at] ?? "") &&
+		QUERY_NAME_BEFORE.test(text.slice(Math.max(0, at - 80), at)) &&
+		urlAround(text, at) >= 0
+	) {
+		const value = withoutUnopenedClosers(/^[^&#\s"'<>`\\]*/.exec(text.slice(at, at + MAX_VALUE))![0], ")");
+		return value ? [at, at + value.length] : undefined;
+	}
 	// `"NAME=value with spaces"`: to the pair's own closing quote, or a `\n` escape inside a JSON string. (Not a value
 	// quoted itself, `\"…\"` in a JSON string included.)
 	if (pairQuote >= 0 && !/["'`]/.test(text[at] ?? "") && !(text[at] === "\\" && /["']/.test(text[at + 1] ?? ""))) {
@@ -1232,6 +1243,9 @@ function assignedValue(
 	}
 	return span;
 }
+
+/** A query parameter's start and name, and its `=`, ending a text. */
+const QUERY_NAME_BEFORE = new RegExp(String.raw`${PARAM_START}${PARAM_NAME}=$`);
 
 /**
  * The literal a converter at `at` is given, the value it makes: `hexStringToUint8Array("…")`, `SecretStr("…")`,
