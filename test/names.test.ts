@@ -857,9 +857,9 @@ test("every dialect's insert statement is read as rows", () => {
 		"users.id=2",
 		"users.password=\\N",
 	]);
-	// (The string a value gives its column, through SQL's prefixes, casts and functions.)
+	// (The string a value gives its column, through SQL's prefixes and casts. A hash's input, `md5('…')`, is calls.ts's.)
 	const literals = (t: string) => [...sqlCells(t)].map((c) => c.value.literal?.value);
-	assert.deepEqual(literals("INSERT INTO t (a, c, d) VALUES (N'x1', 'x3'::text, md5('x4'))"), ["x1", "x3", "x4"]);
+	assert.deepEqual(literals("INSERT INTO t (a, c) VALUES (N'x1', 'x3'::text)"), ["x1", "x3"]);
 	assert.deepEqual(literals("INSERT INTO t (a, b) VALUES (now(), 'x'||'y')"), [undefined, undefined]);
 });
 
@@ -1310,6 +1310,26 @@ test("a password's word written as two words, or glued after what it belongs to,
 	// (`PASS` glued to a word it makes another of, a letter or a number; `PW` after a letter, as base64 ends.)
 	for (const name of ["bypass", "compass", "lowpass", "subpass", "renderpass", "KEEPASS", "npass", "2pass", "xpw"])
 		assert.equal(nameClass(name), "neutral", name);
+	// (Nor a program or a directive about a password: an askpass helper, `getpass`, Redis' `resetpass`.)
+	for (const name of ["GIT_ASKPASS", "SSH_ASKPASS", "getpass", "resetpass"])
+		assert.equal(nameClass(name), "neutral", name);
+	kept("GIT_ASKPASS=echo git clone https://example.com/repo", "echo");
+	// A slapd.conf's directives are a config's lines, not a table under `rootpw`: the lines below it stay.
+	const slapd = [
+		"database\tmdb",
+		'suffix\t\t"dc=example,dc=com"',
+		'rootdn\t\t"cn=Manager,dc=example,dc=com"',
+		"rootpw\t\tHx7mQ2pL9vRt",
+		"#null#bind\t\ton",
+		"#~null~#directory\t@TESTDIR@/db.1.a",
+		"#indexdb#index\t\tobjectClass\teq",
+		"chase-referrals\tno",
+		"nretries\t100",
+		"",
+	].join("\n");
+	hidden(slapd, "Hx7mQ2pL9vRt");
+	for (const value of ["#null#bind", "#~null~#directory", "#indexdb#index", "chase-referrals", "nretries"])
+		kept(slapd, value);
 	kept("proxy:\n  bypass: localhost\n", "localhost");
 	kept(
 		'"contentHash": "8o5PWkx1bCfWeh8ICXXsP27ZSgL7qCIFqlSQhZS1kd5MfnjhK1yKD8FChCG5XCjkQW6iXvMALUnwtdQBGS+xpw=="',

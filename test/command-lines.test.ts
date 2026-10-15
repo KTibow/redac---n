@@ -164,6 +164,14 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		hidden(line, "Hx7mQ2pLvRt9");
 	for (const line of ["Connect input/output ports to the board", "sqlplus input/output files are written here"])
 		assert.equal(r().redact(line).text, line);
+	// A schema logged in as with its own name for a password, as a guide does, tells nothing the name doesn't.
+	for (const line of [
+		"impdp adm_cs/adm_cs remap_schema=adm_src:adm_cs directory=dpdata2 dumpfile=adm_src.dmp",
+		"expdp test01/test01 directory=out_dir dumpfile=t1_t2.dmp tables=t1,t2",
+		"sqlplus cdcpub/cdcpub @cdcdemo.sql",
+		"impdp TCL/tcl remap_schema=etppm:TCL directory=dp",
+	])
+		assert.equal(r().redact(line).text, line);
 	hidden("::add-mask::correct horse battery staple", "horse battery staple");
 	// (What a workflow masks is secret whatever its shape, a version's included.)
 	hidden('echo "::add-mask::v1.2.3"', "v1.2.3");
@@ -178,6 +186,16 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	hidden(`ACL SETUSER bob <${pw}`, pw);
 	hidden(`user bob on >${pw} ~* +@all`, pw);
 	kept("user default on nopass ~* +@all", "nopass ~* +@all");
+	// (Not a usage's slot, a template's placeholder or a code span's closing backtick.)
+	kept('"SETUSER <username> <attribute> [<attribute> ...]",', "<attribute>");
+	for (const line of [
+		"user app on >REMITFLOW_APP_PASSWORD_PLACEHOLDER ~app:* +@all",
+		"user monitor on >PLACEHOLDER_MONITOR_PASSWORD ~* +@read",
+		"127.0.0.1:6379> ACL SETUSER default >PASSWORD_TEXT",
+	])
+		assert.equal(r().redact(line).text, line);
+	const spanned = r().redact(`Run \`ACL SETUSER default on >${pw}\` first.`).text;
+	assert.ok(!spanned.includes(pw) && spanned.endsWith("` first."), spanned);
 	kept("user bob is logged in > out.txt", "out.txt");
 	hidden(`java -Dspring.datasource.password=${pw} -jar app.jar`, pw);
 	hidden(`echo '${pw}' | sudo -S apt update`, pw);

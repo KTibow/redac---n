@@ -1178,8 +1178,8 @@ const PASSWORD_OWNERS = new Set([
 /**
  * Words `PASS` ends glued to them that are no password's owner: English words (`bypass`, `compass`, `overpass`,
  * `trespass`), filters (`lowpass`, `bandpass`), a renderer's or a compiler's passes (`subpass`, `renderpass`,
- * `multipass`, `numpass`), and passes that admit a person (`daypass`, `boardingpass`) or products (`KeePass`, `LastPass`,
- * `gopass`, `NordPass`).
+ * `multipass`, `numpass`), passes that admit a person (`daypass`, `boardingpass`) or products (`KeePass`, `LastPass`,
+ * `gopass`, `NordPass`), and programs or directives about a password (`GIT_ASKPASS`, `getpass`, Redis' `resetpass`).
  */
 const NOT_PASSWORD_OWNERS = new Set([
 	"BY",
@@ -1238,6 +1238,9 @@ const NOT_PASSWORD_OWNERS = new Set([
 	"EN",
 	"PROTON",
 	"NO",
+	"ASK",
+	"GET",
+	"RESET",
 ]);
 
 /**
