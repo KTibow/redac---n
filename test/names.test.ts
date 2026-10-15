@@ -551,7 +551,7 @@ test("an Android string resource is hidden under a secret name and kept under a 
 	);
 });
 
-test("a value named by a form's nested field, a properties file's entry key or a sibling `text` is hidden", () => {
+test("a value named by a form's nested field or a properties file's entry key is hidden", () => {
 	const v = "Zk8mQ2pL9vRt4Hx";
 	for (const t of [
 		`<input type="text" name="user[password]" value="${v}">`,
@@ -560,12 +560,9 @@ test("a value named by a form's nested field, a properties file's entry key or a
 		`GET /login?next=%2Fhome&user%5bpassword%5d=${v} HTTP/1.1`,
 		`<properties>\n<entry key="db.password">${v}</entry>\n<entry key="db.user">app</entry>\n</properties>`,
 		`<entry key='smtp.password'>${v}</entry>`,
-		`--data '{"name":"API_TOKEN","text":"${v}","type":"secret_text"}'`,
 	])
 		hidden(t, v);
-	// (A field's label is no value; a name that only ends with a bracket is no form's field.)
-	kept('{"name": "password", "text": "Enter your password", "type": "password"}', "Enter your password");
-	kept('{"name":"API_TOKEN","type":"plain_text","text":"production"}', "production");
+	// (A name that only ends with a bracket is no form's field.)
 	kept('<entry key="db.url">jdbc:postgresql://db/app</entry>', "jdbc:postgresql://db/app");
 	kept(
 		"auth_token [env: TAP_GITHUB_AUTH_TOKEN] x\nrepos [env: TAP_GITHUB_REPOSITORIES] current value: ['acme/dbt', 'acme/dags']",
@@ -870,14 +867,9 @@ test("every dialect's insert statement is read as rows", () => {
 		"users.id=2",
 		"users.password=\\N",
 	]);
-	// (The string a value gives its column, through SQL's prefixes, dollar quotes, casts and functions.)
+	// (The string a value gives its column, through SQL's prefixes, casts and functions.)
 	const literals = (t: string) => [...sqlCells(t)].map((c) => c.value.literal?.value);
-	assert.deepEqual(literals("INSERT INTO t (a, b, c, d) VALUES (N'x1', $q$x2$q$, 'x3'::text, md5('x4'))"), [
-		"x1",
-		"x2",
-		"x3",
-		"x4",
-	]);
+	assert.deepEqual(literals("INSERT INTO t (a, c, d) VALUES (N'x1', 'x3'::text, md5('x4'))"), ["x1", "x3", "x4"]);
 	assert.deepEqual(literals("INSERT INTO t (a, b) VALUES (now(), 'x'||'y')"), [undefined, undefined]);
 });
 

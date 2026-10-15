@@ -297,7 +297,7 @@ export function quoted(n: number, min = 1, quotes = `"'`): string {
 export const PAIR_NAME =
 	/^(?:name|key|keyName|id|label|ParameterKey|ParameterName|OptionName|OutputKey|variable|env|field)$/i;
 export const PAIR_VALUE =
-	/^(?:value|val|v|data|content|text|result|secret|secret_value|ParameterValue|OutputValue|SecretString)$/i;
+	/^(?:value|val|v|data|content|result|secret|secret_value|ParameterValue|OutputValue|SecretString)$/i;
 
 /** An attribute (see `attributes`): its key, its operator, and its value with where it is. */
 export interface Attribute {
