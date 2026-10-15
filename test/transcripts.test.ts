@@ -489,3 +489,48 @@ test("an environment URL with a reference holds no password", () => {
 		[],
 	);
 });
+
+test("fromEnvironment takes the password a connection string or a URL's query gives, under any name", () => {
+	for (const value of [
+		"postgres://h:5432/db?user=app&password=Hx7mQ2pL9vRt",
+		"jdbc:postgresql://h/db?user=app&password=Hx7mQ2pL9vRt",
+		"Server=h;User Id=sa;Password=Hx7mQ2pL9vRt;",
+		"host=h user=app password=Hx7mQ2pL9vRt",
+		"postgres://app:Hx7mQ2pL9vRt@h/db",
+	])
+		assert.deepEqual(
+			fromEnvironment({ DATABASE_URL: value }).map((e) => e.value),
+			["Hx7mQ2pL9vRt"],
+			value,
+		);
+	assert.deepEqual(
+		fromEnvironment({
+			DATABASE_URL: "postgres://h:5432/db?user=app&password=${DB_PASSWORD}",
+			DB_DSN: "host=h user=app password=%DB_PASSWORD%",
+			REDIS_URL: "redis://h:6379/0",
+			APP_NAME: "shop",
+		}),
+		[],
+	);
+});
+
+test("fromEnvironment keeps what is public by design: a publishable key, a key under a browser's prefix", () => {
+	assert.deepEqual(
+		fromEnvironment({
+			NEXT_PUBLIC_STRIPE_KEY: "pk_live_51Hx9mQ2pLrTvB7nWz4aBcDeHq",
+			NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyA-Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x",
+			VITE_API_KEY: "Hx7mQ2pLrTvB7nWz",
+			STRIPE_PUBLISHABLE_KEY: "pk_live_51Hx9mQ2pLrTvB7nWz4aBcDeHq",
+		}),
+		[],
+	);
+	// (A vendor's secret key says what it is under any name; a server's Google key and a password are hidden.)
+	assert.deepEqual(
+		fromEnvironment({
+			VITE_OPENAI_API_KEY: `sk-proj-${"Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x".repeat(3)}`,
+			GOOGLE_MAPS_API_KEY: "AIzaSyA-Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x",
+			NEXT_PUBLIC_DB_PASSWORD: "Hx7mQ2pLrTvB7nWz",
+		}).map((e) => e.label),
+		["OpenAI API key in $VITE_OPENAI_API_KEY", "$GOOGLE_MAPS_API_KEY", "$NEXT_PUBLIC_DB_PASSWORD"],
+	);
+});
