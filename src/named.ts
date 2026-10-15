@@ -1424,19 +1424,7 @@ function assignedValue(
 		if (close > 0 && !/^[\d.]+$/.test(args) && /^[ \t]*(?:[,;)\]}\r\n#]|$)/.test(text.slice(close + 1, close + 3)))
 			return undefined;
 	}
-	let span = readValue(text, at, { toEol: wholeLine, shell, toBlank: logfmt });
-	// A query string's value goes on through an apostrophe, which encodeURIComponent leaves as it is
-	// (`?password=Tr0ub4dor'3xK9mQ&next=/home`), unless a quote before it on its line opened a string it closes.
-	if (
-		span &&
-		!shell &&
-		text[span[1]] === "'" &&
-		/[?&][\w.[\]-]{1,60}=$/.test(text.slice(Math.max(0, at - 62), at)) &&
-		(text.slice(lineStartAt(text, at, 4000), at).match(/'/g)?.length ?? 0) % 2 === 0
-	) {
-		const more = /^(?:'[^\s,;&)\]}"'`<|#]+)+/.exec(text.slice(span[1], span[1] + UNQUOTED_READ));
-		if (more) span = [span[0], span[1] + more[0].length];
-	}
+	const span = readValue(text, at, { toEol: wholeLine, shell, toBlank: logfmt });
 	// A pair in helm's list of them, `--set a.password=x,b.c=d`: the value ends at the list's next unescaped comma. (A
 	// quoted one was written whole: `--set adminPassword='p-NK,fX…'`.)
 	if (span && !/["']/.test(text[span[0] - 1] ?? "") && SET_LIST.test(text.slice(lineStartAt(text, at, 4000), at))) {
