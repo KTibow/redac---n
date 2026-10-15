@@ -411,6 +411,10 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			/^x{3,}(?:[-_.\d]*$|[-_.]x)/i.test(v) ||
 			/^[a-z]{1,10}(?:[-_][a-z]{1,10}){0,2}[-_](?:x{4,}|X{4,}|\*{4,}|\.{3,})$/.test(v),
 	],
+	// A block comment the value opens with, whole: the annotations bundlers and compilers write after `=`
+	// (`/*#__PURE__*/`, `/* @__PURE__ */`, `/** @type {string} */`, `/* webpackChunkName: "auth" */`), then the code
+	// they annotate, glued on or not (`/*#__PURE__*/function`).
+	["comment", (v) => /^\/\*[^]{0,200}?\*\//.test(v)],
 	// An interpolation cut where the reader stopped, at a quote inside it: Ruby `#{ENV['`, `#{node['db'`, JS `${cfg[`.
 	[
 		"cut interpolation",
