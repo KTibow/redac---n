@@ -22,6 +22,26 @@ test("a known value is hidden in its base64, hex and percent-encoded forms", () 
 	}
 });
 
+test("a known value is hidden as each JSON encoder and percent-encoder writes it", () => {
+	for (const [value, text] of [
+		// Python's json.dumps and PHP's json_encode: every character past ASCII as a code (PHP's slashes escaped too).
+		["pässwörd-Zq8vK2mX9", String.raw`{"level":"info","msg":"login with p\u00e4ssw\u00f6rd-Zq8vK2mX9 ok"}`],
+		["Zq8vK2mX9pLw😀R4tY", String.raw`payload: "Zq8vK2mX9pLw\ud83d\ude00R4tY"`],
+		["Zq8v/K2émX9pLw", String.raw`payload: 'Zq8v\/K2\u00E9mX9pLw'`],
+		// A form body (URLSearchParams, Java's URLEncoder), Go's QueryEscape, Python's quote.
+		["Zq8vK2mX~9pLw4R!", "POST body: p=Zq8vK2mX%7E9pLw4R%21"],
+		["Zq8v*K2mX!9pLw4R", "POST body: p=Zq8v*K2mX%219pLw4R"],
+		["Zq8vK2 mX*9pLw4R", "POST body: p=Zq8vK2+mX*9pLw4R&x=1"],
+		["Zq8vK2 mX~9pLw4R", "GET /x?p=Zq8vK2%20mX~9pLw4R HTTP/1.1"],
+		["Abcd1234+Efgh5678/Ijkl9012=", "GET /x?k=Abcd1234%2BEfgh5678/Ijkl9012%3D HTTP/1.1"],
+	]) {
+		const out = new Redactor({ fingerprintKey: "t", known: [value] }).redact(text).text;
+		assert.ok(/\[REDACTED known secret #\w+\]/.test(out) && !out.includes(value.slice(-4)), out);
+	}
+	const out = new Redactor({ known: ["Zq8vK2 mX~9pLw4R"] }).redact("POST body: p=Zq8vK2+mX%7E9pLw4R&x=1").text;
+	assert.ok(out.endsWith("&x=1"), out);
+});
+
 test("terminal escapes (colour codes, OSC, CSI, caret notation) around a name or a value do not hide it", () => {
 	hidden(JSON.stringify({ out: "\u001b[32mSESSION_SALT\u001b[0m=Xq7Lm2Vb9R\n" }), "Xq7Lm2Vb9R");
 	hidden('{"log":"\\u001b[32mAPI_KEY=Zr4Kp9Qx2Lm7Vb3Nw8Ty5Hc\\u001b[0m"}', "Zr4Kp9Qx2Lm7Vb3Nw8Ty5Hc");

@@ -8,6 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { KnownValues } from "../src/known.ts";
 import { b62, r } from "./helpers.ts";
 import { assertLinear } from "./timing.ts";
 
@@ -45,6 +46,25 @@ test("a stream releases text while it reads a long base64 finding", () => {
 		},
 		14_000,
 	);
+});
+
+test("values learned one at a time, each found after, cost about what they cost learned all at once", () => {
+	// (A long session learns from each tool result and redacts the next: its index isn't built again whole every few
+	// values, which made 2,000 values cost some 80 times what they cost at once.)
+	const values = Array.from({ length: 2000 }, (_, i) => `Pw${i.toString(36)}#x9qLm2Zk`);
+	const time = (findEach: boolean) => {
+		const t = performance.now();
+		const known = new KnownValues();
+		for (const v of values) {
+			known.add(v);
+			if (findEach) known.find("ok");
+		}
+		known.find("ok");
+		return performance.now() - t;
+	};
+	const atOnce = Math.min(time(false), time(false));
+	const inTurn = time(true);
+	assert.ok(inTurn < 20 * Math.max(atOnce, 20), `${inTurn.toFixed(0)} ms in turn, ${atOnce.toFixed(0)} ms at once`);
 });
 
 test("a long run of blanks before a block scalar costs linear time", () => {
