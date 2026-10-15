@@ -125,22 +125,6 @@ function otherPrivateKeys(text: string, out: Finding[]) {
 			out.push({ start, end, kind: "private key", rule: "structure:jwk", confidence: 0.95 });
 		}
 	}
-	// The same members in YAML (a Helm values file's `jwks:` list), unquoted, in a mapping that has a `kty`.
-	if (/^[ \t]*(?:-[ \t]+)?kty:/m.test(text)) {
-		const lines = yamlLines(text);
-		lines.forEach((l, i) => {
-			const v = l.value?.value ?? "";
-			if (!l.key || !/^(?:d|p|q|dp|dq|qi|k)$/.test(l.key) || !/^[A-Za-z0-9_-]{16,}$/.test(v) || isWordsValue(v)) return;
-			if (siblingValue(lines, i, "kty") === undefined) return;
-			out.push({
-				start: l.value!.start,
-				end: l.value!.end,
-				kind: "private key",
-				rule: "structure:jwk",
-				confidence: 0.95,
-			});
-		});
-	}
 }
 
 /** A name in docs' brackets: `<password>`, `[YOUR_PASSWORD]`, `{db pass}`; not a password left in them, `<Harbor2291x>`. */
@@ -873,12 +857,10 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 	}
 	if (/^(?:http|https|httpie|xh|xhs|hey)$/.test(name)) {
 		// HTTPie and its clone xh: `-a user:password` (the part after the colon, unless it's the docs' `username:password`;
-		// `-a user` alone prompts), or with `-A bearer` the whole `-a` argument. hey takes `-a user:password` too (its
-		// `-A` is an Accept header).
+		// `-a user` alone prompts), or with `-A bearer` the whole `-a` argument. hey takes `-a user:password` too.
 		const bearer =
-			name !== "hey" &&
-			(rest.some((w, i) => /^(?:-A|--auth-type)$/.test(w.text) && /^bearer$/i.test(rest[i + 1]?.text ?? "")) ||
-				rest.some((w) => /^--auth-type=bearer$/i.test(w.text)));
+			rest.some((w, i) => /^(?:-A|--auth-type)$/.test(w.text) && /^bearer$/i.test(rest[i + 1]?.text ?? "")) ||
+			rest.some((w) => /^--auth-type=bearer$/i.test(w.text));
 		for (let i = 0; i < rest.length; i++) {
 			const eq = /^--auth=/.exec(rest[i].text);
 			const word = eq ? rest[i] : /^(?:-a|--auth)$/.test(rest[i].text) ? rest[i + 1] : undefined;
