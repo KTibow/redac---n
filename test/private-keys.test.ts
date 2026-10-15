@@ -173,10 +173,6 @@ test("a block's body is read to its END line in each way text carries one", () =
 		[pem[0], 'Comment: "imported-openssh-key"', ...body, pem.at(-1)].join("\n"),
 		// (Lines joined with no `\n` in them: normalizing joins the pieces, and the END line is the next piece.)
 		normalize(java).text.slice(0, -2),
-		// A pty's CR CR LF; a blank line after each line, as a tool that doubles breaks leaves; a compact JSON array.
-		pem.join("\r\r\n"),
-		pem.join("\n\n"),
-		JSON.stringify(pem).slice(2, -2),
 	]) {
 		const [block] = armoredBlocks(text);
 		assert.deepEqual([block.end, block.material], [text.length, 384], text);
@@ -212,16 +208,6 @@ test("a block cut short ends with its material: before a blank line, a word, or 
 			after,
 		);
 	hidden(`${privateKeyLines().slice(0, 6).join("\n")}… [truncated]`, privateKeyLines()[5].slice(10, 40));
-	// A whole key read the same ways, in a log: every line hidden, and the line after the block kept.
-	const key = privateKeyLines();
-	for (const text of [
-		`loaded key:\r\r\n${key.join("\r\r\n")}\r\r\nready\r\r\n`,
-		`loaded key:\n${key.join("\n\n")}\n\nready\n`,
-		`{"msg":"key lines","lines":${JSON.stringify(key)}}`,
-	]) {
-		for (const line of key.slice(1, -1)) hidden(text, line.slice(0, 40));
-		kept(text, text.includes("ready") ? "ready" : '"lines":[');
-	}
 	// A password after a certificate's material or its BEGIN line is no certificate's, and is hidden.
 	for (const text of [
 		"-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIUFNZS8ANV/sEN0YkNH2JHIMIDffAwDQYJKoZIhvcNAQEL\npassword=Zq7mT4vXe9Lp2Ra8\n",

@@ -1576,6 +1576,17 @@ test("XML: a value named by a name or key attribute on any element, by a <name> 
 		"s3.eu-west-1.amazonaws.com",
 	);
 	kept('<property name="hibernate.connection.username">deploy_user</property>', "deploy_user");
+	// (An HTML anchor's name is a place in the page: AsciiDoc's passthrough around one in a README.)
+	kept('+++<a name="example-jwe-password">++++++</a>+++', "++++++");
+	// (Words in Markdown's bold are a placeholder, as the same words plain are.)
+	kept(
+		"<property>\n<name>javax.jdo.option.ConnectionPassword</name>\n<value>**mysql metastore DB password**</value>\n</property>",
+		"**mysql metastore DB password**",
+	);
+	hidden(
+		"<property>\n  <name>javax.jdo.option.ConnectionPassword</name>\n  <value>Rv7kTq2mWx9L</value>\n</property>",
+		"Rv7kTq2mWx9L",
+	);
 });
 
 test("a dot leader stays before the value it leads to", () => {
@@ -1583,24 +1594,6 @@ test("a dot leader stays before the value it leads to", () => {
 		hidden(`${label} ........ Winter2024!Prod`, "Winter2024!Prod");
 		kept(`${label} ........ Winter2024!Prod`, `${label} ........ `);
 	}
-});
-
-test("a mapping under a plural credential's name is its credentials, when every value in it is one", () => {
-	for (const text of [
-		"passwords:\n  admin: Tr0ub4dor&3xQ\n  grafana: Winter2024!kz\n",
-		'{"passwords": {"admin": "Tr0ub4dor&3xQ", "grafana": "Winter2024!kz"}}',
-	]) {
-		hidden(text, "Tr0ub4dor&3xQ");
-		hidden(text, "Winter2024!kz");
-	}
-	hidden("api_keys:\n  stripe: Zq8kLm2Pw9xRt4vKp8wZ\n  sendgrid: Ab3dEf5Gh7JkQ9xLm2vR\n", "Ab3dEf5Gh7JkQ9xLm2vR");
-	for (const [text, value] of [
-		["secrets:\n  enabled: true\n  name: app-secrets\n", "app-secrets"],
-		["passwords:\n  minLength: 12\n  requireSymbols: true\n", "minLength: 12"],
-		["passwords:\n  policy: strict\n", "strict"],
-		["tokens:\n  github: ${GITHUB_TOKEN}\n  slack: ${SLACK_TOKEN}\n", "${SLACK_TOKEN}"],
-	])
-		kept(text, value);
 });
 
 test("a value object under a credential's key is named by the key: Spring's actuator /env, terraform output -json", () => {
@@ -1615,31 +1608,10 @@ test("a value object under a credential's key is named by the key: Spring's actu
 	kept('{"HOSTNAME": {"value": "orders-api-7d9f6c8b5-x2kq4"}}', "orders-api-7d9f6c8b5-x2kq4");
 });
 
-test("a quoted .NET configuration key's sections before its name, and a Quarkus profile before a property's", () => {
-	for (const text of [
-		'{\n  "Ldap:BindPassword": "EMBEf0pw8a$"\n}',
-		'{"ConnectionStrings:Db:Password": "EMBEf0pw8a$"}',
-		"%dev.quarkus.datasource.password=EMBEf0pw8a$",
-	])
-		hidden(text, "EMBEf0pw8a$");
+test("a Quarkus profile before a property's name is the line's, not the name's", () => {
+	hidden("%dev.quarkus.datasource.password=EMBEf0pw8a$", "EMBEf0pw8a$");
 	hidden("%dev.quarkus.datasource.password=devdev", "devdev");
-	kept('{"Ldap:BindDn": "CN=svc-ledger,OU=ServiceAccounts"}', "CN=svc-ledger");
 	kept("%test.quarkus.datasource.password=${TEST_DB_PW:test}", "${TEST_DB_PW:test}");
-	// (Unquoted, a colon after a word is a namespace's, as before: sed's `s:…:…:` script.)
-	kept("sed -i 's:DB_PASSWORD: .*:DB_PASSWORD: x:g' values.yaml", "s:DB_PASSWORD");
-});
-
-test("a Name/Value table with more columns names each row's value by its Name cell", () => {
-	const table = [
-		"Name                     Value                SlotSetting",
-		"-----------------------  -------------------  -----------",
-		"Smtp__Password           quartz-apple3861     False",
-		"WEBSITE_TIME_ZONE        GMT Standard Time    False",
-		"WEBSITE_RUN_FROM_PACKAGE 1                    False",
-	].join("\n");
-	hidden(table, "quartz-apple3861");
-	kept(table, "GMT Standard Time");
-	kept(table, "SlotSetting");
 });
 
 test("a release, a VCS revision, a reference and an organization are named as IDs and hashes", () => {
@@ -1685,13 +1657,6 @@ test("a key and value table's row names its value by its key cell", () => {
 	kept(options, "My Blog");
 	kept("INSERT INTO settings (key, value) VALUES ('smtp_password', '{{ smtp_pass }}');", "{{ smtp_pass }}");
 	kept("INSERT INTO settings (key, value) VALUES ('session_cookie_name', 'Hx7mQ2pL9vRtZk3v');", "Hx7mQ2pL9vRtZk3v");
-});
-
-test("a YAML value slot is named by its parent", () => {
-	const v = "Zq8vT3mK9xLwPr2Yd7Hn";
-	hidden(`variables:\n  DB_PASSWORD:\n    value: "${v}"\n    description: db\n`, v);
-	hidden(`secrets:\n  api_key:\n    value: ${v}\n    expires: 2025\n`, v);
-	kept(`variables:\n  DB_PASSWORD:\n    value: "{{ vault_db }}"\n`, "{{ vault_db }}");
 });
 
 test("a value ends where the syntax around it resumes: a page's markup, a shell expansion's close", () => {

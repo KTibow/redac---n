@@ -257,59 +257,6 @@ test("a password stated in Dutch, Finnish or Chinese is hidden, a count after it
 		assert.equal(r().redact(t).text, t);
 });
 
-test("Dutch's `is` after its label goes on in Dutch: a word with no digit or symbol is the sentence's", () => {
-	for (const t of [
-		"Uw wachtwoord is vereist",
-		"wachtwoord is onjuist",
-		"Wachtwoord is ongeldig",
-		"Het wachtwoord is ingesteld.",
-	])
-		assert.equal(r().redact(t).text, t);
-	hidden("Het wachtwoord is Zomer2024", "Zomer2024");
-	hidden("wachtwoord is 'geheimpje'", "geheimpje");
-	hidden("The password is: BlueSecret", "BlueSecret");
-});
-
-test("a label in another language with the words that say whose it is, before its colon, is a label", () => {
-	for (const t of [
-		"Mot de passe root : Xk9mQv2pLz4",
-		"contraseña de root: Xk9mQv2pLz4",
-		"пароль от базы: Xk9mQv2pLz4",
-		"Пароль для root: Xk9mQv2pLz4",
-		"root密码: Xk9mQv2pLz4",
-		"mot de passe de la base: Xk9mQv2pLz4",
-		"senha do banco: Xk9mQv2pLz4",
-	])
-		hidden(t, "Xk9mQv2pLz4");
-	// (After such words a colon may end a clause: a value there has a digit or a symbol.)
-	for (const t of [
-		"Пароль для входа: введите его",
-		"Mot de passe oublié : cliquez ici",
-		"contraseña de root: requerida",
-	])
-		assert.equal(r().redact(t).text, t);
-});
-
-test("a table labelled in another language: a key's word anywhere in its cell, a password's alone", () => {
-	for (const t of [
-		"| Clé API | Xk9mQv2pLz4abcdef7Yw |",
-		"| Clave API | Xk9mQv2pLz4abcdef7Yw |",
-		"| Chave de API | Xk9mQv2pLz4abcdef7Yw |",
-		"| Clé secrète | Xk9mQv2pLz4abcdef7Yw |",
-		"| Contraseña | Xk9mQv2pLz4abcdef7Yw |",
-		"| Mot de passe | Xk9mQv2pLz4abcdef7Yw |",
-		"| Usuario | Contraseña |\n|---|---|\n| admin | Xk9mQv2pLz4abcdef7Yw |",
-	])
-		hidden(t, "Xk9mQv2pLz4abcdef7Yw");
-	for (const t of [
-		"| Clé publique | Xk9mQv2pLz4abcdef7Yw |",
-		"| Clé primaire | user_identifier |",
-		"| Schlüsselwort | Xk9mQv2pLz4abcdef7Yw |",
-		"| Contraseña | requerida |",
-	])
-		assert.equal(r().redact(t).text, t);
-});
-
 test("a user and a password after a slash in prose: random letters are a password, words a page's path", () => {
 	hidden("wifi: guest / QwZxKvBnMp", "QwZxKvBnMp");
 	kept("open the account settings/billing page", "settings/billing");

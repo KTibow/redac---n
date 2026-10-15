@@ -97,10 +97,8 @@ const NAME = String.raw`((?=[\p{L}\p{N}_.$@-]{0,80}?(?:${CREDENTIAL_WORD}))[\p{L
 // `\r`, `\t`: a line of an encoded file).
 // (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line. A form body's key
 // in brackets, percent-encoded as browsers and HTTP clients send one: `user%5Bpassword%5D=…`.)
-// (In quotes, a .NET configuration key's sections before it, `"Ldap:BindPassword": …` in `appsettings.json` or user
-// secrets: the name is its last.)
 const ASSIGN = new RegExp(
-	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)(?:(?!\1)(?:[\p{L}\p{N}_.$@-]{1,60}:){1,8})?${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
+	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
 	"dgiu",
 );
 const FLAG = /(?:^|[\s"'`(]|(?<=\\[nrt]))(--?[A-Za-z][\w-]{0,60})(?:[ \t]{1,4}|=)(?=[^\s-])/g;
@@ -309,6 +307,9 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// each that is a secret under the name.
 	const items = stringListItems(value);
 	if (items) return items.some((item) => isNamedSecret(name, `"${item.value}"`, true));
+	// Words in Markdown's bold are docs' placeholder, judged as the words: `<value>**mysql metastore DB password**</value>`.
+	const emphasized = /^(\*\*|__)([^*_]*\s[^*_]*)\1$/.exec(value);
+	if (emphasized) return isNamedSecret(name, `"${emphasized[2]}"`, literal);
 	// A JSON object or array as a string (`"SecretString": "{\"username\": …}"`): its own pairs are judged by name.
 	// (Starting as JSON does: `{"`, `{key:`, `[1`, `["`, `[{`; `[bZ0{6tfzE&n2q:]` is a password in brackets.)
 	if (
@@ -693,7 +694,6 @@ const RULES: ((text: string, out: Finding[]) => void)[] = [
 	pipeTables,
 	replEchoes,
 	jsonValues,
-	parentMaps,
 	userPassProse,
 	dslCalls,
 	declarations,
@@ -1733,6 +1733,8 @@ const XML_NAME_CHILD = new RegExp(
 function xmlNamedValues(text: string, out: Finding[]) {
 	if (/(?:name|key|Name|Key)=["']/.test(text))
 		for (const m of text.matchAll(XML_NAMED)) {
+			// (An HTML anchor's name is a place in the page, not a setting's: `<a name="example-jwe-password">`.)
+			if (/^a$/i.test(m[1])) continue;
 			const value = trimmed(elementText(m, 4));
 			if (value) namedValue(out, m[3], value, "named:xml-name");
 		}
@@ -1885,77 +1887,6 @@ function jsonValues(text: string, out: Finding[]) {
 		};
 		walk(doc, false);
 	}
-}
-
-/** A plural credential's name over a mapping, a YAML key ending its line or a JSON key opening an object: what parentMaps needs in a text. */
-const PARENT_KEY = /(?:words|wds|secrets|credentials|tokens|keys|phrases)(?:[ \t]*:[ \t]*\r?$|"[ \t]*:[ \t]*\{)/im;
-
-/** A plural credential's name (`passwords`, `secrets`, `api_keys`): a mapping under it maps names to credentials. */
-const isPluralCredential = (name: string) => /[^s]s$/i.test(name) && isCredentialName(name);
-
-/**
- * Values in a mapping under a plural credential's name, keyed by whose or which they are (`passwords:` over `admin: …`,
- * `grafana: …`; `{"secrets": {"prod": …}}`): each is judged under the parent's name, as a
- * list's items are under the list's. Only when every value in it is a secret under that name: a mapping of settings,
- * `secrets:` over `enabled: true`, `name: app-secrets`, holds other things.
- */
-function parentMaps(text: string, out: Finding[]) {
-	if (!PARENT_KEY.test(text)) return;
-	// (Nor a lower-case word, which names a setting's choice more often than it is a password: `passwords:` over
-	// `policy: strict`.)
-	const hide = (name: string, values: Span[]) => {
-		if (
-			!values.length ||
-			!values.every((v) => !/^\p{Ll}+$/u.test(v.value) && isNamedSecret(name, `"${v.value}"`, true))
-		)
-			return;
-		for (const v of values) namedFinding(out, v.start, v.end, name, "named:parent-map", 0.85);
-	};
-	// YAML: the key's line ends at its colon, and the lines below, one level deeper, are `key: value` pairs.
-	const lines = yamlLines(text);
-	for (let i = 0; i < lines.length; i++) {
-		const parent = lines[i];
-		if (!parent.key || parent.value || parent.block || parent.item || !isPluralCredential(parent.key)) continue;
-		const values: Span[] = [];
-		let indent = -1;
-		let j = i + 1;
-		for (; j < lines.length; j++) {
-			const line = lines[j];
-			if (line.blank) continue;
-			if (line.indent <= parent.indent) break;
-			indent = indent < 0 ? line.indent : indent;
-			// (A deeper mapping, a list or a block scalar is no name's credential: the mapping is something else.)
-			if (line.indent !== indent || line.item || line.block || !line.key || !line.value) {
-				values.length = 0;
-				break;
-			}
-			if (!isCredentialName(line.key)) values.push(line.value);
-		}
-		hide(parent.key, values);
-		i = j - 1;
-	}
-	// JSON: an object under the name whose members are all strings.
-	if (text.includes("{"))
-		for (const doc of jsonDocuments(text)) {
-			const walk = (v: JsonNode) => {
-				if (v.kind === "array") v.items.forEach(walk);
-				if (v.kind !== "object") return;
-				for (const [k, x] of v.entries) {
-					if (
-						x.kind === "object" &&
-						isPluralCredential(k) &&
-						x.entries.length &&
-						x.entries.every(([, y]) => y.kind === "string")
-					)
-						hide(
-							k,
-							x.entries.filter(([key]) => !isCredentialName(key)).map(([, y]) => y as JsonNode & Span),
-						);
-					else walk(x);
-				}
-			};
-			walk(doc);
-		}
 }
 
 /** Callees that look a key up, so their literal argument is the key, not a secret: `getToken("github")`. */
@@ -2127,18 +2058,16 @@ function isWordpressKey(value: string): boolean {
 /**
  * A credential compared with a literal: `secure_compare(password, "…")`, `hmac.compare_digest(token, "…")`,
  * `password.equals("…")`, `"…".equals(password)`, `if password == "…"`, a shell's `[ "$DB_PASSWORD" = "…" ]`; and a
- * test's assertion that it is one, in either order (`assertEquals(cfg.getPassword(), "…")`, `self.assertEqual(…)`,
- * `assert_eq!(…)`, `Assert.AreEqual(…)`) or chained (`expect(cfg.password).toEqual("…")`,
+ * test's chained assertion that it is one (`expect(cfg.password).toEqual("…")`,
  * `assertThat(cfg.getPassword()).isEqualTo("…")`).
  */
 function comparisons(text: string, out: Finding[]) {
-	if (!/[cC]ompare|[!=]=|equals|cmp|Equal|assert_eq|toBe\(|\.equal\(|\[\[?[ \t]+"?\$/.test(text)) return;
-	// (A variable, a member, or a getter's call: `password`, `cfg.password`, `config.getPassword()`.)
+	if (!/[cC]ompare|[!=]=|equals|cmp|Equal|toBe\(|\.equal\(|\[\[?[ \t]+"?\$/.test(text)) return;
 	const variable = (a?: Argument) =>
-		a && !a.literal ? /^(?:[\w.]*\.)?(?:get(?=[A-Z]))?([A-Za-z_]\w{1,60})(?:\(\))?$/.exec(a.text)?.[1] : undefined;
+		a && !a.literal ? /^(?:[\w.]*\.)?([A-Za-z_]\w{1,60})$/.exec(a.text)?.[1] : undefined;
 	for (const { match, args } of calls(
 		text,
-		/(?<![\w$])(?:([A-Za-z_][\w$]{0,60})\.)?(secure_compare|compare_digest|timingSafeEqual|constant_time_compare|ConstantTimeCompare|safe_str_cmp|equals(?:IgnoreCase)?|assertEquals?|assert_equal|assertSame|AreEqual|Equal|assert_eq!)[ \t]*\(/g,
+		/(?<![\w$])(?:([A-Za-z_][\w$]{0,60})\.)?(secure_compare|compare_digest|timingSafeEqual|constant_time_compare|ConstantTimeCompare|safe_str_cmp|equals(?:IgnoreCase)?)[ \t]*\(/g,
 	)) {
 		// (Two arguments compare each other, a variable and a literal in either order; one argument, with the receiver:
 		// `password.equals("…")`.)
@@ -2279,27 +2208,18 @@ function pipeTables(text: string, out: Finding[]) {
 			// The name is the column's header, or a credential's name in the cell before, unless the column describes the
 			// value or (with no header) a sentence sits there with more cells after it.
 			const prose = /\s/.test(cell.text) && cells.length > k + 1 && !header;
-			// (Or a label in another language, judged as the word means: `| Contraseña | … |`, `| Usuario | Mot de passe |`.)
-			const credentialName = (n: string) =>
-				isCredentialName(n) ? n : FOREIGN_WORDS.test(n) ? foreignName(n) : undefined;
 			const rowName =
 				before !== undefined &&
-				(/^[A-Za-z_][\w.-]{1,80}$/.test(before) || FOREIGN_WORDS.test(before)) &&
+				/^[A-Za-z_][\w.-]{1,80}$/.test(before) &&
+				isCredentialName(before) &&
 				!describes(column) &&
-				!prose
-					? credentialName(before)
-					: undefined;
-			const name = (column && credentialName(column)) || rowName;
+				!prose;
+			const name = column && isCredentialName(column) ? column : rowName ? before : undefined;
 			// (A bare `key`, `secret` or `token` naming a row of settings is the setting's name, not a cache's or an object's
 			// key: its value is judged as a credential's, `| key | <64 hex> |`. Another generic name keeps a generic
 			// name's judgment: `| auth | <md5 hex> |` is a digest.)
 			const judgedAs = name === before && /^(?:key|secret|token)$/i.test(name ?? "") ? `api_${name}` : name;
 			if (!name || !isNamedSecret(judgedAs!, `"${cell.text}"`, true)) continue;
-			// (Under a label in another language, a word of that language is a form's, `| Contraseña | requerida |`: a value
-			// has a digit or a symbol, as foreignLabels reads one.)
-			const label = column && credentialName(column) ? column : before!;
-			const foreign = !/^password$/i.test(label) && FOREIGN_WORDS.test(label);
-			if (foreign && !/[\d\p{P}\p{S}]/u.test(cell.text)) continue;
 			namedFinding(out, cell.start, cell.end, name, "named:table-cell");
 		}
 	}
@@ -2381,12 +2301,11 @@ const CJK_SCRIPTS = String.raw`[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Ha
 
 /**
  * Credential labels in other languages: 密码, パスワード, 비밀번호, пароль, contraseña, mot de passe, Passwort, … and the
- * words that say whose it is, before the label (`root密码`) or after it, up to three (`Mot de passe root :`,
- * `contraseña de root:`, `пароль от базы:`).
+ * word that says whose it is before a CJK label (`root密码`).
  */
 // Labels in alphabets written with spaces start a word (`enclave` isn't `clave`); CJK labels follow other characters directly.
 const FOREIGN = new RegExp(
-	String.raw`(?:(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])|(?=${CJK_SCRIPTS}))(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})((?:[ \t]+[\p{L}][\p{L}'-]{0,20}){0,3}?)[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？（）]`, 4, String.raw`[\s"'」，。、；！？（）]|${CJK_SCRIPTS}|$`)}`,
+	String.raw`(?:(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])|(?=${CJK_SCRIPTS}))(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？（）]`, 4, String.raw`[\s"'」，。、；！？（）]|${CJK_SCRIPTS}|$`)}`,
 	"dgiu",
 );
 /**
@@ -2429,13 +2348,9 @@ function foreignLabels(text: string, out: Finding[]) {
 	// (The labels' words, or a copula after an English name: what FOREIGN and FOREIGN_COPULA need to match at all.)
 	if (!FOREIGN_PREFILTER.test(text)) return;
 	for (const m of text.matchAll(FOREIGN)) {
-		const value = withoutUnopenedClosers(m[3]);
-		const start = m.indices![3]![0];
-		// (After words that qualify the label, the colon may end a sentence's clause, `Пароль для входа: введите его`: a
-		// value is one with a digit or a symbol, and no link.)
-		const qualified = m[2] !== "";
+		const value = withoutUnopenedClosers(m[2]);
+		const start = m.indices![2]![0];
 		if (
-			(qualified && (!/[\d\p{P}\p{S}]/u.test(value) || /:\/\//.test(value))) ||
 			!isProseValue(value) ||
 			isCode(value, true) ||
 			/^\d+(?:-\d+)?$/.test(value) ||
@@ -2444,19 +2359,15 @@ function foreignLabels(text: string, out: Finding[]) {
 			continue;
 		namedFinding(out, start, start + value.length, foreignName(m[1]), "named:foreign-label", 0.9);
 	}
-	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`, and with the words that
-	// qualify it after the word for "key", as those languages put them: `| Clé API | … |`, `| Chave de API | … |`,
-	// `| Clé secrète | … |`. (Not a database's keys, `| Clé primaire | id |`.)
+	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`.
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`[│|][ \t]*([^│|\n]{0,40}?(?:키|密钥|秘钥|キー|(?<!\p{L})(?:ключ|clé|schlüssel|chave|clave)(?!\p{L}))[^│|\n]{0,30}?)[ \t]*[│|][ \t]*([^\s│|]{8,${MAX_VALUE}})[ \t]*[│|]`,
+			String.raw`[│|][ \t]*([^│|\n]{0,40}?(?:키|密钥|秘钥|キー|(?<!\p{L})(?:ключ|clé|schlüssel|chave|clave)))[ \t]*[│|][ \t]*([^\s│|]{8,${MAX_VALUE}})[ \t]*[│|]`,
 			"dgiu",
 		),
 	)) {
 		if (
-			/p[uú]bli[cq]|공개|公开|公開|öffentlich|публичн|javascript|js\b|native|네이티브|client|prim[aá]r|étrang|extranjer|estrangeir|внешн|первичн/i.test(
-				m[1],
-			) ||
+			/p[uú]bli[cq]|공개|公开|公開|öffentlich|публичн|javascript|js\b|native|네이티브|client/i.test(m[1]) ||
 			!isNamedSecret("api_key", `"${m[2]}"`, true)
 		)
 			continue;
@@ -2847,13 +2758,8 @@ function columnTables(text: string, out: Finding[]) {
 		if (cols.length >= 2 && cols.slice(1).every(([, , n]) => DECLARED_TYPE.test(n))) continue;
 		const credCols = cols.filter(([, , n]) => isCredentialName(n));
 		// A name/value table (`SELECT name, value FROM settings`, `vault kv get`'s `Key  Value`): each row names its own value,
-		// whatever the first column's header calls the names (`Header  Value`, `SECRET  VALUE`). With more columns, a `Name`
-		// or `Key` column names the `Value` column's cells (`az webapp config appsettings list -o table`'s `Name  Value
-		// SlotSetting`), in rows with a cell under each header.
-		const valueCol = cols.findIndex(([, , n]) => /^(?:value|val|setting)$/i.test(n));
-		const nameCol =
-			cols.length === 2 ? (valueCol === 1 ? 0 : -1) : cols.findIndex(([, , n]) => /^(?:name|key)$/i.test(n));
-		const pairs = nameCol >= 0 && valueCol > 0 && nameCol !== valueCol;
+		// whatever the first column's header calls the names (`Header  Value`, `SECRET  VALUE`).
+		const pairs = cols.length === 2 && /^(?:value|val|setting)$/i.test(cols[1][2]);
 		if (pairs || !credCols.length) {
 			// Its rows aren't headers of their own: skip past them.
 			let j = i + 1;
@@ -2868,13 +2774,13 @@ function columnTables(text: string, out: Finding[]) {
 				if (!pairs) continue;
 				// (A rule's dashes name no credential.)
 				const cells = [...lines[j].matchAll(TABLE_CELL)];
-				if (cells.length !== cols.length) continue;
-				const [name, value] = [cells[nameCol][0], cells[valueCol][0]];
+				if (cells.length !== 2) continue;
+				const [name, value] = [cells[0][0], cells[1][0]];
 				if (!isCredentialName(name) || !isNamedSecret(name, `"${value}"`, true)) continue;
 				namedFinding(
 					out,
-					offsets[j] + cells[valueCol].index,
-					offsets[j] + cells[valueCol].index + value.length,
+					offsets[j] + cells[1].index,
+					offsets[j] + cells[1].index + value.length,
 					name,
 					"named:table-pairs",
 					0.85,
@@ -2997,21 +2903,6 @@ function siblingPairs(text: string, out: Finding[]) {
 	const mapping = new Set<number>();
 	yaml.forEach((l, i) => {
 		if (!l.key || !l.value || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
-		// A value slot under a credential's key, as GitLab's CI variables are written (`DB_PASSWORD:` / `  value: …`):
-		// the parent names it.
-		if (PAIR_VALUE.test(l.key)) {
-			let p = i - 1;
-			while (p >= 0 && (yaml[p].blank || yaml[p].indent >= l.indent)) p--;
-			const parent = yaml[p];
-			if (
-				parent?.key &&
-				!parent.value &&
-				!parent.block &&
-				isCredentialName(parent.key) &&
-				isNamedSecret(parent.key, l.quoted ? `"${l.value.value}"` : l.value.value, true)
-			)
-				namedFinding(out, l.value.start, l.value.end, parent.key, "named:sibling-pair");
-		}
 		mapping.add(l.start);
 		attrs.push({ key: l.key, value: l.value.value, start: l.value.start, quoted: l.quoted, line: i, indent: l.indent });
 	});
@@ -3352,16 +3243,6 @@ function prose(text: string, out: Finding[]) {
 			if (/^[a-z]+(-[a-z]+)+$/.test(value) || isLabel(value, name) || isSettingOrSelfName(name, value)) continue;
 			// (`pass: 12/12`, `Pass: 98.5%`: a test count.)
 			if (/^pass$/i.test(name) && /^\d+(?:[/.,]\d+)*%?[,;]?$/.test(value)) continue;
-			// (A label in another language with English's `is`, Dutch `wachtwoord is vereist`, goes on in that language: a word
-			// of it with no digit or symbol is the sentence's, as foreignLabels judges one.)
-			if (
-				!m[3] &&
-				/^[ \t]+(?:is|was)\b/.test(m[2]) &&
-				!/^password$/i.test(words.at(-1)!) &&
-				FOREIGN_WORDS.test(words.at(-1)!) &&
-				!/\d|[^\p{L}\p{N}_]/u.test(bare)
-			)
-				continue;
 			const after = text.slice(start + value.length, start + value.length + 40);
 			// (A digit or a symbol makes it one; a letter outside ASCII doesn't: `confirm_password: Potwierdź moje konto`.)
 			// (Or the object around it closes after it, `{user: svc, password: acez}`, and it's no test word or ordinary word.)

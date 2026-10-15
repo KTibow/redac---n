@@ -233,11 +233,11 @@ export function literalEnd(text: string, at: number, { max = MAX_VALUE, shell = 
 
 /**
  * The head of a string literal, up to its opening quote: a keyword (`password=`, `password: `), a wrapper (`Some(`,
- * `String::from(`, `SecretStr(`, Java's `String.valueOf(`), and a prefix (Python's `b r u f`,
- * C#'s `@` and `$`, Rust's `r#`): how the readers of calls' and assignments' literals find where one starts.
+ * `String::from(`, `SecretStr(`), and a prefix (Python's `b r u f`, C#'s `@` and `$`, Rust's `r#`): how the readers
+ * of calls' and assignments' literals find where one starts.
  */
 const LITERAL_HEAD = new RegExp(
-	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret|String\.valueOf|new[ \t]+String)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
+	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
 );
 /**
  * A method that converts the value it is called on and takes no other: `.to_string()`, `.encode("utf-8")`,
@@ -300,12 +300,10 @@ const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\
 
 /**
  * A converter's callee, up to its `(`: one that makes a value of the string it is given, `hexStringToUint8Array(`,
- * `bytes.fromhex(`, `Buffer.from(`, `new TextEncoder().encode(`, `Secret::new(`, `SecretString::from(`, Go's `[]byte(`;
- * or a digest that is given a password to hash, `MD5(`, `crypt(`, `hashlib.sha256(`, whose input is the password still.
+ * `bytes.fromhex(`, `Buffer.from(`, `new TextEncoder().encode(`, `Secret::new(`, `SecretString::from(`, Go's `[]byte(`.
  */
 const CONVERTER =
 	/^(?:new[ \t]+)?(?:\[\])?(?:[\w.]|::|\(\)){0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes?|String|str|Uint8Array|parse|Parse)(?:[\w.]|::){0,40}\(/;
-const DIGEST = /^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|sha(?:1|2|224|256|384|512)?|crypt|digest|hashpw)[ \t]*\(/i;
 
 /**
  * The literal a converter at `at` is given, the value it makes (CONVERTER), and where the converter's call closes.
@@ -314,14 +312,18 @@ const DIGEST = /^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|sha(?:1|2|224|256|384|512
  */
 export function convertedLiteral(text: string, at: number): (Literal & { close: number }) | undefined {
 	const head = text.slice(at, at + 120);
-	const converter = CONVERTER.exec(head) ?? DIGEST.exec(head);
+	const converter = CONVERTER.exec(head);
 	if (
 		!converter ||
 		/(?:^(?:new[ \t]+)?|\.|::)(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0])
 	)
 		return undefined;
 	const open = at + converter[0].length;
-	const literal = callArguments(text, open)?.[0]?.literal;
+	// (It is given the value alone, or with an encoding or a constant: a constructor given two strings,
+	// `new ClientSecretKeyVaultCredential("<client id>", "<secret>")`, makes no value of the first.)
+	const args = callArguments(text, open);
+	const literal = args?.[0]?.literal;
+	if (args?.slice(1).some((a) => a.literal && !ENCODING.test(a.literal.value))) return undefined;
 	return literal && literal.value.length >= 4 && !ENCODING.test(literal.value)
 		? { ...literal, close: closingBracket(text, open) }
 		: undefined;
