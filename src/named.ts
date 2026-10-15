@@ -95,9 +95,10 @@ import {
 const NAME = String.raw`((?=[\p{L}\p{N}_.$@-]{0,80}?(?:${CREDENTIAL_WORD}))[\p{L}_$@][\p{L}\p{N}_.$@-]{0,80})`;
 // A name doesn't start inside a word or right after a backslash, except an escape before it in a JSON string (`\n`,
 // `\r`, `\t`: a line of an encoded file).
-// (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line.)
+// (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line. A form body's key
+// in brackets, percent-encoded as browsers and HTTP clients send one: `user%5Bpassword%5D=…`.)
 const ASSIGN = new RegExp(
-	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\])?\]?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
+	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
 	"dgiu",
 );
 const FLAG = /(?:^|[\s"'`(]|(?<=\\[nrt]))(--?[A-Za-z][\w-]{0,60})(?:[ \t]{1,4}|=)(?=[^\s-])/g;
@@ -1573,17 +1574,20 @@ function conditionalBranches(text: string, out: Finding[]) {
 	}
 }
 
-/** Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`. */
+/**
+ * Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`, and
+ * Java's XML properties, `<entry key="db.password">…</entry>`.
+ */
 function xmlNamedValues(text: string, out: Finding[]) {
-	if (!text.includes('name="')) return;
+	if (!/\b(?:name|key)=["']/.test(text)) return;
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`<(string|item|setting|entry|add)\b[^>\n]{0,100}?\bname="([\w.-]{1,80})"[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
+			String.raw`<(string|item|setting|entry|add)\b[^>\n]{0,100}?\b(?:name|key)=(["'])([\w.-]{1,80})\2[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
 			"dg",
 		),
 	)) {
-		const value = trimmed(elementText(m, 3));
-		if (value) namedValue(out, m[2], value, "named:xml-name");
+		const value = trimmed(elementText(m, 4));
+		if (value) namedValue(out, m[3], value, "named:xml-name");
 	}
 }
 
@@ -2668,8 +2672,9 @@ function javaProperties(text: string, out: Finding[]) {
  * Pairs whose name is a sibling attribute of the value, not its key: Kubernetes env (`- name: DB_PASSWORD` /
  * `value: …`), HCL (`name = "/prod/db/password"` … `value = "…"`), JSON and CloudFormation (`{"Name": "API_KEY",
  * "Value": "…"}`), HTML (`<input name="password" value="…">`). Siblings sit on one line, or in one block: later lines
- * indented at least as far, with nothing between them that closes the block. A name that is a path or a dotted key
- * names its value by its last part (`/prod/db/password`). (One reader for every syntax, so a value's name is found
+ * indented at least as far, with nothing between them that closes the block. A name that is a path, a dotted key or
+ * a form's nested field names its value by its last part (`/prod/db/password`, Rails' and PHP's `user[password]`).
+ * (One reader for every syntax, so a value's name is found
  * the same way wherever it is written.)
  */
 function siblingPairs(text: string, out: Finding[]) {
@@ -2715,9 +2720,12 @@ function siblingPairs(text: string, out: Finding[]) {
 		if (!PAIR_NAME.test(named.key) && !passwordInput) continue;
 		const credential = passwordInput
 			? "password"
-			: [named.value, named.value.split(/[/.:]/).filter(Boolean).at(-1) ?? ""].find(
-					(n) => /^[A-Za-z_][\w.\/:-]{0,100}$/.test(n) && isCredentialName(n),
-				);
+			: [
+					named.value,
+					/^[A-Za-z_][\w-]*(?:\[[\w-]*\])*\[([\w-]+)\]$/.exec(named.value)?.[1] ??
+						named.value.split(/[/.:]/).filter(Boolean).at(-1) ??
+						"",
+				].find((n) => /^[A-Za-z_][\w.\/:-]{0,100}$/.test(n) && isCredentialName(n));
 		if (!credential) continue;
 		// The value attribute nearest it, before or after, in the same block.
 		for (const j of [i + 1, i - 1, i + 2, i - 2, i + 3]) {

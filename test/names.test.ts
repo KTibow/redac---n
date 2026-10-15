@@ -542,6 +542,28 @@ test("an Android string resource is hidden under a secret name and kept under a 
 	);
 });
 
+test("a value named by a form's nested field, a properties file's entry key or a sibling `text` is hidden", () => {
+	const v = "Zk8mQ2pL9vRt4Hx";
+	for (const t of [
+		`<input type="text" name="user[password]" value="${v}">`,
+		`<input name="data[User][password]" value="${v}">`,
+		`user%5Bemail%5D=a%40b.io&user%5Bpassword%5D=${v}&commit=Sign+in`,
+		`GET /login?next=%2Fhome&user%5bpassword%5d=${v} HTTP/1.1`,
+		`<properties>\n<entry key="db.password">${v}</entry>\n<entry key="db.user">app</entry>\n</properties>`,
+		`<entry key='smtp.password'>${v}</entry>`,
+		`--data '{"name":"API_TOKEN","text":"${v}","type":"secret_text"}'`,
+	])
+		hidden(t, v);
+	// (A field's label is no value; a name that only ends with a bracket is no form's field.)
+	kept('{"name": "password", "text": "Enter your password", "type": "password"}', "Enter your password");
+	kept('{"name":"API_TOKEN","type":"plain_text","text":"production"}', "production");
+	kept('<entry key="db.url">jdbc:postgresql://db/app</entry>', "jdbc:postgresql://db/app");
+	kept(
+		"auth_token [env: TAP_GITHUB_AUTH_TOKEN] x\nrepos [env: TAP_GITHUB_REPOSITORIES] current value: ['acme/dbt', 'acme/dags']",
+		"['acme/dbt', 'acme/dags']",
+	);
+});
+
 test("a keystore password in a path-like name is hidden", () => {
 	hidden('keystore/release_password="spring.kilo2389"', "spring.kilo2389");
 });
