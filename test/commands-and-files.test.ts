@@ -761,3 +761,32 @@ test("in a secret file a session's ID is hidden under anyone's name, a terminal'
 		"TERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nITERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nWT_SESSION=3c1d2e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\nXDG_SESSION_ID=2\nDESKTOP_SESSION=ubuntu\nSESSION_STORE=redis\n";
 	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
 });
+
+test("a secret file's padded assignments are read as assignments, so a reference among them stays", () => {
+	const tfvars = [
+		'grafana_admin_pass  = "Kx9mQ2pLw7vR"',
+		'db_password         = "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf"',
+		'api_key_secret_id   = "projects/468039570476/secrets/vllm-api-key/versions/latest"',
+		'region              = "us-central1"',
+	].join("\n");
+	const path = { path: "infra/envs/prod/terraform.tfvars" };
+	hidden(tfvars, "Kx9mQ2pLw7vR", path);
+	kept(tfvars, "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf", path);
+	kept(tfvars, "projects/468039570476/secrets/vllm-api-key/versions/latest", path);
+	// (A table that a secret manager prints still has its values: `vault kv get`.)
+	hidden("Key              Value\n---              -----\nclient_secret    Kx9mQ2pLw7vRtZ8n\n", "Kx9mQ2pLw7vRtZ8n", {
+		command: "vault kv get secret/app",
+	});
+});
+
+test("a command that prints a secret file's lines has them read as that file, name by name", () => {
+	const out =
+		"CLOUDINARY_URL=cloudinary://293633814225778:QbHn4SnyUiS6r_FY4XBPpMmW1YN@tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products\n";
+	const hint = { command: "vercel env pull .env.local && cat .env.local | grep -i cloudinary" };
+	hidden(out, "QbHn4SnyUiS6r_FY4XBPpMmW1YN", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop", hint);
+	hidden("STRIPE_SECRET_KEY=Kx9mQ2pLw7vRtZ8nB4cYd3Hq\nAPP_ENV=prod\n", "Kx9mQ2pLw7vRtZ8nB4cYd3Hq", {
+		command: "heroku config -s",
+	});
+});

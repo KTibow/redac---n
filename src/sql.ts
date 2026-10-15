@@ -12,6 +12,8 @@ export interface SqlCell {
 	table: string;
 	/** The column, without quotes: `password` in `"password"`, `` `password` ``, `[password]`. */
 	column: string;
+	/** The row's place among all the rows read, so cells of one row can be found together. */
+	row: number;
 	/** The value as an argument of the row: a string literal's content is its `literal`. */
 	value: Argument;
 }
@@ -35,6 +37,7 @@ const BETWEEN_ROWS = /(?:\s|--[^\n]*|\/\*[\s\S]{0,2000}?\*\/)*,?(?:\s|--[^\n]*|\
  */
 export function* insertCells(text: string, wants?: (table: string, columns: string[]) => boolean): Generator<SqlCell> {
 	if (!/\b(?:INSERT|REPLACE)\b/i.test(text)) return;
+	const rows = { read: 0 };
 	for (const m of text.matchAll(INSERT)) {
 		const table = unquote(m[1].split(".").at(-1)!);
 		const columns = delimitedCells(m[2], ",").map((c) => unquote(c.text));
@@ -45,20 +48,27 @@ export function* insertCells(text: string, wants?: (table: string, columns: stri
 		if (text[at] === "(" && closingBracket(text, at + 1) < 0) {
 			const end = text.indexOf("\n", at);
 			const line = text.slice(m.index, end < 0 ? undefined : end);
-			for (const cell of rowCells(line, at - m.index, table, columns))
+			for (const cell of rowCells(line, at - m.index, table, columns, rows))
 				yield { ...cell, value: shifted(cell.value, m.index) };
-		} else yield* rowCells(text, at, table, columns);
+		} else yield* rowCells(text, at, table, columns, rows);
 	}
 }
 
 /** The cells of the rows that start at `at` (`(…), (…)`), each value under its column. */
-function* rowCells(text: string, at: number, table: string, columns: string[]): Generator<SqlCell> {
+function* rowCells(
+	text: string,
+	at: number,
+	table: string,
+	columns: string[],
+	rows: { read: number },
+): Generator<SqlCell> {
 	for (let row = 0; row < 10_000 && text[at] === "("; row++) {
 		// (A row cut short, a dump's `head`, ends the rows. callArguments reads to the bracket closingBracket finds.)
 		const values = callArguments(text, at + 1);
 		if (!values) break;
 		const close = closingBracket(text, at + 1);
-		for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], value };
+		const n = rows.read++;
+		for (const [k, value] of values.entries()) if (columns[k]) yield { table, column: columns[k], row: n, value };
 		BETWEEN_ROWS.lastIndex = close + 1;
 		at = close + 1 + BETWEEN_ROWS.exec(text)![0].length;
 	}

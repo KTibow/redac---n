@@ -309,7 +309,10 @@ function tableRows(text: string, out: Finding[]) {
 		/^(?:[ \t]*[│|┃║][ \t]*|[ \t]*)([\w.\-/@]{1,200})(?:[ \t]{2,}|[ \t]*[│|┃║][ \t]*)([^\s│|┃║](?:[^│|┃║\r\n]{0,4000}?[^\s│|┃║])?)[ \t]*(?:[│|┃║][^\r\n]*)?\r?$/dgm,
 	)) {
 		const [, name, value] = m;
+		// (A value that starts with `=` or a `:` is a padded assignment's, `db_password    = "…"` in a tfvars file: the
+		// assignments' reader reads it whole.)
 		if (
+			/^(?:=|:(?!\/\/))/.test(value) ||
 			!isCredentialName(name) ||
 			isNotSecret(value) ||
 			isPlaceholder(value) ||
@@ -519,6 +522,11 @@ export function findPrintedSecret(text: string): Finding[] {
 		add(start, end);
 	}
 	if (out.length) return out;
+	// Output in an env file's lines (`heroku config:get -s`, `netlify env:list --plain`, a pulled `.env` read back): read
+	// as that file, each value by its name, so a `NEXT_PUBLIC_…` setting stays.
+	const lines = text.split("\n").filter((l) => l.trim());
+	if (lines.length && lines.every((l) => /^[ \t]*(?:export[ \t]+)?[A-Za-z_][\w.]*=/.test(l)))
+		return findInSecretFile(text, {});
 	// (A path is where a credential is, not one: `GOOGLE_APPLICATION_CREDENTIALS=/workspace/secrets/sa.json`.)
 	const notSecret = (line: string) =>
 		isInert(line) ||
