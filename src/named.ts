@@ -62,7 +62,6 @@ import {
 	readPhrase,
 	isPasswordName,
 	isPinName,
-	isUpstreamDirective,
 	nameClass,
 	PASSWORD_SPELLINGS,
 	readName,
@@ -468,15 +467,14 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		// Cache keys, object keys, content addresses: hashes with words or paths around them.
 		// (Under a generic name a hex run beside a separator is one, whatever else is in it.)
 		// (Pure hex of 32 or 40 under a bare `secret` or `token` is one: Facebook app secrets, webhook secrets;
-		// 64 is a SHA-256, as Laravel Sanctum stores its tokens. Under `secret`, any of 20 to 40: Pusher's and Soketi's
-		// app secrets are 20, `key: …` above them.)
+		// 64 is a SHA-256, as Laravel Sanctum stores its tokens. Under `secret`, any of 20 to 40: Pusher's app secrets are 20.)
 		const bare = name.replace(/^[-$@]+/, "");
 		if (
 			/[0-9a-f]{16,}/i.test(value) &&
 			(/[-_/.:]/.test(value) ||
 				(/^[0-9a-f]+$/i.test(value) &&
 					!(
-						(/^(?:secret|token|tokens)$/i.test(bare) && (value.length === 32 || value.length === 40)) ||
+						(/^tokens?$/i.test(bare) && (value.length === 32 || value.length === 40)) ||
 						(/^secret$/i.test(bare) && value.length >= 20 && value.length <= 40)
 					)))
 		)
@@ -1509,7 +1507,7 @@ const PROSE_START =
 function spacedPairs(text: string, out: Finding[]) {
 	for (const m of text.matchAll(SPACED)) {
 		const name = m[2];
-		if (!isCredentialName(name) || isUpstreamDirective(name)) continue;
+		if (!isCredentialName(name)) continue;
 		const at = m.index + m[0].length;
 		let span = readValue(text, at, { toEol: !/^["'`]/.test(text[at]) });
 		if (!span) continue;

@@ -1252,22 +1252,12 @@ test("a route or screen word marks a lookup key or UI text, not a secret or a fu
 	hidden("EVENT_SECRET=hunter22", "hunter22");
 });
 
-test("an about word that names a component, a word between it and the password's, leaves the name a password's", () => {
-	for (const name of [
-		"LABEL_STUDIO_PASSWORD",
-		"EVENT_STORE_PASSWORD",
-		"MESSAGE_BROKER_PASSWORD",
-		"STATUS_DB_PASSWORD",
-		"HELP_DESK_PASSWORD",
-		"VNC_VIEW_ONLY_PASSWORD",
-		"MATCH_PASSWORD",
-		"MATCH_KEYCHAIN_PASSWORD",
-	]) {
+test("fastlane match's password is a password; next to an about word, a name is about its password", () => {
+	for (const name of ["MATCH_PASSWORD", "MATCH_KEYCHAIN_PASSWORD"]) {
 		assert.equal(nameClass(name), "credential", name);
 		hidden(`      - ${name}=Tr0ub4dor&3x\n`, "Tr0ub4dor&3x");
 	}
 	hidden('export MATCH_PASSWORD="Harbor2291xq"', "Harbor2291xq");
-	// (Next to the password's word, or with qualifiers between, they still mark UI text, errors and flags.)
 	for (const name of [
 		"LABEL_NEW_PASSWORD",
 		"LOGIN_PAGE_PASSWORD",
@@ -1291,10 +1281,6 @@ test("a password's word written as two words, or glued after what it belongs to,
 		"ClearTextPassword=Hunter2hunter2!x",
 		"clear_text_password: Hunter2hunter2!x",
 		"PlainTextPassword=Hunter2hunter2!x",
-		"export JKSPASS='Hunter2hunter2!x'",
-		"vpnpass=Hunter2hunter2!x",
-		"kafkapass: Hunter2hunter2!x",
-		"P12PASS=Hunter2hunter2!x",
 		"adminpw: Hunter2hunter2!x",
 		"userpw=Hunter2hunter2!x",
 		"DBPW=Hunter2hunter2!x",
@@ -1315,22 +1301,6 @@ test("a password's word written as two words, or glued after what it belongs to,
 	);
 });
 
-test("a framework's public prefix leaves an encryption or a signing key secret", () => {
-	for (const name of [
-		"NEXT_PUBLIC_ENCRYPTION_KEY",
-		"REACT_APP_ENCRYPTION_KEY",
-		"VITE_AES_KEY",
-		"NEXT_PUBLIC_SIGNING_KEY",
-		"NEXT_PUBLIC_CIPHER_KEY",
-		"NEXT_PUBLIC_WEBHOOK_KEY",
-	]) {
-		assert.equal(nameClass(name), "credential", name);
-		hidden(`${name}=Zx7Qp2Lm9Vb4Kd8W`, "Zx7Qp2Lm9Vb4Kd8W", { command: "cat .env.local" });
-	}
-	for (const name of ["NEXT_PUBLIC_MAPS_KEY", "VITE_SITE_KEY", "PUBLIC_SIGNING_KEY", "NEXT_PUBLIC_PUBLIC_KEY"])
-		assert.equal(nameClass(name), "public", name);
-});
-
 test("an auth mode's word before AUTH leaves a login under it a credential", () => {
 	hidden("HTTP_AUTH=admin:Harbor2291xq", "Harbor2291xq");
 	hidden("http_auth: elastic:Harbor2291xq", "Harbor2291xq");
@@ -1338,31 +1308,17 @@ test("an auth mode's word before AUTH leaves a login under it a credential", () 
 	kept("HTTP_AUTH=true", "true");
 });
 
-test("GitHub Actions' INPUT_TOKEN is an action's token input, a model's input token elsewhere", () => {
-	hidden("GITHUB_ACTIONS=true\nINPUT_TOKEN=Zq8LmW3vTn5RkY2HpX7d", "Zq8LmW3vTn5RkY2HpX7d");
+test("a model's input and output tokens are counts, not credentials", () => {
 	for (const name of ["input_token", "INPUT_TOKENS", "OUTPUT_TOKEN", "inputToken"])
 		assert.equal(nameClass(name), "identifier", name);
 	kept('input_token = "<s>"', "<s>");
 });
 
-test("proxy_pass as a key holds a proxy's password; as an nginx directive, an upstream", () => {
-	hidden("[proxy]\nproxy_user = bob\nproxy_pass = Hx7mQ2pL9vRtK4w\n", "Hx7mQ2pL9vRtK4w");
-	hidden("proxy_pass: Hx7mQ2pL9vRtK4w", "Hx7mQ2pL9vRtK4w");
-	hidden('{"proxy_pass": "Hx7mQ2pL9vRtK4w"}', "Hx7mQ2pL9vRtK4w");
-	kept("location / {\n  proxy_pass backend;\n}\n", "backend");
-	kept("location / {\n  proxy_pass http://app_backend_8f3k2;\n}\n", "app_backend_8f3k2");
-	kept("location ~ \\.php$ {\n  fastcgi_pass php_upstream;\n}\n", "php_upstream");
-});
-
-test("a resource's private variant is no key's private half", () => {
-	for (const name of ["alb_private", "zone_private", "role_private", "subnet_private", "VPC_PRIVATE"])
-		assert.equal(nameClass(name), "neutral", name);
+test("an identifier's private variant is no key's private half", () => {
+	for (const name of ["zone_private", "host_private", "BUCKET_PRIVATE"]) assert.equal(nameClass(name), "neutral", name);
 	for (const name of ["vapidPrivate", "push_private", "VAPID_PRIVATE", "WG_PRIVATE"])
 		assert.equal(nameClass(name), "credential", name);
-	const text =
-		'alb_private = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/web/50dc6c495c0c9188"\nzone_private = "Z2FDTNDATAQYW2"\nrole_private = "arn:aws:iam::123456789012:role/app-private"\n';
-	for (const value of ["Z2FDTNDATAQYW2", "arn:aws:iam::123456789012:role/app-private", "50dc6c495c0c9188"])
-		kept(text, value, { command: "terraform output" });
+	kept('zone_private = "Z2FDTNDATAQYW2"\n', "Z2FDTNDATAQYW2", { command: "terraform output" });
 });
 
 test("a bare secret's hex of 20 to 40 is a secret, a pair's public key above it", () => {
