@@ -235,11 +235,11 @@ export function literalEnd(text: string, at: number, { max = MAX_VALUE, shell = 
 
 /**
  * The head of a string literal, up to its opening quote: a keyword (`password=`, `password: `), a wrapper (`Some(`,
- * `String::from(`, `SecretStr(`), and a prefix (Python's `b r u f`, C#'s `@` and `$`, Rust's `r#`): how the readers
- * of calls' and assignments' literals find where one starts.
+ * `String::from(`, `SecretStr(`, Java's `String.valueOf(`), and a prefix (Python's `b r u f`,
+ * C#'s `@` and `$`, Rust's `r#`): how the readers of calls' and assignments' literals find where one starts.
  */
 const LITERAL_HEAD = new RegExp(
-	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
+	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret|String\.valueOf|new[ \t]+String)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
 );
 /**
  * A method that converts the value it is called on and takes no other: `.to_string()`, `.encode("utf-8")`,

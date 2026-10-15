@@ -81,14 +81,22 @@ export function stringEnd(
 const FLOW_ITEM = /[ \t\r\n]*(["'])((?:(?!\1)[^\\\n]|\\.)*)\1[ \t\r\n]*/y;
 /** The bracket that closes a flow list, and nothing after it but blanks. */
 const FLOW_CLOSE = /[ \t\r\n]*\][ \t\r\n]*$/y;
+/**
+ * A YAML plain scalar as a flow list's item (`[Zq8kLm2Pw9xRt, Ab3dEf5Gh7JkQ]`), to the `,` or `]` after it: no indicator
+ * first, no quote or bracket in it (an expression, ARM's `[parameters('adminPassword')]`) and no `: ` (a mapping), its
+ * content group 1.
+ */
+const FLOW_PLAIN_ITEM = /[ \t\r\n]*([^\s"'`,[\]{}#&*!|>%@](?:[^,[\]{}()"'`\n:]|:(?!\s))*?)[ \t\r\n]*(?=[,\]])/y;
 
 /**
  * The items of a list of strings that `value` is, each without its quotes (where in `value`, and its text): a flow
  * list on one line or over several, `["a", "b"]`, `['a','b']` (JSON, Python, TOML, YAML), its commas optional as HCL
  * and Vault's listings write it (`["a" "b"]`); or a YAML block list, `- a` lines, plain or quoted. Undefined when it
- * is no such list or anything else is in it: a number, an object, a name (code), a mapping under a `-`.
+ * is no such list or anything else is in it: a number, an object, a name (code), a mapping under a `-`. With `plain`,
+ * for a value YAML wrote, a flow list's items may also be plain scalars, `[a, b]` (in code those are names), two or more
+ * of them (one in brackets is as often a note or a reference, `password: [GH-784]`).
  */
-export function stringListItems(value: string): Span[] | undefined {
+export function stringListItems(value: string, { plain = false } = {}): Span[] | undefined {
 	const items: Span[] = [];
 	const open = /^[ \t\r\n]*\[/.exec(value);
 	if (open) {
@@ -96,7 +104,18 @@ export function stringListItems(value: string): Span[] | undefined {
 		for (;;) {
 			FLOW_ITEM.lastIndex = at;
 			const m = FLOW_ITEM.exec(value);
-			if (!m) return undefined;
+			if (!m) {
+				FLOW_PLAIN_ITEM.lastIndex = at;
+				const p = plain ? FLOW_PLAIN_ITEM.exec(value) : null;
+				if (!p) return undefined;
+				const start = p.index + p[0].indexOf(p[1]);
+				items.push({ value: p[1], start, end: start + p[1].length });
+				at = p.index + p[0].length;
+				if (value[at] === ",") at++;
+				FLOW_CLOSE.lastIndex = at;
+				if (FLOW_CLOSE.test(value)) return items.length >= 2 ? items : undefined;
+				continue;
+			}
 			const start = m.index + m[0].indexOf(m[1]) + 1;
 			items.push({ value: m[2], start, end: start + m[2].length });
 			at = m.index + m[0].length;

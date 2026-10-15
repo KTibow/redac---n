@@ -98,17 +98,20 @@ const NAME = String.raw`((?=[\p{L}\p{N}_.$@-]{0,80}?(?:${CREDENTIAL_WORD}))[\p{L
 // `\r`, `\t`: a line of an encoded file).
 // (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line. A form body's key
 // in brackets, percent-encoded as browsers and HTTP clients send one: `user%5Bpassword%5D=…`.)
+// (In quotes, a .NET configuration key's sections before it, `"Ldap:BindPassword": …` in `appsettings.json` or user
+// secrets: the name is its last.)
 const ASSIGN = new RegExp(
-	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
+	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)(?:(?!\1)(?:[\p{L}\p{N}_.$@-]{1,60}:){1,8})?${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
 	"dgiu",
 );
 const FLAG = /(?:^|[\s"'`(]|(?<=\\[nrt]))(--?[A-Za-z][\w-]{0,60})(?:[ \t]{1,4}|=)(?=[^\s-])/g;
 /**
  * An XML element's text, plain or in a CDATA section (Jenkins `credentials.xml`, Maven `settings.xml`, Android
  * resources), as two groups from `n`: the section's content, or the plain text. elementText picks the one that matched.
+ * (Pretty-printed, the text may stand on a line of its own between the tags.)
  */
 const XML_TEXT = (min: number) =>
-	String.raw`(?:<!\[CDATA\[([^\n]{${min},${MAX_VALUE}}?)\]\]>|([^<\n]{${min},${MAX_VALUE}}?))`;
+	String.raw`(?:[ \t]*\r?\n[ \t]*)?(?:<!\[CDATA\[([^\n]{${min},${MAX_VALUE}}?)\]\]>|([^<\n]{${min},${MAX_VALUE}}?))(?:[ \t]*\r?\n[ \t]*)?`;
 const elementText = (m: RegExpMatchArray, n: number) => group(m, m[n] !== undefined ? n : n + 1);
 const XML_ELEMENT = new RegExp(String.raw`<([\w:.-]{1,80})(?:\s[^<>]{0,200})?>${XML_TEXT(1)}<\/\1>`, "dg");
 const SPACED =
@@ -116,9 +119,12 @@ const SPACED =
 
 /** Prefixes tools put before a line: diff `+`/`-`, grep `path:12:`, `cat -n`/`nl` numbers, log timestamps. */
 const LP = String.raw`(?:[+-](?=[ \t\w])|\d{1,7}[:|\t→-]|[\w./-]{1,200}:\d{1,7}[:-]|\d{4}-\d\d-\d\dT[\d:.]+Z?[ \t])?[ \t]*`;
-/** What may come before `NAME=` on an env line, and before `key:` on a YAML line. */
+/**
+ * What may come before `NAME=` on an env line, and before `key:` on a YAML line. (On a `.properties` line, the `%` of a
+ * Quarkus or MicroProfile profile, `%dev.quarkus.datasource.password=…`: the name is read from after it.)
+ */
 const ENV_LINE_START = new RegExp(
-	String.raw`^[ \t]*${LP}(?:export[ \t]+|declare[ \t]+-x[ \t]+|set[ \t]+-gx[ \t]+|\+|-[ \t]+|#[ \t]*|ENV[ \t]+|ARG[ \t]+)?$`,
+	String.raw`^[ \t]*${LP}(?:export[ \t]+|declare[ \t]+-x[ \t]+|set[ \t]+-gx[ \t]+|\+|-[ \t]+|#[ \t]*|ENV[ \t]+|ARG[ \t]+|%)?$`,
 );
 const YAML_LINE_START = new RegExp(String.raw`^[ \t]*${LP}(?:-[ \t]+)?["']?$`);
 
@@ -217,12 +223,16 @@ function credentialPair(name: string, value: string): number {
 /**
  * Cache keys, object keys, content addresses: a hash with words or paths around it (`linux-deps-<sha>`,
  * `objects/<sha>`, `sha256:<hex>`, `v2-cache-<sha>`). Not a vendor's key, one short prefix and the hex (Firecrawl's
- * `fc-<hex>`), nor a token with a hash beside it (a Rails cookie, `<base64>--<hmac>`): every other part is a number, a
- * short word or one that reads as a name (`fabrikam`, `PaymentApiKey`; random letters score far lower).
+ * `fc-<hex>`), nor a key with its environment's or region's word dotted before it (`staging.<hex>`, `eu.<hex>`; a
+ * digest's name before a dot, `sha1.<hex>`, still names a hash), nor a token with a hash beside it (a Rails cookie,
+ * `<base64>--<hmac>`): every other part is a number, a short word or one that reads as a name (`fabrikam`,
+ * `PaymentApiKey`; random letters score far lower).
  */
 function isHashWithWords(value: string): boolean {
 	if (!/[0-9a-f]{16,}/i.test(value) || !/[-_/.:|+~]/.test(value) || /^[a-z]{2,4}[-_][0-9a-f]{24,}$/i.test(value))
 		return false;
+	const dotted = /^([a-z][a-z0-9]{1,15})\.[0-9a-f]{24,}$/i.exec(value);
+	if (dotted && nameClass(dotted[1]) !== "hash") return false;
 	return value
 		.replace(/[0-9a-f]{16,}/gi, "")
 		.split(/[-_/.:@()=;?&|+~]+/)
@@ -356,12 +366,15 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 			(/\s/.test(value) || /^[A-Z]{2,}$/.test(value) || /^\d+(?:[/.,]\d+)*%?$/.test(value))
 		)
 			return false;
-		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`.
+		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`, a
+		// test's short or word-like name (`PASS: regress1`, `PASS: x86_64`). Random letters and digits of eight or more
+		// are an env file's password (`PASS=zq8lw2mxr5`), as under any other spelling of the name.
 		if (
 			/^PASS(?:ED)?$/.test(name) &&
 			/^[\w./:\[\]-]+$/.test(value) &&
 			(/test|spec|::|\/[\w-]+\.\w{1,4}$/i.test(value) ||
-				!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
+				(!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)) &&
+					(value.length < 8 || naturalness(value) > -0.5)))
 		)
 			return false;
 		// A compound adjective about the password, not one: a sentence's word among its parts (isSentenceWord: `write-only`,
@@ -667,6 +680,7 @@ const RULES: ((text: string, out: Finding[]) => void)[] = [
 	pipeTables,
 	replEchoes,
 	jsonValues,
+	parentMaps,
 	userPassProse,
 	dslCalls,
 	declarations,
@@ -955,9 +969,20 @@ function assignments(text: string, out: Finding[]) {
 		// A list of strings under the name, on its line or over the lines below (`"api_keys": [` then `"…",` lines,
 		// `passwords:` then `- …` lines): read whole, each item judged under the name (isNamedSecret) and hidden alone
 		// (findNamed). (No pairs inside to read.)
-		const list = listValue(text, at, op === ":" && YAML_LINE_START.test(before) ? before : undefined);
+		const yamlKey = op === ":" && YAML_LINE_START.test(before) ? before : undefined;
+		const list = listValue(text, at, yamlKey);
 		if (list) {
 			ASSIGN.lastIndex = Math.max(ASSIGN.lastIndex, list[1]);
+			// (A YAML flow list of plain scalars, `api_keys: [Zq8k…, Ab3d…]`, which only YAML reads as strings: its items
+			// are hidden here, each alone.)
+			if (!stringListItems(text.slice(list[0], list[1]))) {
+				for (const item of stringListItems(text.slice(list[0], list[1]), { plain: true }) ?? [])
+					if (isNamedSecret(name, `"${item.value}"`, true)) {
+						namedFinding(out, list[0] + item.start, list[0] + item.end, name, "named:assign");
+						out[out.length - 1].literal = true;
+					}
+				continue;
+			}
 			if (isNamedSecret(name, text.slice(list[0], list[1]), true)) {
 				namedFinding(out, list[0], list[1], name, "named:assign");
 				out[out.length - 1].literal = true;
@@ -1171,7 +1196,9 @@ function enclosingCall(text: string, at: number): string | undefined {
 function listValue(text: string, at: number, yamlKey?: string): [number, number] | undefined {
 	if (text[at] === "[") {
 		const close = closingBracket(text, at + 1);
-		return close > 0 && stringListItems(text.slice(at, close + 1)) ? [at, close + 1] : undefined;
+		return close > 0 && stringListItems(text.slice(at, close + 1), { plain: yamlKey !== undefined })
+			? [at, close + 1]
+			: undefined;
 	}
 	const eol = lineEndAt(text, at);
 	if (yamlKey === undefined || text[eol] !== "\n" || !/^[ \t]*(?:#.*)?\r?$/.test(text.slice(at, eol))) return undefined;
@@ -1276,10 +1303,15 @@ const COMMAND_WORDS =
 /**
  * The value of an unquoted `NAME=value` that starts an env line, when a command follows it on the line: its first word,
  * up to a blank (read as a line, a password may hold `&`, `;` and `<` themselves: `Tr0ub4dor&3horse`). A command follows when the next word is an operator
- * (`&&`, `;`, `|`) or the first ends with `;` or is a generated token, a command or a path comes next, or later words
+ * (`&&`, `;`, `|`, a redirection) or the first ends with `;` or is a generated token, a command or a path comes next, or later words
  * are flags, `NAME=`s or tokens. Otherwise the line's words are the value (a dotenv passphrase, `correct horse battery staple`).
  */
 function shellWordValue(text: string, span: [number, number]): [number, number] {
+	// (An operator with no blank before the command it starts: `PGPASSWORD=x;psql …`, `TOKEN=x&&export Y=1`. A password
+	// may hold `;` or `&`, but not one before a command's name.)
+	const joined = /^(\S+?)(?:;|&&|\|\|?)(?=([\w.-]+)(?:\s|$))/.exec(text.slice(span[0], span[1]));
+	if (joined && (COMMAND_WORDS.test(joined[2]) || /^(?:export|cd|unset|set|echo|source)$/.test(joined[2])))
+		return [span[0], span[0] + joined[1].length];
 	const words = [...text.slice(span[0], span[1]).matchAll(/\S+/g)];
 	if (words.length < 2) return span;
 	const first = words[0][0];
@@ -1300,6 +1332,8 @@ function shellWordValue(text: string, span: [number, number]): [number, number] 
 		/;$/.test(first) ||
 		isRandomToken(first) ||
 		/^(?:&&?|\|\|?|;)$/.test(next) ||
+		// (A redirection: `> out.txt`, `>> log`, `2>&1`, `< in.sql`.)
+		/^\d?(?:<|>>?)(?:&\d|\S*)$/.test(next) ||
 		COMMAND_WORDS.test(next) ||
 		program ||
 		/^(?:\.{0,2}\/|~\/)\S|\.(?:sh|py|js|ts|rb|pl)$/.test(next) ||
@@ -1452,6 +1486,7 @@ function spacedPairs(text: string, out: Finding[]) {
 		// A declaration, the name its type's: `PasswordAuthentication auth = new PasswordAuthentication(…);`. (The variable's
 		// value is the assignment's to read.)
 		if (/^[A-Za-z_$][\w$]*(?:[ \t]+=[ \t]|[ \t]*=(?!=).*;[ \t]*$)/.test(raw)) continue;
+		if (/^\.{3,}[ \t]/.test(raw)) continue; // `password ........ value`: a dot leader, whose value dotLeaders reads
 		// A note or a type in brackets first (`password (optional)`, `token [required]`, a docstring's `password (str|None):`),
 		// a member (`.field`), code in braces (`{ get; set; }`). (A value in parentheses and nothing else, `password (12:30)`,
 		// is the prose rule's, which reads one: `the passwd (M34d0w)`.)
@@ -1589,20 +1624,32 @@ function conditionalBranches(text: string, out: Finding[]) {
 }
 
 /**
- * Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`, and
- * Java's XML properties, `<entry key="db.password">…</entry>`.
+ * An element named by its attribute, whatever its tag: Android resources' `<string name="api_secret">…</string>`,
+ * `<setting name="X"><value>…</value>`, Hibernate's `<property name="hibernate.connection.password">…`, Spring's `<prop
+ * key="…">`, Java's XML properties' `<entry key="…">`, Tomcat's `<Parameter name="…">`.
  */
+const XML_NAMED = new RegExp(
+	String.raw`<([A-Za-z][\w:.-]{0,40})\b[^>\n]{0,100}?\b(?:name|key|Name|Key)=(["'])([\w.:-]{1,80})\2[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
+	"dg",
+);
+/** An element named by a `<name>` or `<key>` child before its `<value>`: Hadoop's `<property><name>…</name><value>…</value>`. */
+const XML_NAME_CHILD = new RegExp(
+	String.raw`<(name|key)>[ \t]*([\w.:-]{1,120})[ \t]*<\/\1>[ \t\r\n]{0,200}<value>${XML_TEXT(4)}<\/value>`,
+	"dg",
+);
+
+/** Elements whose name is an attribute's or a child's, not their tag. */
 function xmlNamedValues(text: string, out: Finding[]) {
-	if (!/\b(?:name|key)=["']/.test(text)) return;
-	for (const m of text.matchAll(
-		new RegExp(
-			String.raw`<(string|item|setting|entry|add)\b[^>\n]{0,100}?\b(?:name|key)=(["'])([\w.-]{1,80})\2[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
-			"dg",
-		),
-	)) {
-		const value = trimmed(elementText(m, 4));
-		if (value) namedValue(out, m[3], value, "named:xml-name");
-	}
+	if (/(?:name|key|Name|Key)=["']/.test(text))
+		for (const m of text.matchAll(XML_NAMED)) {
+			const value = trimmed(elementText(m, 4));
+			if (value) namedValue(out, m[3], value, "named:xml-name");
+		}
+	if (text.includes("<value>"))
+		for (const m of text.matchAll(XML_NAME_CHILD)) {
+			const value = trimmed(elementText(m, 3));
+			if (value) namedValue(out, m[2], value, "named:xml-name");
+		}
 }
 
 /** A dot-leader row: the label (group 1), then the rest of the line (group 2). */
@@ -1718,7 +1765,7 @@ const PAIR_VALUE_KEY = new RegExp(`"${PAIR_VALUE.source.slice(1, -1)}"`, "i");
 function jsonValues(text: string, out: Finding[]) {
 	if (!PAIR_VALUE_KEY.test(text)) return;
 	for (const doc of jsonDocuments(text)) {
-		const walk = (v: JsonNode, sensitive: boolean) => {
+		const walk = (v: JsonNode, sensitive: boolean, parent?: string) => {
 			if (v.kind === "array") for (const x of v.items) walk(x, sensitive);
 			if (v.kind !== "object") return;
 			const field = (k: string) => v.entries.find(([key]) => key === k)?.[1];
@@ -1729,8 +1776,11 @@ function jsonValues(text: string, out: Finding[]) {
 				(sens?.kind === "literal" && sens.value === true) ||
 				(type?.kind === "string" &&
 					/^(random_password|tls_private_key|random_string|aws_iam_access_key)$/.test(type.value));
-			const sibling = v.entries.find(([key, x]) => PAIR_NAME.test(key) && x.kind === "string")?.[1] as
-				{ value: string } | undefined;
+			// (With no name beside it, the value's object is named by its key: Spring's actuator `/env`, `"DB_PASSWORD": {
+			// "value": …, "origin": … }`, a `terraform output -json` output's.)
+			const sibling =
+				(v.entries.find(([key, x]) => PAIR_NAME.test(key) && x.kind === "string")?.[1] as
+					{ value: string } | undefined) ?? (parent === undefined ? undefined : { value: parent });
 			for (const [k, x] of v.entries) {
 				if (x.kind === "string" && PAIR_VALUE.test(k) && !/^\s*\{/.test(x.value)) {
 					const quoted = JSON.stringify(x.value);
@@ -1739,10 +1789,101 @@ function jsonValues(text: string, out: Finding[]) {
 						(marked && looksSecret(quoted, true))
 					)
 						namedFinding(out, x.start, x.end, sibling?.value ?? "secret", "named:json-sibling", 0.95);
-				} else walk(x, marked && MARKED_FIELDS.test(k));
+				} else walk(x, marked && MARKED_FIELDS.test(k), k);
 			}
 		};
 		walk(doc, false);
+	}
+}
+
+/** A plural credential's name over a mapping, a YAML key ending its line, a JSON key opening an object or an INI section: what parentMaps needs in a text. */
+const PARENT_KEY =
+	/(?:words|wds|secrets|credentials|tokens|keys|phrases)(?:[ \t]*:[ \t]*\r?$|"[ \t]*:[ \t]*\{)|^[ \t]*\[[\w.-]*(?:words|secrets|credentials|tokens|keys)\][ \t]*\r?$/im;
+
+/** A plural credential's name (`passwords`, `secrets`, `api_keys`): a mapping under it maps names to credentials. */
+const isPluralCredential = (name: string) => /[^s]s$/i.test(name) && isCredentialName(name);
+
+/**
+ * Values in a mapping under a plural credential's name, keyed by whose or which they are (`passwords:` over `admin: …`,
+ * `grafana: …`; `{"secrets": {"prod": …}}`; an INI `[passwords]` section): each is judged under the parent's name, as a
+ * list's items are under the list's. Only when every value in it is a secret under that name: a mapping of settings,
+ * `secrets:` over `enabled: true`, `name: app-secrets`, holds other things.
+ */
+function parentMaps(text: string, out: Finding[]) {
+	if (!PARENT_KEY.test(text)) return;
+	// (Nor a lower-case word, which names a setting's choice more often than it is a password: `passwords:` over
+	// `policy: strict`.)
+	const hide = (name: string, values: Span[]) => {
+		if (
+			!values.length ||
+			!values.every((v) => !/^\p{Ll}+$/u.test(v.value) && isNamedSecret(name, `"${v.value}"`, true))
+		)
+			return;
+		for (const v of values) namedFinding(out, v.start, v.end, name, "named:parent-map", 0.85);
+	};
+	// YAML: the key's line ends at its colon, and the lines below, one level deeper, are `key: value` pairs.
+	const lines = yamlLines(text);
+	for (let i = 0; i < lines.length; i++) {
+		const parent = lines[i];
+		if (!parent.key || parent.value || parent.block || parent.item || !isPluralCredential(parent.key)) continue;
+		const values: Span[] = [];
+		let indent = -1;
+		let j = i + 1;
+		for (; j < lines.length; j++) {
+			const line = lines[j];
+			if (line.blank) continue;
+			if (line.indent <= parent.indent) break;
+			indent = indent < 0 ? line.indent : indent;
+			// (A deeper mapping, a list or a block scalar is no name's credential: the mapping is something else.)
+			if (line.indent !== indent || line.item || line.block || !line.key || !line.value) {
+				values.length = 0;
+				break;
+			}
+			if (!isCredentialName(line.key)) values.push(line.value);
+		}
+		hide(parent.key, values);
+		i = j - 1;
+	}
+	// JSON: an object under the name whose members are all strings.
+	if (text.includes("{"))
+		for (const doc of jsonDocuments(text)) {
+			const walk = (v: JsonNode) => {
+				if (v.kind === "array") v.items.forEach(walk);
+				if (v.kind !== "object") return;
+				for (const [k, x] of v.entries) {
+					if (
+						x.kind === "object" &&
+						isPluralCredential(k) &&
+						x.entries.length &&
+						x.entries.every(([, y]) => y.kind === "string")
+					)
+						hide(
+							k,
+							x.entries.filter(([key]) => !isCredentialName(key)).map(([, y]) => y as JsonNode & Span),
+						);
+					else walk(x);
+				}
+			};
+			walk(doc);
+		}
+	// INI: the `key = value` lines under a `[passwords]` section, to the next section.
+	for (const m of text.matchAll(/^[ \t]*\[([\w.-]{1,80})\][ \t]*\r?$/gm)) {
+		if (!isPluralCredential(m[1])) continue;
+		const values: Span[] = [];
+		const from = m.index + m[0].length + 1;
+		const body = /^(?:[^[\n][^\n]*\n?|\n)*/.exec(text.slice(from))![0];
+		let ok = true;
+		for (const line of body.matchAll(/^[^\n]*/gm)) {
+			if (/^[ \t]*(?:[#;].*)?\r?$/.test(line[0])) continue;
+			const pair = /^[ \t]*([\w.-]{1,80})[ \t]*[=:][ \t]*(\S(?:[^\n]*\S)?)[ \t]*\r?$/.exec(line[0]);
+			if (!pair) {
+				ok = false;
+				break;
+			}
+			const start = from + line.index + line[0].indexOf(pair[2], pair[1].length);
+			if (!isCredentialName(pair[1])) values.push({ value: pair[2], start, end: start + pair[2].length });
+		}
+		if (ok) hide(m[1], values);
 	}
 }
 
@@ -1901,15 +2042,19 @@ function isWordpressKey(value: string): boolean {
 
 /**
  * A credential compared with a literal: `secure_compare(password, "…")`, `hmac.compare_digest(token, "…")`,
- * `password.equals("…")`, `"…".equals(password)`, `if password == "…"`, a shell's `[ "$DB_PASSWORD" = "…" ]`.
+ * `password.equals("…")`, `"…".equals(password)`, `if password == "…"`, a shell's `[ "$DB_PASSWORD" = "…" ]`; and a
+ * test's assertion that it is one, in either order (`assertEquals(cfg.getPassword(), "…")`, `self.assertEqual(…)`,
+ * `assert_eq!(…)`, `Assert.AreEqual(…)`) or chained (`expect(cfg.password).toEqual("…")`,
+ * `assertThat(cfg.getPassword()).isEqualTo("…")`).
  */
 function comparisons(text: string, out: Finding[]) {
-	if (!/[cC]ompare|[!=]=|equals|cmp|Equal|\[\[?[ \t]+"?\$/.test(text)) return;
+	if (!/[cC]ompare|[!=]=|equals|cmp|Equal|assert_eq|toBe\(|\.equal\(|\[\[?[ \t]+"?\$/.test(text)) return;
+	// (A variable, a member, or a getter's call: `password`, `cfg.password`, `config.getPassword()`.)
 	const variable = (a?: Argument) =>
-		a && !a.literal ? /^(?:[\w.]*\.)?([A-Za-z_]\w{1,60})$/.exec(a.text)?.[1] : undefined;
+		a && !a.literal ? /^(?:[\w.]*\.)?(?:get(?=[A-Z]))?([A-Za-z_]\w{1,60})(?:\(\))?$/.exec(a.text)?.[1] : undefined;
 	for (const { match, args } of calls(
 		text,
-		/(?<![\w$])(?:([A-Za-z_][\w$]{0,60})\.)?(secure_compare|compare_digest|timingSafeEqual|constant_time_compare|ConstantTimeCompare|safe_str_cmp|equals(?:IgnoreCase)?)[ \t]*\(/g,
+		/(?<![\w$])(?:([A-Za-z_][\w$]{0,60})\.)?(secure_compare|compare_digest|timingSafeEqual|constant_time_compare|ConstantTimeCompare|safe_str_cmp|equals(?:IgnoreCase)?|assertEquals?|assert_equal|assertSame|AreEqual|Equal|assert_eq!)[ \t]*\(/g,
 	)) {
 		// (Two arguments compare each other, a variable and a literal in either order; one argument, with the receiver:
 		// `password.equals("…")`.)
@@ -1922,6 +2067,11 @@ function comparisons(text: string, out: Finding[]) {
 		} else if (args.length === 1 && match[1]) [name, lit] = [match[1], args[0].literal];
 		if (name && lit) namedValue(out, name, lit, "named:compare");
 	}
+	for (const { match, args } of calls(
+		text,
+		/(?<![\w$])(?:expect|assertThat|assert_that)\([ \t]*(?:[\w.]*\.)?(?:get(?=[A-Z]))?([A-Za-z_]\w{1,60})(?:\(\))?[ \t]*\)[ \t]*\.(?:to\.)?(?:toBe|toEqual|toStrictEqual|isEqualTo|equal|eq)\(/g,
+	))
+		if (args.length === 1 && args[0].literal) namedValue(out, match[1], args[0].literal, "named:compare");
 	// `name == "…"`, `"…" === name`, `"…".equals(name)`, `assertEquals("…", cfg.getPassword())`, and `[ "$NAME" = "…" ]` in a shell test.
 	for (const m of text.matchAll(
 		new RegExp(
@@ -1953,18 +2103,29 @@ function formFills(text: string, out: Finding[]) {
 		const after = /(?:\{[a-z]+\})*$/i.exec(value.value)![0].length;
 		namedFinding(out, value.start + before, value.end - after, name, "named:form-fill");
 	};
+	// (After the text, an options object or a key to press, `{ log: false }`, `{ delay: 100 }`, `Keys.ENTER`, which says
+	// nothing about it.)
+	const extras = (rest: Argument[]) => rest.every((a) => /^\{[\s\S]*\}$|^(?:[\w$]+\.)*Keys\.[A-Z_]+$/.test(a.text));
 	for (const { args } of calls(text, /\.(?:fill|type)\(/g))
-		if (args.length === 2) fill(args[0].literal?.value, args[1].literal);
-	// The selector of the call the value is chained to: its last argument, `getByLabel('Password')`, `find_element(By.ID, "password")`.
+		if (args.length >= 2 && args[1].literal && extras(args.slice(2))) fill(args[0].literal?.value, args[1].literal);
+	// The selector of the call the value is chained to: its last literal argument, `getByLabel('Password')`,
+	// `find_element(By.ID, "password")`, `findElement(By.id("password"))`, options after it (`getByLabel('Password', { exact: true })`) and calls between
+	// (`.first()`, `.clear()`, `.nth(0)`).
 	for (const { match, args } of calls(
 		text,
 		new RegExp(
-			String.raw`${quoted(1, 0)}[ \t]*\)[ \t]*\.(?:fill|type|send_keys|sendKeys|setValue|pressSequentially)\(`,
+			String.raw`${quoted(1, 0)}[ \t]*(?:,[ \t]*\{[^{}\n]{0,200}\}[ \t]*)?\)(?:[ \t]*\))?(?:[ \t]*\.[A-Za-z_]\w{0,30}\([^()"'\n]{0,40}\))*[ \t]*\.(?:fill|type|send_keys|sendKeys|setValue|pressSequentially)\(`,
 			"g",
 		),
 	)) {
-		if (args.length === 1) fill(match[2], args[0].literal);
+		if (args.length >= 1 && extras(args.slice(1))) fill(match[2], args[0].literal ?? keysAfter(args[0]));
 	}
+}
+
+/** A literal with a key pressed after it, `"…" + Keys.RETURN` (Selenium): the literal. */
+function keysAfter(arg: Argument): Literal | undefined {
+	const m = /^(["'])((?:(?!\1)[^\\\n]|\\.)*)\1[ \t]*\+[ \t]*(?:[\w$]+\.)*Keys\.[A-Z_]+$/.exec(arg.text);
+	return m ? { value: m[2], start: arg.start + 1, end: arg.start + 1 + m[2].length, quote: m[1] } : undefined;
 }
 
 /**
@@ -2611,8 +2772,13 @@ function columnTables(text: string, out: Finding[]) {
 		if (cols.length >= 2 && cols.slice(1).every(([, , n]) => DECLARED_TYPE.test(n))) continue;
 		const credCols = cols.filter(([, , n]) => isCredentialName(n));
 		// A name/value table (`SELECT name, value FROM settings`, `vault kv get`'s `Key  Value`): each row names its own value,
-		// whatever the first column's header calls the names (`Header  Value`, `SECRET  VALUE`).
-		const pairs = cols.length === 2 && /^(?:value|val|setting)$/i.test(cols[1][2]);
+		// whatever the first column's header calls the names (`Header  Value`, `SECRET  VALUE`). With more columns, a `Name`
+		// or `Key` column names the `Value` column's cells (`az webapp config appsettings list -o table`'s `Name  Value
+		// SlotSetting`), in rows with a cell under each header.
+		const valueCol = cols.findIndex(([, , n]) => /^(?:value|val|setting)$/i.test(n));
+		const nameCol =
+			cols.length === 2 ? (valueCol === 1 ? 0 : -1) : cols.findIndex(([, , n]) => /^(?:name|key)$/i.test(n));
+		const pairs = nameCol >= 0 && valueCol > 0 && nameCol !== valueCol;
 		if (pairs || !credCols.length) {
 			// Its rows aren't headers of their own: skip past them.
 			let j = i + 1;
@@ -2627,13 +2793,13 @@ function columnTables(text: string, out: Finding[]) {
 				if (!pairs) continue;
 				// (A rule's dashes name no credential.)
 				const cells = [...lines[j].matchAll(TABLE_CELL)];
-				if (cells.length !== 2) continue;
-				const [name, value] = [cells[0][0], cells[1][0]];
+				if (cells.length !== cols.length) continue;
+				const [name, value] = [cells[nameCol][0], cells[valueCol][0]];
 				if (!isCredentialName(name) || !isNamedSecret(name, `"${value}"`, true)) continue;
 				namedFinding(
 					out,
-					offsets[j] + cells[1].index,
-					offsets[j] + cells[1].index + value.length,
+					offsets[j] + cells[valueCol].index,
+					offsets[j] + cells[valueCol].index + value.length,
 					name,
 					"named:table-pairs",
 					0.85,
@@ -3787,9 +3953,10 @@ function passwordShaped(text: string, out: Finding[]) {
 		const [start] = m.indices![k]!;
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
-		// `["Summer2024!",`, the readers' of those.)
+		// `["Summer2024!",` or `[Summer2024!,`, the readers' of those.)
 		if (
 			!PASSWORD_SHAPE.test(value) ||
+			(/^\[[^\]]*$/.test(value) && text[start + value.length] === ",") ||
 			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]|^\[["'\x60]/.test(
 				value,
 			)
