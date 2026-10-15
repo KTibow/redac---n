@@ -598,10 +598,21 @@ function readValue(
 /** The opening of a heredoc: `<<EOF`, `<<-EOT`, `<<~SQL`, `<<'EOF'`. */
 const HEREDOC = /^<<[-~]?[ \t]*(["']?)([A-Za-z_]\w*)\1[ \t]*\r?\n/;
 
-/** Adds the value at `start`–`end` under credential name `name`, its kind read from the name. */
-function namedFinding(out: Finding[], start: number, end: number, name: string, rule: string, confidence = 0.95) {
-	const w = lastWord(name);
-	const kind = isPasswordName(name)
+/**
+ * Adds the value at `start`–`end` under credential name `name`, its kind read from the name (or from `noun`, the
+ * credential's word in a longer label: `Password` in `Password for the admin user`).
+ */
+function namedFinding(
+	out: Finding[],
+	start: number,
+	end: number,
+	name: string,
+	rule: string,
+	confidence = 0.95,
+	noun = name,
+) {
+	const w = lastWord(noun);
+	const kind = isPasswordName(noun)
 		? "password"
 		: /TOKEN/.test(w)
 			? "token"
@@ -2979,8 +2990,18 @@ const PROSE_WORDS = new Set([
 	"false",
 	"true",
 ]);
+/**
+ * The punctuation outside ASCII that ends a value in a sentence as a blank does: dashes, an ellipsis, and CJK's and
+ * fullwidth punctuation (`Qm7vLx2kP9—don't share it`, `Qm7vLx2kP9，user is bob`).
+ */
+const SENTENCE_STOPS = "—–…，。、；：！？";
+/**
+ * A credential named in a sentence, and its value: the name (with, before a colon, whose it is: `Password for the
+ * admin user:`), the verb or colon, and the value. (The verb phrases first: in `was reset to`, `was` alone would take
+ * `reset` for the value.)
+ */
 const PROSE = new RegExp(
-	String.raw`(?<![/.])\b([A-Za-z][\w-]{0,40}(?:[ \t][A-Za-z][\w-]{0,40})?)('s[ \t]{1,3}|[ \t]{1,3}(?:is|was|=|got (?:reset|changed|rotated|set) to|(?:has been |was )?(?:reset|changed|rotated|set|updated) to)(?:[ \t]{1,3}(?:now|still|currently|actually|just|set to))?[ \t]{0,3}:?[ \t]{1,3}|:[ \t]{1,3})(["'\x60*]{0,2})${unquotedValue(String.raw`(?:(?!\\[nrt])[^\s"'\x60])`, 4, String.raw`\3(?=[.,;!?)\]]{0,3}(?:[\s"'\x60]|\\n|$|<\/[a-zA-Z]))`)}\3?`,
+	String.raw`(?<![/.])\b([A-Za-z][\w-]{0,40}(?:[ \t][A-Za-z][\w-]{0,40})?(?:[ \t]+(?:for|of)(?:[ \t]+[\w.@'-]{1,40}){1,4}(?=:))?)('s[ \t]{1,3}|[ \t]{1,3}(?:(?:has been |was )?(?:reset|changed|rotated|set|updated) to|got (?:reset|changed|rotated|set) to|is|was|=)(?:[ \t]{1,3}(?:now|still|currently|actually|just|set to))?[ \t]{0,3}:?[ \t]{1,3}|:[ \t]{1,3})(["'\x60*]{0,2})${unquotedValue(String.raw`(?:(?!\\[nrt])[^\s"'\x60${SENTENCE_STOPS}])`, 4, String.raw`\3(?=[.,;!?)\]]{0,3}(?:[\s"'\x60${SENTENCE_STOPS}]|\\n|$|<\/[a-zA-Z]))`)}\3?`,
 	"dg",
 );
 
@@ -2992,6 +3013,17 @@ function prose(text: string, out: Finding[]) {
 		/\b(passphrase|pass phrase|mnemonic|recovery phrase|seed phrase)\b[^:\n"]{0,40}:[ \t]*(["'])([^"'\n]{8,200})\2/dgi,
 	)) {
 		const value = m[3];
+		// (A rule for one is no passphrase: a modal before the colon, `The passphrase must be: "at least four words long"`,
+		// or a sentence's words among the phrase's, `"a long sentence you can remember"`, unless every word is a BIP39
+		// mnemonic's, whose list has `you` and `must` too.)
+		const words = value.split(/[ -]/);
+		if (
+			/\b(?:must|should|shall|needs?|has to|have to|can(?:not)?|may)\b/i.test(
+				m[0].slice(m[1].length, m[0].indexOf(":")),
+			) ||
+			(words.some(isSentenceWord) && !words.every((w) => bip39().has(w)))
+		)
+			continue;
 		if (
 			/\$\{|\{\{|^<|%s/.test(value) ||
 			isInert(value) ||
@@ -3006,8 +3038,13 @@ function prose(text: string, out: Finding[]) {
 	}
 	for (const m of text.matchAll(PROSE)) {
 		// (A preposition or a determiner before the name is the sentence's: `Cache restored from key: …` names a `key`.)
-		const words = m[1].split(/\s+/);
-		const name = words.length > 1 && PHRASE_STOP.test(words[0]) ? words[1] : m[1];
+		// (Whose it is, `for the CI bot`, says nothing of what it is: the name is the noun before it.)
+		const label = m[1].replace(/[ \t]+(?:for|of)[ \t].*$/, "");
+		const words = label.split(/\s+/);
+		const name = words.length > 1 && PHRASE_STOP.test(words[0]) ? words[1] : label;
+		// (Reported under the whole label, so the decision reads `for the admin user:` as the label's, not as a user's name
+		// standing next to the value.)
+		const reported = label === m[1] ? name : m[1];
 		const before =
 			words.length > 1
 				? words.at(-2)!
@@ -3025,12 +3062,15 @@ function prose(text: string, out: Finding[]) {
 		const bare = value.replace(/[.,;:!?]+$/, "").toLowerCase();
 		// (A passphrase of words, cut at its first blank by the value's grammar: read whole, before any test of one word.)
 		const phrase = takesAnyWord(name.replace(/\s+/g, "_"))
-			? passphraseEnd(text, m.indices![4]![0], m.indices![4]![0] + value.length)
-			: 0;
-		if (phrase > m.indices![4]![0] + value.length) {
-			namedFinding(out, m.indices![4]![0], phrase, name, "named:prose", 0.85);
+			? passphraseSpan(text, m.indices![4]![0], m.indices![4]![0] + value.length)
+			: undefined;
+		if (phrase) {
+			namedFinding(out, phrase[0], phrase[1], reported, "named:prose", 0.85, name);
 			continue;
 		}
+		// (A paired quote that opens words and doesn't close after the first quotes a phrase, not a passphrase: `is “not
+		// set yet”`.)
+		if (opensPhrase(value)) continue;
 		const pin = isPinName(name.replace(/\s+/g, "_")) && /^\d{4,8}$/.test(value.replace(/[.,;:!?]+$/, ""));
 		if (
 			!pin &&
@@ -3098,12 +3138,13 @@ function prose(text: string, out: Finding[]) {
 			(value.length < 16 && !(value.length >= 10 && hasThreeClasses(value) && /[^A-Za-z0-9]/.test(value)))
 		)
 			continue;
-		namedFinding(out, start, withBangs(text, start + value.length), name, "named:prose", 0.85);
+		namedFinding(out, start, withBangs(text, start + value.length), reported, "named:prose", 0.85, name);
 	}
 	// Listed in a sentence: `user is ro_analytics, password R0ck3t#46, host …`; and the new value of a credential
-	// the sentence named: `ops rotated the db password yesterday, new one is Thund3r&55`.
+	// the sentence named: `ops rotated the db password yesterday, new one is Thund3r&55`, or the one before it: `I changed
+	// the password. The new one is Thund3r&55`.
 	for (const m of text.matchAll(
-		/(?:^|[,;:(]\s*|\b(?:and|with)\s+)(password|passwd|pwd|pw|passphrase)\s+([^\s,;()"'`]{6,64}?)(?=[,;)]|\s+(?:and|host|user|db|port|for|account|role|warehouse|database|schema|on|at|in|via|to)\b|[.!]?\s*$)|\b(password|passwd|token|secret|api key|key)\b[^.\n]{0,80}?\b(?:new one|the new one|it)(?:'s| is| is now|’s)\s+["'`*]{0,2}([^\s"'`*,;]{6,64}?)["'`*]{0,2}(?=[.,;!?]?(?:\s|$))/dgim,
+		/(?:^|[,;:(]\s*|\b(?:and|with)\s+)(password|passwd|pwd|pw|passphrase)\s+([^\s,;()"'`]{6,64}?)(?=[,;)]|\s+(?:and|host|user|db|port|for|account|role|warehouse|database|schema|on|at|in|via|to)\b|[.!]?\s*$)|\b(password|passwd|token|secret|api key|key)\b(?:[^.\n]{0,80}?|[^.!?\n]{0,80}[.!][ \t]+[^.!?\n]{0,20}?)\b(?:new one|the new one|it)(?:'s| is| is now|’s)\s+["'`*]{0,2}([^\s"'`*,;]{6,64}?)["'`*]{0,2}(?=[.,;!?]?(?:\s|$))/dgim,
 	)) {
 		const k = m[2] !== undefined ? 2 : 4;
 		const value = m[k];
@@ -3537,27 +3578,44 @@ function isPassphrase(words: string[]): boolean {
 	);
 }
 
+/** The quotes that close each of the paired ones typing and chat clients put around a phrase: `“…”`, `‘…’`, `«…»`, `„…“`. */
+const PAIRED_QUOTES: Record<string, string> = { "“": "”", "‘": "’", "«": "»", "„": "“" };
+
+/** Whether a word a value's reader cut at a blank opens a paired quote it doesn't close: a quoted phrase's first word, `“not`. */
+function opensPhrase(value: string): boolean {
+	const closer = PAIRED_QUOTES[value[0]];
+	return closer !== undefined && !value.includes(closer);
+}
+
 /**
- * Where a value under a password's or a passphrase's name ends, when its reader cut it at a blank: at its closing quote
- * when quoted (`is "correct horse battery staple"`), or, unquoted, after the lower-case words that run to its line's end
- * (`The wifi password is correct horse battery staple`; not `hunter2 and the user is bob`). Either way the words must be
- * a passphrase's.
+ * Where a passphrase under a password's or a passphrase's name is, when its reader cut the value at a blank: to its
+ * closing quote when quoted (`is "correct horse battery staple"`, `is “lamp otter river stone”`, the paired quote read
+ * as the value's first character), or, unquoted, the lower-case words that run to its line's end or to where the
+ * sentence goes on after a comma, a dash or a bracket (`The wifi password is correct horse battery staple`, `is lamp
+ * otter river stone, don't share it`; not `hunter2 and the user is bob`). Either way the words must be a
+ * passphrase's. Undefined when there is none longer than the word read.
  */
-function passphraseEnd(text: string, start: number, end: number): number {
+function passphraseSpan(text: string, start: number, end: number): [number, number] | undefined {
 	const q = text[start - 1];
-	if (q === '"' || q === "'" || q === "`") {
-		const close = text.indexOf(q, end);
+	const paired = PAIRED_QUOTES[text[start]];
+	if (q === '"' || q === "'" || q === "`" || paired) {
+		const from = paired ? start + 1 : start;
+		const close = text.indexOf(paired ?? q, end);
 		const lineEnd = text.indexOf("\n", end);
 		return close > end &&
 			close - start <= 200 &&
 			(lineEnd < 0 || close < lineEnd) &&
-			isPassphrase(text.slice(start, close).trim().split(/\s+/))
-			? close
-			: end;
+			isPassphrase(text.slice(from, close).trim().split(/\s+/))
+			? [from, close]
+			: undefined;
 	}
-	if (!/^[a-z]{2,20}$/.test(text.slice(start, end))) return end;
-	const rest = /^(?:[ \t]+[a-z]{2,20}){2,11}(?=[.!]?[ \t]*(?:\r?\n|$))/.exec(text.slice(end, end + 300));
-	return rest && isPassphrase([text.slice(start, end), ...rest[0].trim().split(/\s+/)]) ? end + rest[0].length : end;
+	if (!/^[a-z]{2,20}$/.test(text.slice(start, end))) return undefined;
+	const rest = /^(?:[ \t]+[a-z]{2,20}){2,11}(?=[.!]?[ \t]*(?:\r?\n|$)|[ \t]*[,;(—–]|[ \t]+-[ \t]|[ \t]+:\))/.exec(
+		text.slice(end, end + 300),
+	);
+	return rest && isPassphrase([text.slice(start, end), ...rest[0].trim().split(/\s+/)])
+		? [start, end + rest[0].length]
+		: undefined;
 }
 
 /**
@@ -3565,7 +3623,7 @@ function passphraseEnd(text: string, start: number, end: number): number {
  * tag (`is **X**.`, `<p>… is X.</p>`) or an escaped line break (`… if -force is specified\n\` in a string). Not one in
  * parentheses, `set the password (self.pw) first`, `the password (required*)`: that is prose's own reading of `name (value)`.
  */
-const PROSE_VALUE = String.raw`["'\x60*]{0,2}(?!\()${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:\s|$|<\/[a-zA-Z]|\\[nrt])`)}["'\x60*]{0,2}`;
+const PROSE_VALUE = String.raw`["'\x60*]{0,2}(?!\()${unquotedValue(String.raw`[^\s"'\x60${SENTENCE_STOPS}]`, 4, String.raw`["'\x60*]{0,2}[.,;:!?]?(?:[\s${SENTENCE_STOPS}]|$|<\/[a-zA-Z]|\\[nrt])`)}["'\x60*]{0,2}`;
 
 /**
  * Credentials named in prose with words in between, and in Markdown labels:
@@ -3599,11 +3657,12 @@ function labelledProse(text: string, out: Finding[]) {
 		// (The noun is the subject, not a qualifier: `password policy is …`, `password manager is …`, `**Password reset:**
 		// <url>`; checked before a passphrase is read on.)
 		if (QUALIFIED_NOUN.test(text.slice(nounEnd, start))) return;
-		const phrase = /pass|phrase/i.test(noun) ? passphraseEnd(text, start, start + m[2].length) : start;
-		if (phrase > start + m[2].length) {
-			namedFinding(out, start, phrase, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
+		const phrase = /pass|phrase/i.test(noun) ? passphraseSpan(text, start, start + m[2].length) : undefined;
+		if (phrase) {
+			namedFinding(out, phrase[0], phrase[1], noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 			return;
 		}
+		if (opensPhrase(m[2])) return;
 		const v = m[2].replace(/[.,;:)]+$/, "");
 		if (/^https?:\/\//.test(v) || !accept(noun, v)) return;
 		namedFinding(out, start, withBangs(text, start + v.length), noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
@@ -3644,10 +3703,10 @@ function labelledProse(text: string, out: Finding[]) {
 		new RegExp(String.raw`['’]s\s+(?:new |temporary |current )?(${CRED_NOUN}),\s+${PROSE_VALUE}`, "dgi"),
 	))
 		add(m, m[1], m.indices![1]![1]);
-	// Markdown: `**Password:** v`, `**Password for Access**: v`, `| API Key | v |`.
+	// Markdown: `**Password:** v`, `**Password for Access**: v`, `__Password:__ v`, `_Password:_ v`, `| API Key | v |`.
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`\*\*([^*\n]{0,30}\b${CRED_NOUN}\b[^*\n]{0,30}?)[:：]?\*\*[ \t]*[:：]?[ \t]+${PROSE_VALUE}`,
+			String.raw`(?:\*\*|(?<!\w)__?)([^*\n]{0,30}(?<![A-Za-z\d])${CRED_NOUN}(?![A-Za-z\d])[^*\n]{0,30}?)[:：]?(?:\*\*|__?(?!\w))[ \t]*[:：]?[ \t]+${PROSE_VALUE}`,
 			"dgi",
 		),
 	)) {
@@ -3690,10 +3749,11 @@ const PASSWORD_SHAPE = new RegExp(
 function passwordShaped(text: string, out: Finding[]) {
 	if (!PASSWORD_SYMBOL.test(text)) return;
 	// (A quoted value is read to its closing quote, and an unquoted one to a blank, its sentence's punctuation cut off
-	// after it but a password's own `!` and `?` kept: `Password "Abc1!" is too short`, `the password is Xk9mPq2&Rt7vLw4!`.)
+	// after it but a password's own `!` and `?` kept: `Password "Abc1!" is too short`, `the password is Xk9mPq2&Rt7vLw4!`.
+	// A word ending in a colon is a label's, whose it is, never the value: `Password for jenkins: Xk9mPq2&Rt7vLw4!`.)
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`(?<![\p{L}\d_:/@.-])${PASSWORD_WORD}(?![\p{L}\d_-])[^\n.;!?=]{0,${SENTENCE_REACH}}?[ \t:：](?:(["'\x60])([^\s"'\x60]{1,64})\1|«([^\s»]{1,64})»|\(([^\s)]{1,64})\)|([^\s"'\x60«][!-~]{5,63}))(?=\s|$|[、。，])`,
+			String.raw`(?<![\p{L}\d_:/@.-])${PASSWORD_WORD}(?![\p{L}\d_-])[^\n.;!?=]{0,${SENTENCE_REACH}}?[ \t:：](?:(["'\x60])([^\s"'\x60]{1,64})\1|«([^\s»]{1,64})»|\(([^\s)]{1,64})\)|([^\s"'\x60«][!-~]{4,62}[!-9;-~]))(?=\s|$|[、。，])`,
 			"dgiu",
 		),
 	)) {
