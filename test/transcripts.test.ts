@@ -122,28 +122,6 @@ test("base64 documents of text media are decoded and redacted", () => {
 	assert.deepEqual(r().redactValue(png).value, png);
 	const clean = doc("text/plain", b64("hello world, nothing here"));
 	assert.deepEqual(r().redactValue(clean).value, clean);
-	// A file with no registered type (`.env`) is sent as `application/octet-stream`: read as text when it is text.
-	const secret = b62(40);
-	for (const part of [
-		{
-			type: "file",
-			file: {
-				filename: ".env",
-				file_data: `data:application/octet-stream;base64,${b64(`AWS_SECRET_ACCESS_KEY=${secret}\n`)}`,
-			},
-		},
-		{
-			type: "input_file",
-			filename: ".env",
-			file_data: `data:application/octet-stream;base64,${b64(`SESSION=${secret}\n`)}`,
-		},
-		{ type: "document", source: { type: "base64", media_type: "application/octet-stream", data: b64(env) } },
-	]) {
-		const out = r().redactValue({ role: "user", content: [part] }).value;
-		const data = JSON.stringify(out).match(/base64,([^"]+)|"data":"([^"]+)/)!;
-		const text = Buffer.from(data[1] ?? data[2], "base64").toString();
-		assert.ok(!text.includes(secret) && !text.includes(key), text);
-	}
 	const binary = {
 		role: "user",
 		content: [
@@ -441,7 +419,7 @@ test("a Claude Code record's toolUseResult carries its call's hint", () => {
 	assert.ok(!JSON.stringify(r().redactValue(record, { learn: false }).value).includes("Copper7781#x"));
 });
 
-test("a tool result carries its call's hint in Gemini's and Responses' shapes", () => {
+test("a Gemini functionResponse carries its call's hint, by the call's id", () => {
 	const env = "APP_PORT=3000\nJWT_KEY=hello-world-service-key\nENC_KEY=kitchen-sink-moon-47\n";
 	const gemini = (call: object, response: object) => ({
 		contents: [
@@ -451,52 +429,43 @@ test("a tool result carries its call's hint in Gemini's and Responses' shapes", 
 	});
 	const id = `run_shell_command-1726000000000-${b62(12)}`;
 	const shapes = [
-		// Gemini, paired by id, and by name where a call has none; `read_file`'s `absolute_path`.
+		// Gemini, paired by id (Gemini CLI's ids; pydantic-ai's are `pyd_ai_…`); `read_file`'s `absolute_path`.
 		gemini(
 			{ id, name: "run_shell_command", args: { command: "cat .env" } },
 			{ id, name: "run_shell_command", response: { output: env } },
 		),
 		gemini(
-			{ name: "read_file", args: { absolute_path: "/app/.env" } },
-			{ name: "read_file", response: { output: env } },
+			{ id: "pyd_ai_7f3a9c", name: "read_file", args: { absolute_path: "/app/.env" } },
+			{ id: "pyd_ai_7f3a9c", name: "read_file", response: { output: env } },
 		),
-		// Responses' shell tool, its commands a list.
-		[
-			{ type: "shell_call", call_id: "c1", action: { commands: ["cd /app", "cat .env"] } },
-			{
-				type: "shell_call_output",
-				call_id: "c1",
-				output: [{ stdout: env, stderr: "", outcome: { type: "exit", exit_code: 0 } }],
-			},
-		],
 	];
 	for (const v of shapes) {
 		const out = JSON.stringify(r().redactValue(v).value);
 		for (const s of ["hello-world-service-key", "kitchen-sink-moon-47"]) assert.ok(!out.includes(s), out);
-		// The envelope stays: ids, types, names and the exit's outcome.
-		for (const s of ['"read_file"', '"shell_call_output"', '"exit"', id])
+		// The envelope stays: ids and names.
+		for (const s of ['"read_file"', id, "pyd_ai_7f3a9c"])
 			if (JSON.stringify(v).includes(s)) assert.ok(out.includes(s), `${s} in ${out}`);
 	}
-	// Gemini's calls with no id answer in order: the result of `ls` is not the `.env`.
-	const ordered = {
+	// Each response by its own call's id, whatever the order: the result of `ls` is not the `.env`.
+	const crossed = {
 		contents: [
 			{
 				role: "model",
 				parts: [
-					{ functionCall: { name: "run_shell_command", args: { command: "ls" } } },
-					{ functionCall: { name: "run_shell_command", args: { command: "cat .env" } } },
+					{ functionCall: { id: "c2", name: "run_shell_command", args: { command: "cat .env" } } },
+					{ functionCall: { id: "c1", name: "run_shell_command", args: { command: "ls" } } },
 				],
 			},
 			{
 				role: "user",
 				parts: [
-					{ functionResponse: { name: "run_shell_command", response: { output: "plain-words-here-42\n" } } },
-					{ functionResponse: { name: "run_shell_command", response: { output: env } } },
+					{ functionResponse: { id: "c1", name: "run_shell_command", response: { output: "plain-words-here-42\n" } } },
+					{ functionResponse: { id: "c2", name: "run_shell_command", response: { output: env } } },
 				],
 			},
 		],
 	};
-	const out = r().redactValue(ordered, { learn: false }).value as any;
+	const out = r().redactValue(crossed, { learn: false }).value as any;
 	assert.equal(out.contents[1].parts[0].functionResponse.response.output, "plain-words-here-42\n");
 	assert.ok(!JSON.stringify(out.contents[1].parts[1]).includes("hello-world-service-key"));
 });

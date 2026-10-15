@@ -3,8 +3,8 @@
  * the Anthropic, OpenAI or Gemini format. Two passes:
  *
  * 1. Every string is scanned, with the command or path of the tool call that produced it as a hint
- *    (a `tool_result` is matched to its `tool_use` by id, a Gemini `functionResponse` to its `functionCall` by id or
- *    order), and every confident finding is learned as a known value.
+ *    (a `tool_result` is matched to its `tool_use` by id, a Gemini `functionResponse` to its `functionCall` too), and
+ *    every confident finding is learned as a known value.
  * 2. Every string is redacted, so a secret found once (`API_KEY=…` in a `cat .env`) is also hidden where
  *    it appears with no context at all (the model echoing it, a later `curl` using it).
  *
@@ -18,14 +18,7 @@
 import { isSecretFile } from "./commands.ts";
 import { base64Binary } from "./base64.ts";
 import { findFormats } from "./formats.ts";
-import {
-	isCommandKey,
-	type JsonNode,
-	parseJson,
-	TOOL_COMMAND_KEYS,
-	TOOL_CONTENT_KEYS,
-	TOOL_PATH_KEYS,
-} from "./json.ts";
+import { type JsonNode, parseJson, TOOL_COMMAND_KEYS, TOOL_CONTENT_KEYS, TOOL_PATH_KEYS } from "./json.ts";
 import { shellLine } from "./shell.ts";
 import type { Redactor } from "./index.ts";
 import { isLearnable, isNeverSecretShape, loginPassword, merge, secretValue } from "./spans.ts";
@@ -261,29 +254,15 @@ interface Leaf {
 	lone?: boolean;
 }
 
-/**
- * Hints for tool results, from the tool calls that produced them: by call id, and, for Gemini's calls (which may have
- * none), by the tool's name in call order, the nth `functionResponse` of a name answering its nth `functionCall`.
- */
-interface ToolHints {
-	ids: Map<string, Hint>;
-	names: Map<string, Hint[]>;
-}
-
-/** A tool's input that is a list of shell commands (`shell_call`'s `action.commands`): one script, a command a line. */
-const asScript = (x: unknown) =>
-	Array.isArray(x) && x.length && x.every((y) => typeof y === "string") ? x.join("\n") : undefined;
-
-function toolHints(value: unknown): ToolHints {
-	const ids = new Map<string, Hint>();
-	const names = new Map<string, Hint[]>();
-	walk(value, null, ({ value: v, key }) => {
+/** Hints for tool results, from the tool calls that produced them, by tool call id. */
+function toolHints(value: unknown): Map<string, Hint> {
+	const hints = new Map<string, Hint>();
+	walk(value, null, ({ value: v }) => {
 		if (!v || typeof v !== "object" || Array.isArray(v)) return;
 		const o = v as Record<string, unknown>;
 		// Anthropic: {type: "tool_use", id, input: {...}}. OpenAI: {id, type: "function", function: {arguments: "<json>"}}.
-		// OpenAI Responses: {type: "function_call", call_id, arguments}; {type: "local_shell_call", call_id, action: {command: [...]}};
-		// {type: "shell_call", call_id, action: {commands: [...]}}.
-		// Gemini: {functionCall: {id?, name, args: {...}}}.
+		// OpenAI Responses: {type: "function_call", call_id, arguments}; {type: "local_shell_call", call_id, action: {command: [...]}}.
+		// Gemini: {functionCall: {id, name, args: {...}}} (the id is the client's: Gemini CLI and pydantic-ai send one).
 		let input: unknown = o.input ?? o.action ?? o.arguments ?? o.args;
 		const fn =
 			o.function && typeof o.function === "object" ? (o.function as Record<string, unknown>).arguments : undefined;
@@ -294,38 +273,19 @@ function toolHints(value: unknown): ToolHints {
 			} catch {}
 		}
 		const id = (typeof o.call_id === "string" ? o.call_id : undefined) ?? (typeof o.id === "string" ? o.id : undefined);
-		const gemini = key === "functionCall" && typeof o.name === "string";
-		if (!id && !gemini) return;
-		let hint: Hint = {};
-		if (input && typeof input === "object") {
-			const i = input as Record<string, unknown>;
-			const asText = (x: unknown) =>
-				typeof x === "string"
-					? x
-					: Array.isArray(x) && x.every((y) => typeof y === "string")
-						? shellLine(x)
-						: undefined;
-			// (The tool keys first; then any key named for a command line, a `CommandLine` or `bash_command`.)
-			const command =
-				[...TOOL_COMMAND_KEYS, ...Object.keys(i).filter(isCommandKey)]
-					.map((k) => asText(i[k]))
-					.find((x) => x !== undefined) ?? asScript(i.commands);
-			// (A call that writes a file, its content in its input, returns a status line, not the file: no path hint.)
-			const writes = Object.keys(i).some((k) => CONTENT_KEYS.has(k));
-			const path = writes
-				? undefined
-				: (TOOL_PATH_KEYS.map((k) => i[k]).find((x) => typeof x === "string") as string | undefined);
-			if (command || path) hint = { command, path };
-		}
-		if (id && (hint.command || hint.path)) ids.set(id, hint);
-		// (Every call of a name holds its place in the order, with a hint or none.)
-		if (gemini) {
-			const calls = names.get(o.name as string);
-			if (calls) calls.push(hint);
-			else names.set(o.name as string, [hint]);
-		}
+		if (!id || !input || typeof input !== "object") return;
+		const i = input as Record<string, unknown>;
+		const asText = (x: unknown) =>
+			typeof x === "string" ? x : Array.isArray(x) && x.every((y) => typeof y === "string") ? shellLine(x) : undefined;
+		const command = TOOL_COMMAND_KEYS.map((k) => asText(i[k])).find((x) => x !== undefined);
+		// (A call that writes a file, its content in its input, returns a status line, not the file: no path hint.)
+		const writes = Object.keys(i).some((k) => CONTENT_KEYS.has(k));
+		const path = writes
+			? undefined
+			: (TOOL_PATH_KEYS.map((k) => i[k]).find((x) => typeof x === "string") as string | undefined);
+		if (command || path) hints.set(id, { command, path });
 	});
-	return { ids, names };
+	return hints;
 }
 
 /** A base64 data URI of binary media. Other strings that start with `data:` (SSE lines, text data URIs) are scanned. */
@@ -351,10 +311,6 @@ function decodeBase64Text(payload: string): string | undefined {
 	}
 }
 
-/** Decoded bytes that are text: no NUL or other control character but a blank's or a line break's. */
-const asText = (decoded: string | undefined) =>
-	decoded !== undefined && !/[\x00-\x08\x0e-\x1f\x7f]/.test(decoded) ? decoded : undefined;
-
 /** `text` as base64, in the alphabet and padding `like` (the payload it replaces) was written in. */
 function encodeBase64Text(text: string, like: string): string {
 	const bytes = new TextEncoder().encode(text);
@@ -368,9 +324,8 @@ function encodeBase64Text(text: string, like: string): string {
 
 /**
  * The text a base64 string holds, when its media type says text: `data` under a `media_type` of its object
- * (`{type: "base64", media_type: "text/plain", data}`), or the payload of a text data URI (`data:image/svg+xml;base64,…`);
- * or when the type says nothing (`application/octet-stream`) and the bytes are text. `encode` writes the redacted text
- * back the way it was written. Undefined for binary media.
+ * (`{type: "base64", media_type: "text/plain", data}`), or the payload of a text data URI (`data:image/svg+xml;base64,…`).
+ * `encode` writes the redacted text back the way it was written. Undefined for binary media.
  */
 function base64Text(
 	o: Record<string, unknown>,
@@ -384,13 +339,7 @@ function base64Text(
 			? o.media_type.split(";")[0].trim()
 			: "";
 	const payload = uri ? uri[3] : x;
-	// (A file with no registered type is sent as `application/octet-stream`, a `.env` among them: read as text when its
-	// bytes are text.)
-	const text = TEXT_MEDIA_TYPE.test(type)
-		? decodeBase64Text(payload)
-		: /^application\/octet-stream$/i.test(type)
-			? asText(decodeBase64Text(payload))
-			: undefined;
+	const text = TEXT_MEDIA_TYPE.test(type) ? decodeBase64Text(payload) : undefined;
 	return text === undefined
 		? undefined
 		: { text, encode: (redacted) => (uri ? `data:${uri[1]}${uri[2]}` : "") + encodeBase64Text(redacted, payload) };
@@ -425,10 +374,8 @@ interface Scope {
  * call's; a tool input that writes a file has its content judged as that file. Envelope fields (ids, roles,
  * signatures), base64 media and, with `keepThinking`, thinking blocks are left out.
  */
-function collect(value: unknown, hints: ToolHints, keepThinking: boolean): Leaf[] {
+function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean): Leaf[] {
 	const leaves: Leaf[] = [];
-	/** How many of each tool's Gemini `functionResponse`s have come so far. */
-	const answered = new Map<string, number>();
 	walk<Scope>(value, { hint: {}, free: false }, ({ value: v, step, scope, key, parent, repeat }) => {
 		// (A number under a credential's name is one too: `"db_password": 98127734`, `"pin": 4821`. Only a safe integer
 		// prints as its digits; a larger one, JSON.parse has already rounded.)
@@ -485,14 +432,11 @@ function collect(value: unknown, hints: ToolHints, keepThinking: boolean): Leaf[
 		const id = (o.tool_use_id ??
 			o.tool_call_id ??
 			(typeof o.type === "string" && o.type.endsWith("_call_output") ? o.call_id : undefined)) as string | undefined;
-		let hint = typeof id === "string" && hints.ids.has(id) ? hints.ids.get(id)! : scope.hint;
-		// Gemini's `functionResponse`: its call's, by id, or by being the nth answer to a call of its name.
+		let hint = typeof id === "string" && hints.has(id) ? hints.get(id)! : scope.hint;
+		// Gemini's `functionResponse`: its call's, by id. (One with no id gets none: the clients sending these requests,
+		// Gemini CLI and pydantic-ai, give each call an id.)
 		const gemini = key === "functionCall" || key === "functionResponse";
-		if (key === "functionResponse" && typeof o.name === "string") {
-			const n = answered.get(o.name) ?? 0;
-			answered.set(o.name, n + 1);
-			hint = (typeof o.id === "string" ? hints.ids.get(o.id) : undefined) ?? hints.names.get(o.name)?.[n] ?? hint;
-		}
+		if (key === "functionResponse" && typeof o.id === "string" && hints.has(o.id)) hint = hints.get(o.id)!;
 		// Base64 media: `{type: "base64", media_type, data}`, `image_url: {url: "data:…"}`.
 		const media =
 			o.type === "base64" ||
@@ -567,12 +511,12 @@ function collect(value: unknown, hints: ToolHints, keepThinking: boolean): Leaf[
 }
 
 /** The hint of the tool call whose result a Claude Code record's `message` holds (`content[].tool_use_id`). */
-function recordHint(record: Record<string, unknown>, hints: ToolHints): Hint | undefined {
+function recordHint(record: Record<string, unknown>, hints: Map<string, Hint>): Hint | undefined {
 	const content = (record.message as { content?: unknown } | undefined)?.content;
 	if (!Array.isArray(content)) return undefined;
 	for (const block of content) {
 		const id = (block as { tool_use_id?: unknown } | null)?.tool_use_id;
-		if (typeof id === "string" && hints.ids.has(id)) return hints.ids.get(id);
+		if (typeof id === "string" && hints.has(id)) return hints.get(id);
 	}
 	return undefined;
 }
