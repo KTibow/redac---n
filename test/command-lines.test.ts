@@ -145,11 +145,14 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		// A CRLF file's lines, with a tail; and Junos' `show configuration`, which marks the secret.
 		["snmp-server community Harbor#2291x view v1 RO\r\nsnmp-server community Harbor#2291x RW\r\n", "x view"],
 		["snmp-server community Harbor#2291x RW\r\n!\r\n", "x RW"],
+		["crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n!\r\n", S],
+		["crypto isakmp key Harbor#2291x address 10.0.0.1   \n", S],
 		['    ike {\n        policy P {\n            pre-shared-key ascii-text "Harbor#2291x"; ## SECRET-DATA\n', S],
 		["SQL> connect scott/Harbor#2291x@orcl", S],
 		["rman target sys/Harbor#2291x@db", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	kept("crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n", "crypto isakmp key ");
 	for (const line of ["snmp-server community public view v1 RO", "pre-shared-key is set per peer"])
 		assert.equal(r().redact(line).text, line);
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");

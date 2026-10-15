@@ -1052,20 +1052,19 @@ function windowsPasswords(text: string, add: AddPassword) {
  * `ip ospf authentication-key pw`, `ip ospf message-digest-key 1 md5 pw`, `snmp-server community s view v RW`) and
  * Junos (`… authentication-key "pw"`, `plain-text-password-value pw`, and `show configuration`'s
  * `pre-shared-key ascii-text "$9$…"; ## SECRET-DATA`). The keyword may carry an encryption type: 0 and 7 are readable,
- * 5, 8 and 9 are hashes, kept as hashes are. (A tail like ` RO` stops at a CRLF line's `\r`, or the key's last
- * character would survive.)
+ * 5, 8 and 9 are hashes, kept as hashes are. (The key's span is where the match put it, not counted back from
+ * the line's end, which trailing blanks and a CRLF's `\r` move.)
  */
 function networkConfigKeys(text: string, add: AddPassword) {
 	if (!/\b(?:secret|password|key|key-string|community|plain-text-password-value|psk)\b/.test(text)) return;
 	const IOS =
-		/^[ \t]*(?:set[ \t]+)?(?:(?:enable|username|crypto|tacacs-server|radius-server|ip|ipv6|ntp|key-string|neighbor|ppp|standby|vrrp|router|aaa|snmp-server|system|protocols|security|interfaces)\b[^\n]*?[ \t](?:secret|password|key|key-string|pre-shared-key|authentication-key|md5|community|plain-text-password-value|psk)|wpa-psk|key-string|pre-shared-key)[ \t]+(?:(?:local|remote)[ \t]+)?(?:(?:ascii-text|hexadecimal|ascii|hex)[ \t]+)?(?:(\d)[ \t]+)?(?:"([^"\n]{3,200})"|(\S{3,200}))((?:[ \t]+(?:address|view|level|RO|RW|ro|rw)\b[^\r\n]*)?)[ \t]*;?(?:[ \t]*## SECRET-DATA)?\r?$/gm;
+		/^[ \t]*(?:set[ \t]+)?(?:(?:enable|username|crypto|tacacs-server|radius-server|ip|ipv6|ntp|key-string|neighbor|ppp|standby|vrrp|router|aaa|snmp-server|system|protocols|security|interfaces)\b[^\n]*?[ \t](?:secret|password|key|key-string|pre-shared-key|authentication-key|md5|community|plain-text-password-value|psk)|wpa-psk|key-string|pre-shared-key)[ \t]+(?:(?:local|remote)[ \t]+)?(?:(?:ascii-text|hexadecimal|ascii|hex)[ \t]+)?(?:(\d)[ \t]+)?(?:"([^"\n]{3,200})"|(\S{3,200}))((?:[ \t]+(?:address|view|level|RO|RW|ro|rw)\b[^\r\n]*)?)[ \t]*;?(?:[ \t]*## SECRET-DATA)?\r?$/dgm;
 	for (const m of text.matchAll(IOS)) {
 		if (m[1] && /[589]/.test(m[1])) continue;
 		const pw = m[2] ?? m[3];
 		if (/^(?:public|private|\d+)$/i.test(pw) && !m[2]) continue;
-		const end =
-			m.index + m[0].replace(/[ \t]*;?(?:[ \t]*## SECRET-DATA)?\r?$/, "").length - m[4].length - (m[2] ? 1 : 0);
-		add(end - pw.length, pw, "structure:cli-password", !!m[2]);
+		const start = (m.indices![2] ?? m.indices![3]!)[0];
+		add(start, pw, "structure:cli-password", !!m[2]);
 	}
 }
 
