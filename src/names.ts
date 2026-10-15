@@ -136,7 +136,7 @@ const CREDENTIAL_WORDS = new Set([
 ]);
 /** Single words that end in a credential word: PGPASSWORD, AUTHKEY, WRITEKEY, APITOKEN. */
 const CREDENTIAL_SUFFIX =
-	/(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|TOKEN|SECRET|APIKEY|AUTH|AUTHKEY|WRITEKEY|READKEY|SECRETKEY|PRIVATEKEY|ACCESSKEY|SESSID|SESSIONID|PASS|PWD|APPKEY|MASTERKEY|SIGNINGKEY|ENCRYPTIONKEY|LICENSEKEY|DEVKEY|USERKEY)$/;
+	/(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|TOKEN|SECRET|APIKEY|AUTH|AUTHKEY|WRITEKEY|READKEY|SECRETKEY|PRIVATEKEY|ACCESSKEY|SESSID|SESSIONID|PASS|PWD|PW|APPKEY|MASTERKEY|SIGNINGKEY|ENCRYPTIONKEY|LICENSEKEY|DEVKEY|USERKEY)$/;
 /** Last words that describe a form of the word before: `client-key-data`, `SECRET_B64`, `secret_key_base`. */
 const WRAPPER_WORDS = new Set([
 	"DATA",
@@ -154,6 +154,7 @@ const WRAPPER_WORDS = new Set([
 	"BYTES",
 	"PLAIN",
 	"PLAINTEXT",
+	"CLEARTEXT",
 ]);
 /** Last words that only qualify the word before: `API_KEY_V2`, `DB_PASSWORD_PROD`. */
 const QUALIFIER_WORDS =
@@ -367,7 +368,6 @@ const NOT_CREDENTIAL_BEFORE = lookup<Set<string>>({
 		"ALWAYS",
 		"STRICT",
 		"NEEDS",
-		"HTTP",
 		"SASL",
 		"LDAP",
 		"OIDC",
@@ -534,6 +534,8 @@ const PUBLIC_NAMES =
 	/(?:^|[._-])(?:(?:client|js|browser|frontend|web)[_-]?key|kakao[_-]?(?:js|javascript|native)[_-]?(?:app[_-]?)?key|shopify[_-]?api[_-]?key|naver[_-]?client[_-]?id|mixpanel[_-]?(?:project[_-]?)?token|pusher[_-]?(?:app[_-]?)?key|posthog[_-]?(?:project[_-]?|api[_-]?)?key|amplitude[_-]?api[_-]?key|algolia[_-]?search[_-]?(?:only[_-]?)?(?:api[_-]?)?key|search[_-]?only[_-]?(?:api[_-]?)?key|rzp[_-]?key[_-]?id|razorpay[_-]?key[_-]?id|(?:recaptcha|captcha|turnstile|hcaptcha)[_-]?site[_-]?key|site[_-]?key)$/i;
 /** Prefixes of variables that frameworks expose to the browser, so they're public by design. */
 const PUBLIC_PREFIX = /^(NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC|PUBLIC|NUXT_PUBLIC|GATSBY|VUE_APP|STORYBOOK)_/i;
+/** Kinds of keys that are secret by their kind, whatever prefix a framework gives their name. */
+const SECRET_KEY_KINDS = /^(?:ENCRYPTION|ENCRYPT|DECRYPTION|DECRYPT|SIGNING|CIPHER|AES|CRYPTO|WEBHOOK)$/;
 /**
  * Words anywhere in a name that make it about a credential rather than holding one: UI text
  * (`LABEL_NEW_PASSWORD`, `FORGOT_PASSWORD_TITLE`), error codes (`ERROR_WRONG_PASSWORD`), flags
@@ -608,7 +610,6 @@ const ABOUT_WORDS = new Set([
 	"FAILED",
 	"FAILURE",
 	"MISMATCH",
-	"MATCH",
 	"CHANGED",
 	"RESET",
 	"EMPTY",
@@ -633,13 +634,35 @@ const ABOUT_WORDS = new Set([
 /** About words that can also say what a credential belongs to. */
 const ROUTE_WORDS = new Set(["PAGE", "SCREEN", "ROUTE", "VIEW", "EVENT", "HANDLER", "DIALOG", "MODAL", "STATUS"]);
 /**
+ * About words that are also nouns a component is named with, its name's first half (`LABEL_STUDIO_PASSWORD`,
+ * `EVENT_STORE_PASSWORD`, `MESSAGE_BROKER_PASSWORD`, `STATUS_DB_PASSWORD`, `HELP_DESK_PASSWORD`): they make a name
+ * about its credential only next to its word, or with qualifiers between (`LABEL_NEW_PASSWORD`, `LOGIN_PAGE_PASSWORD`).
+ */
+const NOUN_ABOUT_WORDS = new Set([
+	...ROUTE_WORDS,
+	"LABEL",
+	"LABELS",
+	"MSG",
+	"MESSAGE",
+	"MESSAGES",
+	"TEXT",
+	"RULE",
+	"RULES",
+	"POLICY",
+	"HELP",
+]);
+/**
  * Shell variables whose names end in a credential word but hold something else (`PWD`, `OLDPWD`),
  * bare upper-case `KEY` and `AUTH` (loop keys, auth modes) and `PASS`, `XPASS` (`PASS: test name`, a test runner's
  * verdicts; named.ts still reads `PASS=value`).
  */
 const NOT_CREDENTIAL_NAMES = new Set(["PWD", "OLDPWD", "AUTH", "KEY", "PASS", "XPASS"]);
 
-/** The words of a name in upper case: `clientSecret` → CLIENT, SECRET; `x-api-key` → X, API, KEY. */
+/**
+ * The words of a name in upper case: `clientSecret` → CLIENT, SECRET; `x-api-key` → X, API, KEY. A compound some
+ * write as two words is one (`PassPhrase`, `pass_word`, `ClearTextPassword` → CLEARTEXT, PASSWORD), as it is written
+ * glued: its halves alone say something else (`PHRASE` a seed phrase, `TEXT` UI text).
+ */
 export function words(name: string): string[] {
 	// (Accents dropped first, so `contraseña` is CONTRASENA and `hasło` HASLO, as CREDENTIAL_WORDS spells them.)
 	return name
@@ -650,7 +673,17 @@ export function words(name: string): string[] {
 		.replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
 		.toUpperCase()
 		.split(/[^\p{L}\p{N}]+/u)
-		.filter(Boolean);
+		.filter(Boolean)
+		.reduce<string[]>((all, w) => {
+			const before = all.at(-1);
+			if (
+				(before === "PASS" && /^(?:WORD|WD|PHRASE|CODE)$/.test(w)) ||
+				(/^(?:CLEAR|PLAIN)$/.test(before ?? "") && w === "TEXT")
+			)
+				all[all.length - 1] += w;
+			else all.push(w);
+			return all;
+		}, []);
 }
 
 /**
@@ -779,10 +812,14 @@ function isPublicName(name: string, w: string[]): boolean {
 		return w
 			.slice(PUBLIC_PREFIX.test(name) ? PUBLIC_PREFIX.exec(name)![1].split("_").length : 0)
 			.some((x) => x === "PUBLIC" || x === "PUBLISHABLE");
+	// (A framework's prefix doesn't make public a key that is secret by its kind, an encryption or a signing key:
+	// `NEXT_PUBLIC_ENCRYPTION_KEY`, `VITE_AES_KEY`. SvelteKit's bare `PUBLIC_` prefix is also the word: `PUBLIC_SIGNING_KEY`.)
+	const prefix = PUBLIC_PREFIX.exec(name)?.[1].toUpperCase();
+	const own = prefix && prefix !== "PUBLIC" ? w.slice(prefix.split("_").length) : w;
 	// (`PUB` abbreviates public before a key: `pubKey`, `PUB_KEY`; `SITE` and `VAPID` keys are public by design.)
 	return (
-		PUBLIC_PREFIX.test(name) ||
-		w.some(
+		(prefix !== undefined && !own.some((x) => SECRET_KEY_KINDS.test(x))) ||
+		own.some(
 			(x) =>
 				x === "PUBLIC" ||
 				x === "PUBLISHABLE" ||
@@ -924,15 +961,14 @@ const PASSWORD_WORDS = new Set([
 
 /**
  * Whether a name's word names a password: "password" in any language, or one glued to the word before it (`PGPASSWORD`,
- * `adminpasswd`, `DBPASSCODE`); the short `PASS`, `PWD` and Redis's `AUTH` glued only after what they belong to
- * (`REDISPASS`, `ROOTPWD`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
+ * `adminpasswd`, `DBPASSCODE`); the short `PASS`, `PWD`, `PW` and Redis's `AUTH` glued only after what they belong to
+ * (`REDISPASS`, `JKSPASS`, `ROOTPWD`, `rootpw`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
  */
 function isPasswordWord(word: string): boolean {
 	if (PASSWORD_WORDS.has(word)) return true;
-	const glued = /(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|PASS|PWD|AUTH)$/.exec(word);
+	const glued = /(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|PASS|PWD|PW|AUTH)$/.exec(word);
 	if (!glued) return false;
-	const head = word.slice(0, glued.index);
-	return /^PASS(?:WORD|WD|PHRASE|CODE)$/.test(glued[1]) || PASSWORD_OWNERS.has(head) || isVendorName(head);
+	return /^PASS(?:WORD|WD|PHRASE|CODE)$/.test(glued[1]) || ownsGlued(word.slice(0, glued.index), glued[1]);
 }
 
 /**
@@ -1138,16 +1174,100 @@ const PASSWORD_OWNERS = new Set([
 ]);
 
 /**
+ * Words `PASS` ends glued to them that are no password's owner: English words (`bypass`, `compass`, `overpass`,
+ * `trespass`), filters (`lowpass`, `bandpass`), a renderer's or a compiler's passes (`subpass`, `renderpass`,
+ * `multipass`, `numpass`), and passes that admit a person (`daypass`, `boardingpass`) or products (`KeePass`, `LastPass`,
+ * `gopass`, `NordPass`).
+ */
+const NOT_PASSWORD_OWNERS = new Set([
+	"BY",
+	"COM",
+	"ENCOM",
+	"OVER",
+	"UNDER",
+	"TRES",
+	"SUR",
+	"RE",
+	"PRE",
+	"OUT",
+	"MIS",
+	"LOW",
+	"HIGH",
+	"BAND",
+	"ALL",
+	"NOTCH",
+	"SUB",
+	"MULTI",
+	"SINGLE",
+	"FIRST",
+	"SECOND",
+	"THIRD",
+	"FINAL",
+	"LAST",
+	"NEXT",
+	"PREV",
+	"ONE",
+	"TWO",
+	"DOUBLE",
+	"NUM",
+	"MAX",
+	"MIN",
+	"RENDER",
+	"DEPTH",
+	"SHADOW",
+	"LIGHT",
+	"BLUR",
+	"DRAW",
+	"BOARDING",
+	"SEASON",
+	"BATTLE",
+	"HALL",
+	"DAY",
+	"BUS",
+	"RAIL",
+	"SKI",
+	"FAST",
+	"EASY",
+	"EZ",
+	"BACKSTAGE",
+	"KEE",
+	"GO",
+	"NORD",
+	"EN",
+	"PROTON",
+	"NO",
+]);
+
+/**
+ * Whether `PASS`, `PWD`, `PW` or `AUTH` glued after `head` names a password or an auth string: after what it belongs to
+ * (PASSWORD_OWNERS, a vendor's name); `PASS`, the commonest, after any other word that's no part of another
+ * (NOT_PASSWORD_OWNERS): `JKSPASS`, `vpnpass`, `kafkapass`, `p12pass`. (Not after a letter or a number alone: `npass`,
+ * `2pass`; nor `PW` after a letter, as base64 ends, `…GS+xpw==`.)
+ */
+function ownsGlued(head: string, suffix: string): boolean {
+	if (suffix === "PW" && head.length < 2) return false;
+	if (PASSWORD_OWNERS.has(head) || isVendorName(head)) return true;
+	return suffix === "PASS" && /^[A-Z][A-Z0-9]+$/.test(head) && !NOT_PASSWORD_OWNERS.has(head);
+}
+
+/**
  * Whether one word of a name is a credential word: `PASSWORD`, `TOKEN`, `KEY`, or one glued to it, `PGPASSWORD`,
- * `APITOKEN`, `WRITEKEY`. The short `PASS`, `PWD` and `AUTH` count glued only after what they belong to (PASSWORD_OWNERS).
+ * `APITOKEN`, `WRITEKEY`. The short `PASS`, `PWD`, `PW` and `AUTH` count glued only after what they belong to (ownsGlued).
  */
 function isCredentialWord(word: string): boolean {
 	if (CREDENTIAL_WORDS.has(word)) return true;
 	const glued = CREDENTIAL_SUFFIX.exec(word);
 	if (!glued) return false;
-	const head = word.slice(0, glued.index);
-	return !/^(?:PASS|PWD|AUTH)$/.test(glued[1]) || PASSWORD_OWNERS.has(head) || isVendorName(head);
+	return !/^(?:PASS|PWD|PW|AUTH)$/.test(glued[1]) || ownsGlued(word.slice(0, glued.index), glued[1]);
 }
+
+/**
+ * nginx's upstream directives, as nginx writes them, a blank and no `=` or `:` before their value: `proxy_pass
+ * http://app:8000;`, `fastcgi_pass unix:/run/php.sock;`, `proxy_pass_header Server;`. (`PROXY_PASS`, `HTTP_PASS` in an
+ * environment, and `proxy_pass = …` in a client's settings, are passwords.)
+ */
+export const isUpstreamDirective = (name: string): boolean =>
+	/^(?:proxy|fastcgi|uwsgi|scgi|grpc|memcached|ajp)_pass(?:_\w+)?$/.test(name);
 
 export type NameClass = "credential" | "hash" | "identifier" | "neutral" | "public";
 
@@ -1213,6 +1333,43 @@ const AMBIGUOUS_BEFORE_KEY = new Set([
 	"ECDSA",
 	"ED25519",
 	"CA",
+]);
+
+/**
+ * Network and cloud resources that come in a public and a private variant, named `…_private` as a key pair's private
+ * half is: Terraform's `alb_private`, `zone_private`, `subnet_private`, `role_private` (with IDENTIFIER_WORDS: `ZONE`,
+ * `HOST`, `BUCKET`, `ENDPOINT`).
+ */
+const RESOURCE_WORDS = new Set([
+	"ALB",
+	"ELB",
+	"NLB",
+	"LB",
+	"ROLE",
+	"SUBNET",
+	"SUBNETS",
+	"VPC",
+	"SG",
+	"DNS",
+	"IP",
+	"IPS",
+	"CIDR",
+	"ROUTE",
+	"RT",
+	"NAT",
+	"NETWORK",
+	"NET",
+	"GATEWAY",
+	"GW",
+	"CLUSTER",
+	"INSTANCE",
+	"TARGET",
+	"LISTENER",
+	"POOL",
+	"REPO",
+	"REGISTRY",
+	"LINK",
+	"INGRESS",
 ]);
 
 /** Credential words that may come first in a name, its owner after them (`PASSWORD_DB`, `TOKEN_GITHUB`). */
@@ -1324,14 +1481,9 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		return "identifier";
 	// The WebSocket handshake's nonce and its answer, public by RFC 6455.
 	if (/^sec-websocket-(?:key|accept)$/i.test(name)) return "hash";
-	// nginx's and Apache's upstream directives: `proxy_pass http://app:8000;`, `fastcgi_pass unix:/run/php.sock;`, `ProxyPass / …`.
-	// (Lower case as nginx writes them; `PROXY_PASS`, `HTTP_PASS` in an environment are passwords.)
-	if (
-		/^(?:proxy|fastcgi|uwsgi|scgi|grpc|memcached|ajp)_pass(?:_\w+)?$|^ProxyPass(?:Reverse(?:Cookie\w*)?|Match|Interpolate)?$/.test(
-			name,
-		)
-	)
-		return "identifier";
+	// Apache's upstream directives, `ProxyPass / http://app:8000/`. (nginx's, `proxy_pass http://app:8000;`, are
+	// isUpstreamDirective's: as a key, `proxy_pass = …` in a client's settings, the name is a proxy's password.)
+	if (/^ProxyPass(?:Reverse(?:Cookie\w*)?|Match|Interpolate)?$/.test(name)) return "identifier";
 	// Azure's credentials that sign in as an identity take its IDs, not a secret: `ManagedIdentityCredential("<client id>")`.
 	if (
 		/(?:ManagedIdentity|WorkloadIdentity|AzureCli|AzureDeveloperCli|AzurePowerShell|DefaultAzure|InteractiveBrowser|DeviceCode|VisualStudioCode|SharedTokenCache)Credential$/.test(
@@ -1341,10 +1493,13 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		return "identifier";
 	// An alarm's, a door's or a keypad's code is a PIN; `vapidPrivate`, `push_private`: the private half of a key pair.
 	// (A key's private half named as a camel-case hump or after a separator, `vapidPrivate`, `VAPID_PRIVATE`; not a word
-	// that ends so, `isprivate`, `semiprivate`.)
+	// that ends so, `isprivate`, `semiprivate`; nor a resource's private variant, `alb_private`, `zone_private`.)
 	if (
 		isPinName(name) ||
-		(/^[a-z][a-z0-9]*(?:Private|[_-]private)$|^[A-Za-z][A-Za-z0-9]*[_-]PRIVATE$/.test(name) && !ABOUT_WORDS.has(w[0]))
+		(/^[a-z][a-z0-9]*(?:Private|[_-]private)$|^[A-Za-z][A-Za-z0-9]*[_-]PRIVATE$/.test(name) &&
+			!ABOUT_WORDS.has(w[0]) &&
+			!RESOURCE_WORDS.has(w[0]) &&
+			!IDENTIFIER_WORDS.has(w[0]))
 	)
 		return "credential";
 	if (isPublicName(name, core)) return "public";
@@ -1364,9 +1519,11 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	// neutral, its value judged by how it looks: Azure's `primaryKey`, `AZURE_STORAGE_KEY`, `hostKey`, `REDIS_KEY`.)
 	// (Not the secret half of a pair whose public half the word names, a secret's word before it: reCAPTCHA's
 	// `SECRET_SITE_KEY`, `PRIVATE_GPG_KEY`.)
+	// (GitHub Actions passes an action's input `token` as `INPUT_TOKEN`: a prefix, not a model's input tokens.)
 	if (
 		core.length > 1 &&
 		NOT_CREDENTIAL_BEFORE[last]?.has(core.at(-2)!) &&
+		name !== "INPUT_TOKEN" &&
 		!core.some((x) => x === "PAGERDUTY" || x === "PD") &&
 		!(
 			last === "KEY" &&
@@ -1419,9 +1576,26 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		(core.length >= 2 &&
 			/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(core.at(-2)!) &&
 			/^(TOKEN|KEY)$/.test(last));
+	// (A noun about word followed by another that names what the credential belongs to names a component; not a credential
+	// phrase's first word, `LOGIN_PAGE_APP_PASSWORD`.)
 	const about =
-		core.some((x) => ABOUT_WORDS.has(x) && !(fullPhrase && ROUTE_WORDS.has(x))) ||
-		/^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
+		core.some(
+			(x, i) =>
+				ABOUT_WORDS.has(x) &&
+				!(fullPhrase && ROUTE_WORDS.has(x)) &&
+				!(
+					NOUN_ABOUT_WORDS.has(x) &&
+					core
+						.slice(i + 1, -1)
+						.some(
+							(y) =>
+								!ABOUT_WORDS.has(y) &&
+								!QUALIFIER_WORDS.test(y) &&
+								!isCredentialWord(y) &&
+								!/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(y),
+						)
+				),
+		) || /^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
 	if (!about && isCredentialWord(last) && !(last === "PAT" && core.length > 1 && !PAT_OWNERS.has(core.at(-2)!)))
 		return "credential";
 	// A credential's word first, then whose it is: `PASSWORD_DB`, `TOKEN_GITHUB`, `SECRET_STRIPE`, `password_for_db`; not
