@@ -266,14 +266,11 @@ test("jwt.io's sample claims make a sample only without an issuer or an expiry",
 	);
 });
 
-test("Algolia's key is public only where the code says search-only, and never in code that writes the index", () => {
+test("Algolia's key is public only where the code says search-only", () => {
 	const key = "3fa9c27d41e8b60d5a92e71c08b4d6f3";
 	hidden(`const client = algoliasearch(process.env.NEXT_PUBLIC_ALGOLIA_APP_ID, "${key}");`, key);
 	hidden(`const publicIndex = "x";\nconst client = algoliasearch("APPID12345", "${key}");`, key);
 	kept(`// public search key\nconst client = algoliasearch("APPID12345", "${key}");`, key);
-	const script = `const appId = 'ABCDE12345';\nconst indexName = 'prod_products';\nconst apiKey = '${key}';\nconst client = algoliasearch(appId, apiKey);\nawait client.initIndex(indexName).saveObjects(records);`;
-	hidden(script, key);
-	hidden(`// crawler config\nnew Crawler({ appId: 'ABCDE12345', indexName: 'docs', apiKey: '${key}' })`, key);
 	kept(`options: {\n  appId: 'ZTF29HGJ69',\n  apiKey: '${key}',\n  indexName: 'vitest',\n}`, key);
 });
 
@@ -300,25 +297,6 @@ test("the Google keys Firebase's tools generate into an app are client configura
 	);
 	hidden(`<dict>\n\t<key>API_KEY</key>\n\t<string>${key}</string>\n</dict>`, key);
 	hidden(`GEMINI_API_KEY=${key}`, key);
-});
-
-test("a table's row label says public as its column's header does", () => {
-	const anon = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from('{"iss":"supabase","ref":"uqqoglkphwpitnxgzcqk","role":"anon","iat":1700000000,"exp":2000000000}').toString("base64url")}.j2MrvyIBpGPtmhGEVt8bXOXMdCoLjAFwXLxVYs6ZgeI`;
-	const svc = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from('{"iss":"supabase","ref":"uqqoglkphwpitnxgzcqk","role":"service_role","iat":1700000000,"exp":2000000000}').toString("base64url")}.Q7mT2vX9pL4wR8nK3cJ6hF1bY5gZ0dS2aE7uV4iO9tN`;
-	const table = `  NAME             | KEY VALUE\n  -----------------|-----------\n  anon             | ${anon}\n  service_role     | ${svc}\n`;
-	kept(table, anon);
-	hidden(table, svc.split(".")[2]);
-	hidden(`SUPABASE_KEY=${anon}`, anon.split(".")[2]);
-});
-
-test("a value passed to a browser SDK is public where it's assigned too", () => {
-	const key = "YNvoHCTTQjGP0tCNgS15VTDZAw4PFWIW";
-	const snippet = `analytics._writeKey="${key}";analytics.SNIPPET_VERSION="5.2.0";\n  analytics.load("${key}");\n  analytics.page();`;
-	kept(snippet, key);
-	// (Not a key the SDK takes in the admin key's place, nor one assigned under a secret's name.)
-	const algolia = "3fa9c27d41e8b60d5a92e71c08b4d6f3";
-	hidden(`const ALGOLIA_KEY = "${algolia}";\nconst c = algoliasearch("APPID12345", "${algolia}");`, algolia);
-	hidden(`const SEGMENT_SECRET = "${key}";\nanalytics.load("${key}");`, key);
 });
 
 test("a key is named with the object's key it sits in, when that says it's public", () => {

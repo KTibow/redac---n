@@ -186,13 +186,6 @@ const STAND_IN = (() => {
 	);
 })();
 
-/**
- * Words a placeholder says around its stand-in words, alone or run together: what goes there (`your-api-key-here`,
- * `example-db-password`, `<your-project-id>`), and the instruction (`replace-with-your-own`).
- */
-const PLACEHOLDER_WORD =
-	/^(?:api|apikey|key|keys|token|tokens|secret|secrets|password|passwd|pass|pwd|passphrase|pin|credentials?|value|string|text|data|info|goes|real|actual|own|this|that|for|with|your|mine|the|not|put|insert|enter|paste|add|set|replace|change|use|here|there|test|testing|sample|demo|dummy|default|access|refresh|client|app|application|auth|bearer|session|cookie|signing|webhook|private|public|user|username|name|email|account|project|org|organization|company|team|domain|host|hostname|server|database|bucket|region|url|endpoint|service|tenant|live|prod|production|dev|development|staging|sandbox|env|environment|admin|root|master|generated|random|strong|long|unique|security|privacy|reasons|brevity|redacting|sensitive)+$/i;
-
 /** What separates the parts of a placeholder:`YOUR_API_KEY_HERE`, `example-token`, `<your-key>`, `sk-[redacted]`. */
 const PLACEHOLDER_SEPARATORS = /[-_. :/[\]<>(){}*]+/;
 
@@ -207,14 +200,6 @@ function isStandIn(token: string): boolean {
 	if (token.search(STAND_IN) < 0) return false;
 	const isWord = (p: string) => /^[A-Za-z]+$/.test(p) && naturalness(p.toLowerCase()) > 0.3;
 	const parts = token.split(PLACEHOLDER_SEPARATORS).filter(Boolean);
-	// Words a placeholder doesn't say, two of them or one and a number, make a password of words that happens to hold a
-	// stand-in word: `Hidden-Dragon-2024`, `Crouching-Tiger-Hidden-Dragon`, `Summer-Changed-2024`. (A short part is a
-	// vendor's prefix, `sk_`; a long word that's none of these is the password's.)
-	const foreign = parts.filter(
-		(part) => /^[A-Za-z]{4,}$/.test(part) && part.search(STAND_IN) < 0 && !PLACEHOLDER_WORD.test(part),
-	).length;
-	// (Words with blanks between them are a sentence's: `hidden thing found`.)
-	if (!/\s/.test(token) && (foreign >= 2 || (foreign && parts.some((part) => /^\d+$/.test(part))))) return false;
 	return parts.every((part) => {
 		const standIns = [...part.matchAll(STAND_IN)];
 		if (!standIns.length) return /^\d{1,4}$/.test(part) || /^[A-Za-z]{1,4}$/.test(part) || isWord(part);

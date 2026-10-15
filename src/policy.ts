@@ -92,19 +92,6 @@ function isClientSdkKey(sdk: string, name: string, before: string): boolean {
 	);
 }
 
-/** Whether `value` is passed to a client SDK as its public key somewhere in `text` other than at `self` (isClientSdkKey). */
-function sdkKeyElsewhere(text: string, value: string, self: number): boolean {
-	for (let i = text.indexOf(value), n = 0; i >= 0 && n < 50; i = text.indexOf(value, i + value.length), n++) {
-		if (i === self) continue;
-		const sdk = clientSdkAt(text, i);
-		if (!sdk) continue;
-		const before = text.slice(Math.max(0, i - 300), i);
-		const param = /([\w$]+)["']?[ \t]*:[ \t]*["'`]$/.exec(before)?.[1] ?? "";
-		if (isClientSdkKey(sdk, param, before)) return true;
-	}
-	return false;
-}
-
 /**
  * A `WWW-Authenticate` or `Proxy-Authenticate` header's scheme and parameters, up to inside one of the parameters the
  * challenge schemes define (RFC 7235, 7616, 6750, 9728, Azure's), which say where and how to authenticate.
@@ -301,15 +288,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// JWTs meant to be public (anon and publishable roles, published samples). Under a credential's name, only
 	// a published sample is, unless the name itself says anon or public: an anon key assigned to `SUPABASE_KEY`
 	// is treated as the key it's named; `anon key:` in `supabase status` is what it says.
-	// (A table's cell is named by its column's header and its row's label too: `anon | eyJ…` under `NAME | KEY VALUE`.)
-	const saysPublic = (s: string) => /anon|public|publishable/i.test(s);
-	if (
-		/^eyJ/.test(word) &&
-		isPublicJwt(
-			word,
-			layerOf(f.rule) === "named" && !saysPublic(name) && !(f.rule === "named:table-cell" && saysPublic(read)),
-		)
-	)
+	if (/^eyJ/.test(word) && isPublicJwt(word, layerOf(f.rule) === "named" && !/anon|public|publishable/i.test(name)))
 		return "public JWT";
 	if (isJwtHeader(word)) return "a JWT's header";
 	// The ID half of an `id:secret` value under a name (`credential: <client id>:<secret>`): the secret half is
@@ -330,14 +309,6 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// place: Algolia's search key and admin key are both `algoliasearch(appId, key)`, so only a search key said so.
 	const sdk = clientSdkAt(text, f.start);
 	if (sdk && isClientSdkKey(sdk, name, `${above}\n${line}`)) return "client SDK key";
-	// (And so is the same value where it is assigned before it's passed: Segment's snippet sets `analytics._writeKey="…"`
-	// and calls `analytics.load("…")`.)
-	if (
-		value.length >= 16 &&
-		!/secret|passw|private|admin|master|server/i.test(name) &&
-		sdkKeyElsewhere(text, value, f.start)
-	)
-		return "client SDK key";
 	// A Google API key in a client app's configuration (see isClientGoogleKey).
 	if (/^AIza/.test(value) && isClientGoogleKey(text, f.start)) return "client-side Google key";
 	// The search-only key of an Algolia DocSearch config (`appId`, `apiKey`, `indexName`), in every docs site;
@@ -346,14 +317,7 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	if (/^[0-9a-f]{32}$/.test(value)) {
 		const near = text.slice(Math.max(0, f.start - 300), f.end + 300);
 		const key = /([\w-]+)["']?[ \t]*[:=][ \t]*["'`]?$/.exec(left.slice(-80))?.[1] ?? "";
-		if (
-			/\bindexName\b/.test(near) &&
-			/\bappId\b/.test(near) &&
-			!/admin|write|secret|private|password/i.test(key) &&
-			!/\.(?:save|add|partialUpdate|delete|clear|replaceAll)Objects?\(|\.(?:setSettings|saveRules|saveSynonyms|copyIndex|moveIndex)\(|\bnew[ \t]+Crawler\(/.test(
-				text.slice(Math.max(0, f.start - 2000), f.end + 2000),
-			)
-		)
+		if (/\bindexName\b/.test(near) && /\bappId\b/.test(near) && !/admin|write|secret|private|password/i.test(key))
 			return "DocSearch key";
 	}
 	// Public identifiers and keys whose shape or checksum says so.

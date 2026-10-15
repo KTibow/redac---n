@@ -733,17 +733,6 @@ export function findNamed(text: string): Finding[] {
 		.flatMap((f) => urlTokens(text, f));
 }
 
-/** explainedByNeighbours's tests for a name and a value, built once for both (a config repeats them). */
-const NEIGHBOUR_TESTS = new Map<string, [others: RegExp, user: RegExp]>();
-
-/** How many times `word` is in `text` with no name's character (`\w`, `.`, `-`) right after it, up to 2. */
-function wholeWords(text: string, word: string): number {
-	let count = 0;
-	for (let i = text.indexOf(word); i >= 0 && count < 2; i = text.indexOf(word, i + 1))
-		if (!/[\w.-]/.test(text[i + word.length] ?? "")) count++;
-	return count;
-}
-
 /**
  * Whether the text around a finding says its value is no secret, whichever reader found it (isNamedSecret judges the
  * value under its name; this, what stands near them, within 200 characters before and 100 after).
@@ -772,24 +761,19 @@ function explainedByNeighbours(text: string, f: Finding): boolean {
 	if (value && value.length <= 32) {
 		const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		const stem = /^(.+?[-_.])(?:pass(?:word)?|passwd|pwd|pw)$/i.exec(value)?.[1];
-		// (Only where the value is written again near it as a whole word, or there is a stem: the regular expressions
-		// below, built for each name and value, are too slow to build for every value of a long config.)
-		if (!stem && wholeWords(near.toLowerCase(), value.toLowerCase()) === 1) return false;
-		const key = `${name}\n${value}`;
-		let tests = NEIGHBOUR_TESTS.get(key);
-		if (!tests) {
-			const esc = stem ? `(?:${escape(value)}|${escape(stem)}user(?:name)?)` : escape(value);
-			tests = [
-				new RegExp(String.raw`[\w.-]*${escape(name)}["']?[ \t]*[:=][^\n]*`, "g"),
-				new RegExp(
-					String.raw`(?<![\w.-])(?:[\w.-]*[_.-])?(?:user(?:name)?|login|db|database|dbname|name|account)["']?[ \t]*[:=][ \t]*["'\`]?${esc}["'\`]?(?:[\s,;]|$)`,
-					"i",
-				),
-			];
-			if (NEIGHBOUR_TESTS.size >= 1000) NEIGHBOUR_TESTS.clear();
-			NEIGHBOUR_TESTS.set(key, tests);
-		}
-		if (tests[1].test(near.replace(tests[0], ""))) return true;
+		// (Only where the value is written again near it, or there is a stem: the regular expressions below, built for
+		// each name and value, are too slow to build for every value of a long config.)
+		const lower = near.toLowerCase();
+		if (!stem && lower.indexOf(value.toLowerCase()) === lower.lastIndexOf(value.toLowerCase())) return false;
+		const esc = stem ? `(?:${escape(value)}|${escape(stem)}user(?:name)?)` : escape(value);
+		const others = near.replace(new RegExp(String.raw`[\w.-]*${escape(name)}["']?[ \t]*[:=][^\n]*`, "g"), "");
+		if (
+			new RegExp(
+				String.raw`(?<![\w.-])(?:[\w.-]*[_.-])?(?:user(?:name)?|login|db|database|dbname|name|account)["']?[ \t]*[:=][ \t]*["'\`]?${esc}["'\`]?(?:[\s,;]|$)`,
+				"i",
+			).test(others)
+		)
+			return true;
 	}
 	return false;
 }
@@ -855,37 +839,6 @@ function keyColumnOf(column: string, columns: readonly string[]): number {
 
 /** An INI or TOML section header line: `[database]`, `[profile "prod"]`. */
 const INI_SECTION = /(?:^|\n)[ \t]*\[[\w. "'-]{1,80}\][ \t]*\r?(?=\n)/g;
-
-/** A config file's line: `host = db.internal`, `port = 5432`, a value with no quote, bracket or `;` of code's. */
-const CONFIG_PAIR = /^[ \t]*[A-Za-z_][\w.-]{0,60}[ \t]*=[ \t]*[^\s"'`([{;][^"'`()[\]{};]*\r?$/;
-
-/**
- * Whether the line at `lineStart` is in a config file with no `[section]` (a `.conf`, a `.properties`): the lines
- * around it, up to a blank line, are `name = value` pairs, one at least besides it, and none holds code (a quote, a
- * bracket, a `;`, a keyword). Its value is then a literal, brackets and all: `password = Winter(2025)!!`.
- */
-function isConfigBlock(text: string, lineStart: number): boolean {
-	const around: string[] = [];
-	for (let at = lineStart, n = 0; at > 0 && n < 6; n++) {
-		const start = lineStartAt(text, at - 1);
-		const line = text.slice(start, at - 1);
-		if (!line.trim()) break;
-		around.push(line);
-		at = start;
-	}
-	for (let at = lineEndAt(text, lineStart) + 1, n = 0; at < text.length && n < 6; n++) {
-		const line = text.slice(at, lineEndAt(text, at));
-		if (!line.trim()) break;
-		around.push(line);
-		at += line.length + 1;
-	}
-	// (Comments are the file's own.)
-	around.splice(0, around.length, ...around.filter((l) => !/^[ \t]*[#;]/.test(l)));
-	return (
-		around.some((l) => CONFIG_PAIR.test(l)) &&
-		around.every((l) => CONFIG_PAIR.test(l) && !/^[ \t]*(?:export|const|let|var|my|local|set)\b/.test(l))
-	);
-}
 /** A flag that sets an environment variable or a property, before `NAME=value`: `-e`, `--env`, `--build-arg`, `-D`, `--set`. */
 const ENV_FLAG = /(?:^|\s)(?:-e|--env|--build-arg|-D|--set|--set-string|--var|-var|env)[ \t]+["']?$/;
 
@@ -971,13 +924,7 @@ function assignments(text: string, out: Finding[]) {
 		const entry = /^(.*?)[ \t]*[,;{][ \t]*\r?$/.exec(text.slice(at, lineEndAt(text, at)))?.[1];
 		// `"NAME=value with spaces"` (docker inspect, compose lists): the value runs to the quote that opened the pair,
 		// escaped as it was (`\"NAME=value\"` inside a JSON string).
-		// (And a YAML item that quotes a pair whole, `- 'DB_PASSWORD: …'  # note`: its own quote closes it.)
-		const pairQuote =
-			m[1] === "" &&
-			/["']/.test(text[m.index - 1] ?? "") &&
-			(op === "=" || (op === ":" && /^[ \t]*(?:-[ \t]+)?$/.test(text.slice(lineStart, m.index - 1))))
-				? m.index - 1
-				: -1;
+		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
 		// An entry of a call or a literal written over several lines, the line before opening a bracket or ending an entry
 		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`), or its last entry (isLastEntry):
 		// code, its value read as code is, not a whole-line env, YAML or INI value nor a log's pair. (Its value may open a
@@ -1014,7 +961,7 @@ function assignments(text: string, out: Finding[]) {
 			!sigil &&
 			/^[ \t]*$/.test(before) &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
-			(underSection(m.index) || isConfigBlock(text, lineStart));
+			underSection(m.index);
 		// `key: # a comment`: YAML has no value there.
 		if (yamlLine && text[at] === "#") continue;
 		const wholeLine = (envLine || yamlLine || iniLine) && unquoted;
@@ -3031,7 +2978,6 @@ function siblingPairs(text: string, out: Finding[]) {
 		literal: boolean;
 		line: number;
 		indent: number;
-		block?: boolean;
 	};
 	const attrs: Attr[] = [];
 	let line = 0;
@@ -3044,36 +2990,22 @@ function siblingPairs(text: string, out: Finding[]) {
 	const yaml = /^[ \t-]*["']?[A-Za-z]\w*["']?[ \t]*:/m.test(text) ? yamlLines(text) : [];
 	const mapping = new Set<number>();
 	yaml.forEach((l, i) => {
-		if (!l.key || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
-		// (A value written as a block scalar, `value: |` and its lines below, is those lines.)
-		const body = l.block && PAIR_VALUE.test(l.key) ? blockExtent(text, l.start) : undefined;
+		if (!l.key || !l.value || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
 		// A value slot under a credential's key, as GitLab's CI variables are written (`DB_PASSWORD:` / `  value: …`):
 		// the parent names it.
-		if (PAIR_VALUE.test(l.key) && (body || l.value)) {
+		if (PAIR_VALUE.test(l.key)) {
 			let p = i - 1;
 			while (p >= 0 && (yaml[p].blank || yaml[p].indent >= l.indent)) p--;
 			const parent = yaml[p];
-			if (parent?.key && !parent.value && !parent.block && isCredentialName(parent.key)) {
-				if (body) multiLineValue(out, parent.key, body, "named:sibling-pair");
-				else if (isNamedSecret(parent.key, l.quoted ? `"${l.value!.value}"` : l.value!.value, true))
-					namedFinding(out, l.value!.start, l.value!.end, parent.key, "named:sibling-pair");
-			}
+			if (
+				parent?.key &&
+				!parent.value &&
+				!parent.block &&
+				isCredentialName(parent.key) &&
+				isNamedSecret(parent.key, l.quoted ? `"${l.value.value}"` : l.value.value, true)
+			)
+				namedFinding(out, l.value.start, l.value.end, parent.key, "named:sibling-pair");
 		}
-		if (body) {
-			mapping.add(l.start);
-			attrs.push({
-				key: l.key,
-				value: body.value,
-				start: body.start,
-				quoted: true,
-				literal: true,
-				line: i,
-				indent: l.indent,
-				block: true,
-			});
-			return;
-		}
-		if (!l.value) return;
 		mapping.add(l.start);
 		attrs.push({
 			key: l.key,
@@ -3138,15 +3070,6 @@ function siblingPairs(text: string, out: Finding[]) {
 				(second.line > first.line && second.indent < first.indent)
 			)
 				continue;
-			if (v.block) {
-				multiLineValue(
-					out,
-					credential,
-					{ value: v.value, start: v.start, end: v.start + v.value.length },
-					"named:sibling-pair",
-				);
-				break;
-			}
 			if (!v.value || !isNamedSecret(credential, v.quoted ? `"${v.value}"` : v.value, v.literal)) break;
 			namedFinding(out, v.start, v.start + v.value.length, credential, "named:sibling-pair");
 			break;
