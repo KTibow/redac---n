@@ -156,6 +156,11 @@ test("SQL that sets a password hides the literal and keeps a password hash", () 
 	// The quoted form in a statement that makes, changes or grants to a user, over several lines too; prose says what
 	// a record is identified by.
 	hidden("CREATE USER app\n  IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	// (MariaDB's `CREATE OR REPLACE USER` makes one too.)
+	hidden("CREATE OR REPLACE USER u1@localhost IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	hidden("CREATE OR REPLACE USER IF NOT EXISTS u1 IDENTIFIED BY Hx7mQ2pL9vRtZk3w;", "Hx7mQ2pL9vRtZk3w");
+	// Dynamic SQL's string built around a variable holds no password.
+	kept("SET @SQL = 'CREATE LOGIN [' + @NewLogin + '] WITH PASSWORD = N''' + @NewLoginPwd + ''';';", "@NewLoginPwd");
 	hidden("GRANT ALL ON *.* TO 'u'@'h' IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
 	hidden("CREATE DATABASE LINK l CONNECT TO u IDENTIFIED BY \"Hx7mQ2pL9vRtZk3w\" USING 'x';", "Hx7mQ2pL9vRtZk3w");
 	for (const line of [

@@ -533,20 +533,7 @@ test("a connection string's template, reference or code is no password; its lite
 	hidden("Server=db;Database=app;User Id=app;Password=__Hx7mQ2pL9vRt__;", "Hx7mQ2pL9vRt");
 });
 
-test("a connection string written from its password on ends the password at its first ;", () => {
-	for (const [line, secret, rest] of [
-		["Password=Hx7mQ2pL9vRt;Server=db;Database=app;User Id=sa", "Hx7mQ2pL9vRt", ";Server=db;Database=app;User Id=sa"],
-		[
-			"ClientSecret=Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6;TenantId=abc;ClientId=def",
-			"Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6",
-			";TenantId=abc;ClientId=def",
-		],
-		['export CONN="Pwd=Hx7mQ2pL9vRt;Server=db;Database=app"', "Hx7mQ2pL9vRt", ';Server=db;Database=app"'],
-	]) {
-		hidden(line, secret);
-		kept(line, rest);
-	}
-	// (A password's own `;` with no pairs after it is the password's.)
+test("an env line's password keeps its own ;", () => {
 	hidden("DB_PASSWORD=Hx7m;Q2pL9vRt", "Q2pL9vRt");
 });
 

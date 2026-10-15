@@ -1079,8 +1079,16 @@ function oracleLogins(text: string, add: AddPassword) {
 	const LOGIN =
 		/(?:jdbc:oracle:(?:thin|oci):|(?:^|[;&|(]|\$ )[ \t]*(?:sudo[ \t]+)?(?:expdp|impdp|exp|imp|rman|sqlldr|dgmgrl|tkprof)\b[^\n]{0,400}?[ \t](?:(?:target|auxiliary|userid|catalog)[ \t=]+)?["']?|^[ \t]*(?:SQL>[ \t]*)?conn(?:ect)?[ \t]+["']?)([A-Za-z_][\w$#]{0,30})\/((?:[^\s\/@'"]|@(?=[^\s\/@'"]*@)){3,})(?=@|["']?(?:[ \t]|;?\r?$))/gim;
 	for (const m of text.matchAll(LOGIN))
-		if (endsLogin(text, m.index + m[0].length, m[2]))
+		if (endsLogin(text, m.index + m[0].length, m[2]) && !isUserAsPassword(m[1], m[2]))
 			add(m.index + m[0].length - m[2].length, m[2], "structure:cli-password");
+}
+
+/**
+ * Whether an Oracle login's password is its user's name (`impdp scott/scott`, `TCL/TCL`): a schema's owner a guide
+ * logs in as, which tells nothing the name doesn't (as url-password's `tally:tally@`).
+ */
+function isUserAsPassword(user: string, password: string): boolean {
+	return user.toLowerCase() === password.toLowerCase() && !isRandomToken(password);
 }
 
 /**
@@ -1235,10 +1243,10 @@ function cliPasswords(text: string, out: Finding[]) {
 	}
 	// `sqlplus user/password@db` (the last `@` ends a password that has one, `scott/pa@ss@orcl`).
 	for (const m of text.matchAll(
-		/(?:^|[;&|(\s]|\$ )sqlplus[ \t]+(?:-\w+[ \t]+)*["']?[\w.$#-]{1,60}\/((?:[^\s@'"]|@(?=[^\s@'"]*@)){3,4096})(?=@|["']?(?:[ \t]|$|[;&|\n]))/gm,
+		/(?:^|[;&|(\s]|\$ )sqlplus[ \t]+(?:-\w+[ \t]+)*["']?([\w.$#-]{1,60})\/((?:[^\s@'"]|@(?=[^\s@'"]*@)){3,4096})(?=@|["']?(?:[ \t]|$|[;&|\n]))/gm,
 	)) {
-		const pw = m[1];
-		if (endsLogin(text, m.index + m[0].length, pw))
+		const pw = m[2];
+		if (endsLogin(text, m.index + m[0].length, pw) && !isUserAsPassword(m[1], pw))
 			add(m.index + m[0].length - pw.length, pw, "structure:cli-password");
 	}
 	// A password written unquoted with a shell's operators in it (`-pXk9(mP2&vQ7`) runs to the next blank, as the person
@@ -1518,10 +1526,10 @@ function sqlPasswords(text: string, out: Finding[]) {
 		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too. (Up to a
 		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.
 		// Not MySQL's `IDENTIFIED BY RANDOM PASSWORD`, which makes one.)
-		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b|RANDOM\s+PASSWORD\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
+		/\b(?:CREATE(?:\s+OR\s+REPLACE)?|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b|RANDOM\s+PASSWORD\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
 		new RegExp(String.raw`\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?N?${single}`, "gi"),
 		new RegExp(
-			String.raw`\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*[NE]?${single}`,
+			String.raw`\b(?:CREATE(?:\s+OR\s+REPLACE)?|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*[NE]?${single}`,
 			"gi",
 		),
 		// MySQL's current password, which a password change authenticates with: `IDENTIFIED BY 'new' REPLACE 'old'`.
@@ -1534,8 +1542,16 @@ function sqlPasswords(text: string, out: Finding[]) {
 			// database as one (from its start, the last `;` before it): prose says a record "is identified by 'order_id'".
 			if (k === 0 && !inUserStatement(text, m.index)) continue;
 			// (A bind parameter, `:pw` or `?`, is never quoted and can't start the unquoted form: these are all literals.
-			// MySQL's `*<40 hex>` is a hash, passwordHashes's.)
-			if (pw.length < 3 || isInert(pw) || isPlaceholder(pw) || /^\*[0-9A-F]{40}$/.test(pw)) continue;
+			// MySQL's `*<40 hex>` is a hash, passwordHashes's. Nor dynamic SQL's string built around a variable, `'… PASSWORD =
+			// N''' + @pwd + ''';'`: its quotes are doubled in the string that holds the statement.)
+			if (
+				pw.length < 3 ||
+				isInert(pw) ||
+				isPlaceholder(pw) ||
+				/^\*[0-9A-F]{40}$/.test(pw) ||
+				/^''[ \t]*\+|\+[ \t]*''$/.test(pw)
+			)
+				continue;
 			const start = m.index + m[0].lastIndexOf(pw);
 			out.push({ start, end: start + pw.length, kind: "password", rule: "structure:sql-password", confidence: 0.95 });
 		}
@@ -1550,7 +1566,9 @@ function sqlPasswords(text: string, out: Finding[]) {
 function inUserStatement(text: string, at: number): boolean {
 	const before = text.slice(Math.max(0, at - 600), at);
 	const statement = before.slice(before.lastIndexOf(";") + 1);
-	return /\b(?:(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)|GRANT\b|CONNECT\s+TO|SET\s+PASSWORD)\b/i.test(statement);
+	return /\b(?:(?:CREATE(?:\s+OR\s+REPLACE)?|ALTER)\s+(?:USER|ROLE|LOGIN)|GRANT\b|CONNECT\s+TO|SET\s+PASSWORD)\b/i.test(
+		statement,
+	);
 }
 
 /**
@@ -1583,12 +1601,19 @@ function redisSessions(text: string, out: Finding[]) {
 		add(m.index + m[0].length - v.length - (m[3] === undefined ? 1 : 0), v, "structure:redis-auth");
 	}
 	// ACL rules, `ACL SETUSER bob on >pw ~* +@all` and an ACL file's `user bob on >pw …`: a password added (`>pw`) or
-	// removed (`<pw`). (A `#<hex>` is its hash, passwordHashes's.)
+	// removed (`<pw`). (A `#<hex>` is its hash, passwordHashes's.) Not a usage's slot, `SETUSER <username> <attribute>`,
+	// nor a template's or a doc's placeholder, `>REMITFLOW_APP_PASSWORD_PLACEHOLDER`, `>PASSWD`; and a Markdown code
+	// span's closing backtick is the page's: `` `ACL SETUSER default >newpass` ``.
 	for (const m of text.matchAll(/(?:\bSETUSER|^[ \t]*user)[ \t]+\S+([^\n]*)/gim)) {
 		const rules = m[1];
 		if (!/SETUSER/i.test(m[0]) && !/[ \t](?:on|off)(?=[ \t]|$)/.test(rules)) continue;
 		const base = m.index + m[0].length - rules.length;
-		for (const r of rules.matchAll(/(?<=[ \t])[<>](\S+)/g)) add(base + r.index + 1, r[1], "structure:redis-acl");
+		for (const r of rules.matchAll(/(?<=[ \t])[<>](\S+)/g)) {
+			if (/^<[^<>]+>$/.test(r[0])) continue;
+			const pw =
+				/`$/.test(r[1]) && /`/.test(text.slice(lineStart(text, m.index), base + r.index)) ? r[1].slice(0, -1) : r[1];
+			if (isLiteralPassword(pw)) add(base + r.index + 1, pw, "structure:redis-acl");
+		}
 	}
 	// Array replies: a credential-named element followed by its value.
 	for (const m of text.matchAll(

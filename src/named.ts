@@ -1371,14 +1371,10 @@ function assignedValue(
 	// An unquoted env value runs to the end of the line only as words (a dotenv passphrase); on a shell line it is one
 	// shell word (`PGPASSWORD=… psql -h db`, `export MYSQL_PWD=… && mysql`). A query string's value ends at its next
 	// pair, every `&` starting one (`oauth_consumer_key=…&oauth_nonce=…`, a percent-encoded one decoded; a password's
-	// own `&` starts none, `Tr0ub4dor&3horse`). So does a connection string's, written from its password on
-	// (`Password=…;Server=db;Database=app;User Id=sa`), at its next `;`: two more `Key=Value` pairs after it say what the
-	// line is, as a password's own `;` would not.
+	// own `&` starts none, `Tr0ub4dor&3horse`).
 	if (span && envLine && wholeLine) {
 		const value = text.slice(span[0], span[1]);
 		if (/^[^&\s]+(?:&[A-Za-z_][\w.-]{1,60}=[^&\s]*)+$/.test(value)) return [span[0], span[0] + value.indexOf("&")];
-		if (/^[^;\s]+(?:;[ \t]*[A-Za-z][\w .-]{0,40}=[^;\n]*){2,}$/.test(value))
-			return [span[0], span[0] + value.indexOf(";")];
 		return shellWordValue(text, span);
 	}
 	return span;
@@ -2762,6 +2758,9 @@ const CREDENTIAL_SENTENCE = new RegExp(`${CREDENTIAL_WORD}|code`, "i");
 const FIXED_WIDTH_HEADER =
 	/^[ \t|│┃║]*[A-Za-z_][\w.-]*(?:(?:[ \t]{2,}|[ \t]*[|│┃║][ \t]*)[A-Za-z_][\w.-]*)+[ \t|│┃║]*\r?$/;
 
+/** A config file's directive aligned to its value: `rootdn		"cn=Manager,dc=example,dc=com"`, `directory  /var/lib/ldap`. */
+const CONFIG_DIRECTIVE = /^[ \t]*[A-Za-z_][\w.-]*(?:\t|[ ]{2,})[ \t]*[^\s|│┃║]/;
+
 /** A table's rule line: dashes, equals signs, pluses, bars and box drawing (`----  ----`, `+----+`, `├────┼────┤`, `╚═══╩═══╝`). */
 const TABLE_RULE = /^[ \t]*[-+=|\u2500-\u257f][-+=|\u2500-\u257f \t]*\r?$/;
 
@@ -2838,6 +2837,10 @@ function columnTables(text: string, out: Finding[]) {
 		// A header is only column names, separated by two or more spaces or by box-drawing bars (`|` tables are pipeTables').
 		if (header.length > 2000 || header.includes("|") || !FIXED_WIDTH_HEADER.test(header)) continue;
 		if (isListingLine(header)) continue;
+		// A config file's directive and its value, not a header: slapd.conf's `rootpw  secret` under `rootdn  "cn=Manager,…"`,
+		// a line of the same `name  value` shape just above it. (Its credential's value is named.ts's to read, the lines
+		// below it are the file's other directives.)
+		if (CONFIG_DIRECTIVE.test(lines[i - 1] ?? "") && !FIXED_WIDTH_HEADER.test(lines[i - 1])) continue;
 		const cols: [number, number, string][] = [];
 		for (const c of header.matchAll(/[A-Za-z_][\w.-]{0,60}/g)) cols.push([c.index, c.index + c[0].length, c[0]]);
 		// A declaration, not a header: a struct's field and its type (`Password       string`, gofmt's alignment).
