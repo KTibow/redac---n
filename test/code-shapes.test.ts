@@ -743,3 +743,51 @@ test("a note in brackets goes on the label, and the value after its colon is jud
 	hidden("Password (required): Xk9mQ2vL7", "Xk9mQ2vL7");
 	kept("    password (str): Password for the account.", "Password for the account.");
 });
+
+test("an expression is code: an operand an operator follows, a variable numbered after its name, a keyword", () => {
+	for (const [text, value] of [
+		["    test1_pass = stages1 == stages2", "stages1"],
+		["    token = prefix + suffix", "prefix"],
+		["    password = primary or fallback", "primary"],
+		["        local_tree_pass = local_tree_pass2", "local_tree_pass2"],
+		["if len(local_tree_pass) >= len(local_tree_pass2):\n    local_tree_pass = local_tree_pass2", "= local_tree_pass2"],
+		["                    CONF_PASSWORD in merged_ota_esphome_configs_by_port[conf_port]", "in merged"],
+		["            Thread.pass while @thread.alive?", "while @thread"],
+		["type DNSServer struct {\n\tserial   int\n\ttsigKeys []TSigKey\n}", "[]TSigKey"],
+		["type Config struct {\n\tTSigKeys          []TSigKey\n}", "[]TSigKey"],
+		["  { confirmPassword: PwdConfirmationMode.Strict })", "PwdConfirmationMode.Strict"],
+	])
+		kept(text, value);
+	// (A shell's assignment is unspaced, and the command after `&&` is the next one.)
+	hidden("DB_PASSWORD=Xk9mQ2pLrT && mysql", "Xk9mQ2pLrT");
+	hidden("    password = Kx9mQ2vLp7", "Kx9mQ2vLp7");
+	hidden("requirepass Kx9mQ2vLp7Rt", "Kx9mQ2vLp7Rt");
+	hidden("api_token = api_token_9fQ2mLx7Rt", "api_token_9fQ2mLx7Rt");
+});
+
+test("a command substitution whose program a variable names is a reference, cut at its first blank or not", () => {
+	for (const line of [
+		'  VAULT_TOKEN=$("$binpath" write "auth/$AUTH_PATH/login/$USERNAME" password="$PASSWORD" | jq -r .auth.client_token)',
+		'otp_cred=$("$binpath" write -format=json "ssh/creds/$ROLE_NAME" ip="$IP")',
+		'API_TOKEN=$("${VAULT_BIN}")',
+	])
+		kept(line, line.slice(line.indexOf("=") + 1));
+	hidden("VAULT_TOKEN=Kx9mQ2vLp7Rt3Wz8nB5cTq", "Kx9mQ2vLp7Rt3Wz8nB5cTq");
+});
+
+test("a format string's fields are no secret: printf's with Java's %n, Python's {0:04x}, an f-string's holes", () => {
+	for (const [text, value] of [
+		["            json_key = '{0:04x}{1:04x}'.format(key.group, key.element).upper()", "{0:04x}{1:04x}"],
+		['    add("PASSWORD", "password=\'%s\'")', "password='%s'"],
+		[
+			'\t\t\tlogger.info(String.format("%n%nUsing generated security password: %s%n", user.getPassword()));',
+			"%n%nUsing generated security password: %s%n",
+		],
+		['    return ApiToken(tenant_id=t, token=f"test_token_{uuid.uuid4().hex[:8]}", type="app")', "test_token_"],
+		['    db.add(ApiToken(type="dataset", token=f"dataset-{uuid4()}"))', "dataset-{uuid4()}"],
+	])
+		kept(text, value);
+	hidden('conn = connect(host="db", password=\'fT"QR1B$%s%UXem\')', "UXem");
+	hidden('    client = Client(token=f"Kx9mQ2vLp7Rt3Wz8{suffix}")', "Kx9mQ2vLp7Rt3Wz8");
+	hidden('password = "x7%dK2!vQ"', "x7%dK2!vQ");
+});

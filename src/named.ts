@@ -239,14 +239,17 @@ function isHashWithWords(value: string): boolean {
  * after a type a variable (`char pass[]`).
  */
 function isPassInEnglish(before: string): boolean {
-	return /^(?:tests|cases|checks|builds|specs|assertions|suites|jobs|steps|runs|lints|linters|examples|scenarios|validations|benchmarks|things|all|first|second|third|final|last|next|one|two|three|each|every|both|single|double|another|initial|this|that)$/i.test(
+	return /^(?:tests|cases|checks|builds|specs|assertions|suites|jobs|steps|runs|lints|linters|examples|scenarios|validations|benchmarks|things|all|first|second|third|final|last|next|one|two|three|each|every|both|single|double|another|initial|this|that|\d+(?:st|nd|rd|th)|unexpected|expected)$/i.test(
 		before,
 	);
 }
 
-/** Under a bare `pass`, a snake_case identifier: a test's or a rule's name in a verdict list (`- pass: expired_command`), not a password. */
+/**
+ * Under a bare `pass`, a snake_case identifier: a test's or a rule's name in a verdict list (`- pass: expired_command`),
+ * or a Ruby symbol or keyword the verb passes (`pass <tt>:record_timestamps</tt>:` in RDoc), not a password.
+ */
 function isVerdictUnderPass(name: string, value: string): boolean {
-	return /^pass$/i.test(name) && /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(value);
+	return /^pass$/i.test(name) && /^:?[a-z][a-z0-9]*(?:_[a-z0-9]+)+:?$/.test(value);
 }
 
 /** An entity key: `ORDER#2026-09-30#o_4411`, `USER#42`. */
@@ -276,6 +279,18 @@ function isSettingOrSelfName(name: string, value: string): boolean {
 	return /[^\w]/.test(rest) && alnum < 4 && !(value.startsWith(name) && alnum > 0);
 }
 
+/** An unquoted value that is its own name numbered is another variable of the same kind: `local_tree_pass = local_tree_pass2`, `token = token_2`. */
+function isNumberedSelf(name: string, value: string): boolean {
+	return (
+		name.length >= 4 &&
+		value.toLowerCase().startsWith(name.toLowerCase()) &&
+		/^_?\d{1,2}$/.test(value.slice(name.length))
+	);
+}
+
+/** An operator after an unquoted word: the word is an operand, the value an expression (`test1_pass = stages1 == stages2`, `token = prefix + suffix`). */
+const OPERATOR_AFTER = /^[ \t]+(?:[=!]==?|&&|\|\||\?\?|[-+*/%]|and|or|if|is|in)[ \t]/;
+
 /**
  * Whether `value` under credential name `name` is a secret. Password-like names accept any literal
  * that isn't a common word or label; key-like names need something that isn't a word or identifier.
@@ -298,6 +313,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	)
 		return false;
 	const last = lastWord(name);
+	if (!/^\s*["'`]/.test(raw) && isNumberedSelf(name, value)) return false;
 	// A PIN is a few digits (`pin: GPIO21` is a hardware pin; a postal PIN code has an address around it).
 	// (Grouped digits too: `4821-7730`.)
 	// (A passcode of letters is a password: judged as one below.)
@@ -353,6 +369,9 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 			(/\s/.test(value) || /^[A-Z]{2,}$/.test(value) || /^\d+(?:[/.,]\d+)*%?$/.test(value))
 		)
 			return false;
+		// After another word, `pass` is still what a setting passes through or a step lets by, and a word in capitals its
+		// mode, quoted or not: Django's `SETTING_PASS="BOTH"`, `LAMBDA_PASS`. (A password in capitals has a digit.)
+		if (/(?:^|[-_. ])pass$/i.test(name) && /^[A-Z]{2,}$/.test(value)) return false;
 		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`.
 		if (
 			/^PASS(?:ED)?$/.test(name) &&
@@ -961,6 +980,16 @@ function assignments(text: string, out: Finding[]) {
 		const raw = text.slice(span[0], span[1]);
 		// A quoted value was read without its quotes; let the value tests see them.
 		const quoted = span[0] > at;
+		// An unquoted word an operator follows is an operand, the value an expression's (OPERATOR_AFTER). (Code spaces its
+		// `=`; a shell's assignment doesn't, and its `&&` runs the next command: `DB_PASSWORD=Xk9… && mysql`.)
+		if (
+			!quoted &&
+			op === "=" &&
+			!tight &&
+			/^[A-Za-z_$][\w$.]*$/.test(raw) &&
+			OPERATOR_AFTER.test(text.slice(span[1], span[1] + 8))
+		)
+			continue;
 		// Inside a call's or a signature's parentheses, an unquoted name before `)`, `,`, `|` or `=` is a parameter's type
 		// or a variable: `decode(secret: Base32SecretKey): …`, Swift's and Kotlin's `login(password: pw)`.
 		if (
@@ -1047,7 +1076,7 @@ function isAssignedName(text: string, m: RegExpExecArray, name: string): boolean
 	if (
 		/^pass$/i.test(name) &&
 		isPassInEnglish(
-			/(\p{L}+)[ \t]*["']?$/u.exec(text.slice(Math.max(0, m.index - 30), m.index + m[1].length))?.[1] ?? "",
+			/([\p{L}\d]*\p{L})[ \t]*["']?$/u.exec(text.slice(Math.max(0, m.index - 30), m.index + m[1].length))?.[1] ?? "",
 		)
 	)
 		return false;
@@ -1428,6 +1457,9 @@ function spacedPairs(text: string, out: Finding[]) {
 		if (/^[\w-]+:\s/.test(raw)) continue; // `PSK identity: None`: a label, then its own value
 		if (/^--?[A-Za-z]|^(?:&&|\|\||[|;>&])/.test(raw)) continue; // `htpasswd -nb admin pw`, `pwd && ls`: a command line
 		if (/^(?:->|=>|::|\?\.|<-)/.test(raw)) continue; // `LoginField.PASSWORD -> input.text`: a `when` arm, an operator
+		// A keyword of code after the name: a membership test, `CONF_PASSWORD in ota_conf`; a loop's or a condition's
+		// modifier, Ruby's `Thread.pass while @thread.alive?`.
+		if (/^(?:in|not in|instanceof|while|until|if|unless|or|and)[ \t]/.test(raw)) continue;
 		// A note or a type in brackets first (`password (optional)`, `token [required]`, a docstring's `password (str|None):`),
 		// a member (`.field`), code in braces (`{ get; set; }`). (A value in parentheses and nothing else, `password (12:30)`,
 		// is the prose rule's, which reads one: `the passwd (M34d0w)`.)
@@ -1748,12 +1780,25 @@ function setterCalls(text: string, out: Finding[]) {
 		// (`pass` alone is the verb: picobox's `@box.pass_("database_session")`. A hasher's name says what it's given, though
 		// it reads as a hash's: `password_hash`.)
 		if (!hasher && (!isCredentialName(callee) || /^pass_*$/i.test(callee))) continue;
+		// A plural is the collection the call works on, its argument one of its members or the source it splits: AssertJ's
+		// `containsOnlyKeys("3am-every-day")`, a formatter's `_fix_tokens(src)`. (A call that sets them says so,
+		// `setApiKeys("…")`.)
+		if (
+			!hasher &&
+			/(?:keys|tokens|secrets|passwords)_*$/i.test(callee) &&
+			!/^_*(?:[Ss]et|[Ww]ith|[Uu]se|[Aa]dd|[Pp]ut|[Ss]tore|[Ss]ave|[Uu]pdate)(?:_|[A-Z]|$)/.test(
+				callee.split(".").at(-1)!,
+			)
+		)
+			continue;
 		// (A keyword argument named for a credential, `password="…"`, or for the value the call sets, prefect's
 		// `Secret(value="…")`, is the secret's slot, and the positional arguments are then a service's and a user's; a
 		// hasher's first argument is read all the same, `make_password("…", salt="…")`. Other keywords are options:
 		// `set_password("…", commit=True)` is given its secret first.)
 		const slots = args.filter((a) => a.keyword && (isCredentialName(a.keyword) || a.keyword === "value"));
-		for (const a of slots) if (a.literal) namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
+		for (const a of slots)
+			if (a.literal && !holesOnly(a, hasher ? "password" : callee))
+				namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
 		if (slots.length && !hasher?.[1]) continue;
 		// The secret is the last argument, after a service and a user (`keyring.set_password("pgcli", key, passwd)` passes
 		// a variable); flags after it don't count (`setPassword("…", true)`). A credentials call takes a user, then the
@@ -1766,8 +1811,21 @@ function setterCalls(text: string, out: Finding[]) {
 		if (hasher?.[1]) secret = positional[0];
 		else if (!hasher && /credentials?$/i.test(callee) && positional.length >= 2) secret = positional[1];
 		// (Judged as the password a hasher is given, whatever its name reads as.)
-		if (secret?.literal) namedValue(out, hasher ? "password" : callee, secret.literal, "named:setter");
+		if (secret?.literal && !holesOnly(secret, hasher ? "password" : callee))
+			namedValue(out, hasher ? "password" : callee, secret.literal, "named:setter");
 	}
+}
+
+/**
+ * An interpolated string argument whose secret, if any, would be in its holes, which are code: `token=f"test_token_{uuid
+ * .uuid4().hex[:8]}"`, `$"key-{id}"`. Its literal part alone is judged, as assignments judge one.
+ */
+function holesOnly(arg: Argument, name: string): boolean {
+	return (
+		/^(?:[\w$]+[ \t]*[=:][ \t]*)?(?:[rR]?[fF][rR]?|\$@?|@\$)["']/.test(arg.text) &&
+		/\{[^{}]*\}/.test(arg.literal!.value) &&
+		!isNamedSecret(name, `"${arg.literal!.value.replace(/\{[^{}]*\}/g, "")}"`, true)
+	);
 }
 
 /**
@@ -2935,7 +2993,7 @@ function prose(text: string, out: Finding[]) {
 		const before =
 			words.length > 1
 				? words.at(-2)!
-				: (/(\p{L}+)[ \t]*$/u.exec(text.slice(Math.max(0, m.index - 30), m.index))?.[1] ?? "");
+				: (/([\p{L}\d]*\p{L})[ \t]*$/u.exec(text.slice(Math.max(0, m.index - 30), m.index))?.[1] ?? "");
 		if (/^pass$/i.test(lastWord(name)) && isPassInEnglish(before)) continue;
 		if (isVerdictUnderPass(name, withoutUnopenedClosers(m[4]))) continue;
 		const last = lastWord(name);
@@ -2965,7 +3023,7 @@ function prose(text: string, out: Finding[]) {
 		)
 			continue;
 		// (After `=` the sentence is code: `user_password = Arcfour(key).decrypt(…)`; and so it is when code's punctuation
-		// follows, `password: proxyPass);`, or the value ends a literal's last entry (isLastEntry). A template's hole,
+		// follows, `password: proxyPass);`, `{ confirmPassword: PwdConfirmationMode.Strict })`, or the value ends a literal's last entry (isLastEntry). A template's hole,
 		// `{c.Password}`, `v2-cache-{{`, and a symbol, `[:public]`, aren't values.)
 		// (A reference, a member's path or a call, or a type is code wherever it's written:
 		// `pass: process.env.SMTP_PASSWORD`, `password: this.data.password`, `password: SecretStr`; a bare name isn't,
@@ -2973,7 +3031,7 @@ function prose(text: string, out: Finding[]) {
 		// `password: lambda: secrets["db"]`.)
 		if (
 			((/=/.test(m[2]) ||
-				/^[);,]/.test(text.slice(end)) ||
+				/^(?:[);,]|[ \t]+})/.test(text.slice(end)) ||
 				(/^[ \t]*\r?$/.test(text.slice(end, lineEndAt(text, end))) && isLastEntry(text, m.index))) &&
 				isCode(value)) ||
 			isCode(value, true) ||
@@ -2982,6 +3040,9 @@ function prose(text: string, out: Finding[]) {
 		)
 			continue;
 		if (/\{\{|^\[?:[a-z_]\w*\]?$/.test(value) || (text[m.indices![4]![0] - 1] === "{" && /\}$/.test(value))) continue;
+		// (After `=`, an operand or the name's own sibling variable: `test1_pass = stages1 == stages2`, `x_pass = x_pass2`.)
+		if (/=/.test(m[2]) && !m[3] && (OPERATOR_AFTER.test(text.slice(end, end + 8)) || isNumberedSelf(name, value)))
+			continue;
 		const start = m.indices![4]![0];
 		if (
 			/^(PIN|SEED|MNEMONIC|PHRASE|SIG|SIGNATURE)$/.test(last) &&
@@ -3518,7 +3579,8 @@ function labelledProse(text: string, out: Finding[]) {
 			namedFinding(out, start, phrase, noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 			return;
 		}
-		const v = m[2].replace(/[.,;:)]+$/, "");
+		// (A string's escaped line break ends it, though the value's reading ran on through it: `"The secret is foo\n"`.)
+		const v = m[2].replace(/(?:\\[nrt])+$/, "").replace(/[.,;:)]+$/, "");
 		if (/^https?:\/\//.test(v) || !accept(noun, v)) return;
 		namedFinding(out, start, withBangs(text, start + v.length), noun.replace(/\s+/g, "_"), "named:prose-label", 0.85);
 	};

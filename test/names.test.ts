@@ -697,6 +697,46 @@ test("a PIN's name is one predicate everywhere", () => {
 	kept("GPIO_PIN=21", "21");
 });
 
+test("a numbered pin is a PIN by its name, so a board's pin under one is kept", () => {
+	for (const line of [
+		"substitutions:\n  light_platform: rp2040_pwm\n  pin1: GPIO2\n  pin2: GPIO3\n",
+		"substitutions:\n  i2s_din_pin1: GPIO33\n  i2s_din_pin2: GPIO34\n",
+	])
+		kept(line, line);
+	hidden("door_pin2: 482193", "482193");
+	hidden("pin1=7391", "7391");
+});
+
+test("a call on a plural, or on a shell's token, sets no credential; a setter of one does", () => {
+	for (const [line, value] of [
+		['    assertThat(triggers).containsOnlyKeys("3am-every-day");', "3am-every-day"],
+		["    assert _fix_tokens(\"ur'\\\\s\\\\u2603'\", min_version=(3,)) == \"'\\\\\\\\s\\\\u2603'\"", "ur'"],
+		['    assert ninja_helper.shell_token("-DMASK=(1<<3)") == _q("-DMASK=(1<<3)")', "-DMASK=(1<<3)"],
+	])
+		kept(line, value);
+	hidden('cfg.setApiKeys("Kx9mQ2vLp7Rt3Wz8nB5c");', "Kx9mQ2vLp7Rt3Wz8nB5c");
+	hidden('client.withToken("Kx9mQ2vLp7Rt3Wz8nB5c");', "Kx9mQ2vLp7Rt3Wz8nB5c");
+	hidden('cfg.setPassword("Tr0ub4dor&3x");', "Tr0ub4dor&3x");
+});
+
+test("a value a test names after a placeholder's words is a stand-in, read past its separators and quotes", () => {
+	for (const [line, value] of [
+		['yaml_content = """key1: value1 # inline comment\nkey2: value2"""', "value2"],
+		['        set_env({"DICT": "key1=1,key2=2"})', "key1=1,key2=2"],
+		["2. To use it as string, quote the value: key='value1,value2'", "value1,value2"],
+		["    'custom_token=value123'", "value123"],
+	])
+		kept(line, value);
+	hidden("api_key = 'value9Kx2mQ'", "value9Kx2mQ");
+	hidden("key2: Kx9mQ2vLp7,Rt3Wz8", "Kx9mQ2vLp7,Rt3Wz8");
+});
+
+test("a plural setting word is a setting too: a password's policies are no password", () => {
+	kept("passwordPolicies: ['DisablePasswordExpiration', 'DisableStrongPassword'],", "DisablePasswordExpiration");
+	kept("passwordPolicies: 'DisablePasswordExpiration,DisableStrongPassword',", "DisableStrongPassword");
+	hidden("passwordProfile: { password: 'Kx9!mQ2vLp7' },", "Kx9!mQ2vLp7");
+});
+
 test("a device's published default PIN is kept, anywhere else a PIN is hidden", () => {
 	kept("The default Bluetooth PIN is 0000 (some use 1234).", "0000");
 	hidden("pin_value=0000", "0000");
