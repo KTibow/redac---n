@@ -153,13 +153,18 @@ test("a phrase one word per line, deeply indented, is found", () => {
 	}
 });
 
-test("a phrase is found on its own line, after a label anywhere on its line, in curly quotes and before a 13th word", () => {
+test("a phrase is found on its own line, after a label or a command on its line, numbered, in curly quotes and before a 13th word", () => {
 	const forms: ((p: string[]) => string)[] = [
 		([p]) => `Here is the seed for the old one\n${p}`,
 		([p]) => `Seed phrase: ${p}`,
 		([p]) => `Copy this seed phrase: ${p}`,
 		([p]) => `My seed is “${p}”`,
 		([p]) => `${p}. Keep it safe`,
+		// Quoted after list words that start the line, a command's; numbered `1) word`, one a line.
+		([p]) => `echo "${p}" | wallet import`,
+		([p]) => `save salt '${p}'`,
+		([p]) => p.split(" ").map((w, i) => `${i + 1}) ${w}`).join("\n"),
+		([p]) => p.split(" ").map((w, i) => `(${i + 1}) ${w}`).join("\n"),
 		// Several, one a line: past 30 words, and past 48.
 		(p) => p.slice(0, 3).join("\n"),
 		(p) => p.join("\n"),

@@ -1651,7 +1651,7 @@ function mnemonics(text: string, out: Finding[]) {
 	const list = bip39();
 	// Runs of list words in any case, separated by anything without letters: blanks, commas, quotes, numbering
 	// (`1. slow 2. core`), bullets, line breaks (`['slow', 'core', …]`, `Slow Core Trial`, one word per line).
-	const words: { word: string; start: number; end: number; lineBreakBefore: boolean }[] = [];
+	const words: Phrase = [];
 	const flush = () => {
 		if (words.length >= 12) findPhrases(words, list, out);
 		words.length = 0;
@@ -1675,8 +1675,10 @@ function mnemonics(text: string, out: Finding[]) {
 			const gap = last < 0 ? "" : text.slice(last, at);
 			// (A line's indentation is one separator, not twelve. Code's joints and operators separate no phrase's words:
 			// `chunk.item.type == "…"`, `model_dump`, `ignore_index=True`.)
-			if (gap.replace(/\s+/g, " ").length > MAX_PHRASE_GAP || /[_=()]|\.(?=[A-Za-z])/.test(gap)) flush();
-			words.push({ word: w, start: at, end, lineBreakBefore: /\n/.test(gap) });
+			// (A list's numbering is no joint: `1) salt\n2) pear`, `(1) salt (2) pear`.)
+			const joints = gap.replace(/(?:^|\s)\(?\d{1,2}[.)]/g, " ");
+			if (gap.replace(/\s+/g, " ").length > MAX_PHRASE_GAP || /[_=()]|\.(?=[A-Za-z])/.test(joints)) flush();
+			words.push({ word: w, start: at, end, lineBreakBefore: /\n/.test(gap), opensValue: /["'`“‘:[]/.test(gap) });
 		} else flush();
 		last = end;
 		at = end;
@@ -1694,20 +1696,29 @@ const MAX_PHRASE_GAP = 12;
 const LABEL_WORDS = new Set(["seed", "phrase", "secret", "key", "word", "list", "private"]);
 
 /**
- * Windows of 12–24 words with a valid checksum (published phrases aside), longest first, each word in one at most.
- * A window starts a run or a line, or follows a label of list words on its line (`Seed phrase: slow core …`).
- * In a run longer than 48 words (a word list, or several phrases on their own lines) only whole lines count.
+ * A run of list words, each with where it is, whether a line break comes before it, and whether a quote, a colon or
+ * a bracket does (a value opening there).
  */
-function findPhrases(
-	words: { word: string; start: number; end: number; lineBreakBefore: boolean }[],
-	list: Map<string, number>,
-	out: Finding[],
-) {
+type Phrase = { word: string; start: number; end: number; lineBreakBefore: boolean; opensValue: boolean }[];
+
+/**
+ * Windows of 12–24 words with a valid checksum (published phrases aside), longest first, each word in one at most.
+ * A window starts a run or a line, or follows a label of list words on its line (`Seed phrase: slow core …`), or
+ * opens a quoted value after up to two list words that start its line (a command's: `echo "salt pear …" | wallet
+ * import`). In a run longer than 48 words (a word list, or several phrases on their own lines) only whole lines count.
+ */
+function findPhrases(words: Phrase, list: Map<string, number>, out: Finding[]) {
 	const long = words.length > 48;
+	let lineStart = 0;
 	for (let i = 0; i < words.length; i++) {
 		const startsLine = i === 0 || words[i].lineBreakBefore;
+		if (startsLine) lineStart = i;
 		// (A label may follow other list words on its line: `Copy this seed phrase: slow core …`.)
-		if (!startsLine && (long || !LABEL_WORDS.has(words[i - 1].word))) continue;
+		if (
+			!startsLine &&
+			(long || (!LABEL_WORDS.has(words[i - 1].word) && !(words[i].opensValue && i - lineStart <= 2)))
+		)
+			continue;
 		for (const n of [24, 21, 18, 15, 12]) {
 			if (i + n > words.length) continue;
 			const endsLine = i + n === words.length || words[i + n].lineBreakBefore;
