@@ -127,18 +127,10 @@ function* copyCells(text: string, wants?: (table: string, columns: string[]) => 
  */
 function sqlLiteral(text: string, value: Argument, depth = 0): Literal | undefined {
 	if (value.literal) return value.literal;
-	const dollar = /^\$([A-Za-z_]\w{0,30})?\$/.exec(value.text);
-	if (dollar) {
-		const close = value.text.indexOf(dollar[0], dollar[0].length);
-		const rest = close < 0 ? "" : value.text.slice(close + dollar[0].length);
-		if (close < 0 || !CAST_TAIL.test(rest)) return undefined;
-		const start = value.start + dollar[0].length;
-		return { value: value.text.slice(dollar[0].length, close), start, end: value.start + close, quote: dollar[0] };
-	}
 	const literal = literalAt(text, value.start);
 	if (literal && literal.end < value.end) {
 		const rest = text.slice(literal.end + 1, value.end);
-		return CAST_TAIL.test(rest) || (depth > 0 && AS_TYPE.test(rest)) ? literal : undefined;
+		return CAST_TAIL.test(rest) ? literal : undefined;
 	}
 	// (A function's first argument, read the same way: not too deep to stay cheap.)
 	const call = /^[A-Za-z_][\w.]{0,60}[ \t]*\(/.exec(value.text);
@@ -154,8 +146,6 @@ function sqlLiteral(text: string, value: Argument, depth = 0): Literal | undefin
 
 /** What may follow a string and leave it the value: Postgres' casts, `::text`, `::character varying(255)`, `::bytea[]`. */
 const CAST_TAIL = /^(?:[ \t]*::[ \t]*[A-Za-z_][\w ."]{0,60}?(?:\([\d, ]{1,12}\))?(?:\[\])?)*[ \t]*$/;
-/** The type `CAST('…' AS text)` gives its string. */
-const AS_TYPE = /^[ \t]+AS[ \t]+[A-Za-z_][\w ."]{0,60}(?:\([\d, ]{1,12}\))?[ \t]*$/i;
 
 /** A row's value with the string it gives its column as its literal (sqlLiteral). */
 function withLiteral(text: string, value: Argument): Argument {

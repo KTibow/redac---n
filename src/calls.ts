@@ -288,7 +288,7 @@ function argument(text: string, start: number, end: number): Argument {
 	if (lit && LITERAL_TAIL.test(text.slice(lit.end + 1, end))) arg.literal = lit;
 	else if (!head) {
 		// A converter given the literal, the value it makes: `Buffer.from("…", "utf8")`, `Secret::new("…")`.
-		const converted = convertedLiteral(text, start + (arg.keyword ? KEYWORD.exec(arg.text)![0].length : 0));
+		const converted = convertedLiteral(text, start + (keyword?.[0].length ?? 0));
 		if (converted && converted.close < end && LITERAL_TAIL.test(text.slice(converted.close + 1, end)))
 			arg.literal = converted;
 	}
@@ -304,7 +304,8 @@ const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\
  * or a digest that is given a password to hash, `MD5(`, `crypt(`, `hashlib.sha256(`, whose input is the password still.
  */
 const CONVERTER =
-	/^(?:new[ \t]+)?(?:\[\])?(?:[\w.]|::|\(\)){0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes?|String|str|Uint8Array|parse|Parse)(?:[\w.]|::){0,40}\(|^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|MD5|sha1?|SHA1?|sha2|SHA2|sha(?:224|256|384|512)|SHA(?:224|256|384|512)|crypt|CRYPT|digest|DIGEST|hashpw)[ \t]*\(/;
+	/^(?:new[ \t]+)?(?:\[\])?(?:[\w.]|::|\(\)){0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes?|String|str|Uint8Array|parse|Parse)(?:[\w.]|::){0,40}\(/;
+const DIGEST = /^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|sha(?:1|2|224|256|384|512)?|crypt|digest|hashpw)[ \t]*\(/i;
 
 /**
  * The literal a converter at `at` is given, the value it makes (CONVERTER), and where the converter's call closes.
@@ -312,7 +313,8 @@ const CONVERTER =
  * encoding's name.)
  */
 export function convertedLiteral(text: string, at: number): (Literal & { close: number }) | undefined {
-	const converter = CONVERTER.exec(text.slice(at, at + 120));
+	const head = text.slice(at, at + 120);
+	const converter = CONVERTER.exec(head) ?? DIGEST.exec(head);
 	if (
 		!converter ||
 		/(?:^(?:new[ \t]+)?|\.|::)(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0])
