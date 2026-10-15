@@ -303,8 +303,12 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 		(v) => {
 			const m = /^[$%@&]\{([\w.-]{1,80})(?:(?::?[-?=+]|:)[^}]{0,80})?\}$/.exec(v);
 			const ps = /^\$(?:env:([A-Za-z_]\w{0,80})|\{env:([A-Za-z_]\w{0,80})\}|\(\$env:([A-Za-z_]\w{0,80})\))$/i.exec(v);
-			// (A long name reads as words: `$rqcy7duhdjbjv` is a password.)
-			const reads = (name: string) => name.length <= 8 || naturalness(name.replace(/[_.-]+/g, " ")) > 0;
+			// (A long name reads as words: `$rqcy7duhdjbjv` is a password; and a short one switches between letters and
+			// digits once at most, `$pass1`, `$x509`: `$kd9xqz2m` is a password.)
+			const reads = (name: string) =>
+				name.length <= 8
+					? (name.match(/[A-Za-z](?=\d)|\d(?=[A-Za-z])/g)?.length ?? 0) < 2
+					: naturalness(name.replace(/[_.-]+/g, " ")) > 0;
 			// (Lower case with digits closing it reads as a password: `$summer2024`, not `$db_pass2`.)
 			return (
 				(!!m && isRefName(m[1])) ||
@@ -369,9 +373,17 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 					isReferencePath(m[3]) &&
 					(m[1] !== undefined || m[3].includes("/") || (m[2] === "env" && /^[A-Z_][A-Z0-9_]*$/.test(m[3])))
 				);
+			// (An ARN's name as RDS makes it holds a `!`: `secret:rds!db-<uuid>-AbCdEf`. A Google resource name needs no
+			// scheme: `projects/123/secrets/db-password/versions/latest`. Azure's App Service reads Key Vault from
+			// `@Microsoft.KeyVault(SecretUri=…)` or `(VaultName=…;SecretName=…)`.)
+			const gcp = /^projects\/([\w-]{1,64})\/secrets\/([\w-]{1,255})(?:\/versions\/(?:\d+|latest))?$/.exec(v);
 			return (
 				/^credentialsJSON:[0-9a-f-]{36}$/.test(v) ||
-				/^arn:aws[\w-]*:(?:secretsmanager|ssm|kms):[a-z0-9-]*:(?:\d{12})?:[\w/:+=.@*${}-]+$/.test(v)
+				/^arn:aws[\w-]*:(?:secretsmanager|ssm|kms):[a-z0-9-]*:(?:\d{12})?:[\w/:+=.@*${}!-]+$/.test(v) ||
+				(!!gcp && isReferencePath(`${gcp[1]}/${gcp[2]}`)) ||
+				/^@Microsoft\.KeyVault\((?:SecretUri=https:\/\/[\w.-]+\/secrets\/[\w-]+(?:\/[\w-]*)?|VaultName=[\w-]+;\s*SecretName=[\w-]+(?:;\s*SecretVersion=\w+)?)\)$/i.test(
+					v,
+				)
 			);
 		},
 	],
@@ -424,7 +436,11 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 			/^\$__(?:env|file|vault)\{[^}\n]{1,200}\}$/.test(v) ||
 			/^%\{(?:::)?[A-Za-z_][\w:]*(?:\([^}\n]{0,200}\))?\}$/.test(v) ||
 			/^@@\{[^}\n]{1,100}\}@@$/.test(v) ||
-			/^\[%key:[\w:]{1,200}%\]$/.test(v),
+			/^\[%key:[\w:]{1,200}%\]$/.test(v) ||
+			// Concourse, BOSH and CredHub (`((db_pass))`, `((/main/db.password))`), and Azure Pipelines' runtime
+			// expressions (`$[variables.dbPassword]`): a path of names.
+			(/^\(\([\w./:-]{1,200}\)\)$/.test(v) && isReferencePath(v.slice(2, -2))) ||
+			/^\$\[\s*variables(?:\.[\w.-]{1,100}|\[['"][\w.-]{1,100}['"]\])\s*\]$/.test(v),
 	],
 	// A placeholder after a prefix: `sk.<ask-in-#atlas-dev>`, `ghp_<your token>`; in words: `<from vault: "Android upload keystore">`,
 	// `<your-key>`; names in brackets, a path of them too: `<SecretsManager:prod/db>` (not `<Xk9p>`); marked: `change-me`,
@@ -616,9 +632,10 @@ export function isPath(path: string): boolean {
 	if (/^[a-z0-9_-]+(?:\/[a-z0-9_.-]+)*\/[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.[a-z0-9]{1,8}$/.test(value))
 		return value.split(/[/._-]/).every((seg) => (seg.match(/[a-z](?=\d)|\d(?=[a-z])/g)?.length ?? 0) <= 3);
 	// (Rooted at a variable too: `$HOME/.config`, `$PWD/.kube/config`, `${GITHUB_WORKSPACE}/out`. Braces only around a
-	// name, a variable's or a template's: `/srv/{app}/logs`, not `/srv/{4}/x`.)
+	// name, a variable's or a template's: `/srv/{app}/logs`, not `/srv/{4}/x`. A drive's path with either slash:
+	// `C:\Users\me\.ssh\id_rsa`, `C:/Users/me/.ssh/id_rsa`.)
 	if (
-		!/^(\.{1,2}\/|~\/|\/|\$\{?[A-Za-z_]\w*\}?\/|[A-Za-z]:\\)[\w.\-/+@${}\\ ]+$/.test(value) ||
+		!/^(\.{1,2}\/|~\/|\/|\$\{?[A-Za-z_]\w*\}?\/|[A-Za-z]:[\\/])[\w.\-/+@${}\\ ]+$/.test(value) ||
 		!/[/\\]/.test(value.slice(1)) ||
 		/[{}]/.test(value.replace(/\$?\{[A-Za-z_]\w*\}/g, ""))
 	)
@@ -634,6 +651,10 @@ export function isPath(path: string): boolean {
  */
 export function isGeneratedSegment(seg: string): boolean {
 	const mixed = /[a-z]/.test(seg) && /[A-Z]/.test(seg);
+	// (A long name of parts a person joined is judged by its parts: `Wildcard-Cert2024.pem`, `Build-Pipeline-v2`.)
+	const parts = seg.split(/[-_.]+/).filter(Boolean);
+	if (mixed && /\d/.test(seg) && seg.length >= 16 && !/[$+@ ]/.test(seg) && parts.length > 1)
+		return parts.some(isGeneratedSegment);
 	if (mixed && /\d/.test(seg) && (seg.length >= 16 || /[$+@ ]/.test(seg) || (seg.length >= 5 && !isNameLike(seg))))
 		return true;
 	if (mixed && /[A-Za-z0-9]\+[A-Za-z0-9]/.test(seg)) return true;
@@ -802,9 +823,10 @@ export function isBalanced(s: string): boolean {
  * (A bare variable in capitals, after no letter, digit or `$`: `Pa$$WORD`, `P@$SWORD1` keep letters of their own.)
  */
 function isExpansionsOnly(v: string): boolean {
+	// (A name switching between letters and digits twice or more is a password after a `$`: `$X7K2M9QP`.)
 	const rest = v.replace(
 		/\$\{[^{}]{1,80}\}|(?<![\p{L}\p{N}$])\$[A-Z_][A-Z0-9_]{2,40}(?![\w$])|%[A-Z_][A-Z0-9_]{2,40}%/gu,
-		"",
+		(m) => (/^\$\w+$/.test(m) && (m.match(/[A-Z](?=\d)|\d(?=[A-Z])/g)?.length ?? 0) >= 2 ? m : ""),
 	);
 	// (One variable at least: `!@#$%^&*()` is a password of symbols.)
 	return rest !== v && !/[\p{L}\p{N}]/u.test(rest);
@@ -1513,7 +1535,11 @@ export function isBenignValue(value: string): boolean {
 		/^(?:\d+:)?\d+(?:\.\d+)+(?:\.[a-z]+\d*)?(?:[-+~][\w.]*)+$/.test(v) ||
 		/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(v) || // dates
 		ALGORITHM.test(v) ||
-		/^(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|mod|win|control|command)\+)+\S{1,12}$/i.test(v) || // key chords
+		// Key chords, `ctrl+shift+F12`, `Cmd+K,Cmd+S`: the key after the modifiers is one character or a key's name, so a
+		// password that starts with a modifier's word, `Super+Admin2024!`, isn't one.
+		/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|mod|win|control|command)\+)+(?:\S|f\d{1,2}|enter|return|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown|pgup|pgdn|insert|ins|plus|minus|equal|comma|period|slash|backslash|backquote|pause|break|printscreen|prtsc|capslock|numlock|scrolllock|numpad\d|(?:arrow)?(?:up|down|left|right))(?:,|$))+$/i.test(
+			v,
+		) ||
 		// Key chords with `-`, a key's name after them, in a sequence: Docker's `ctrl-p,ctrl-q`, Emacs's `C-x`, an editor's
 		// `Down|Ctrl-N`, `Command-Left|Home|Ctrl-A`. (A key named alone, `Home`, only in a list.)
 		/^(?:(?:(?:ctrl|cmd|alt|shift|meta|option|opt|super|control|command|[CMS])-)+(?:[a-z0-9@[\]\\^_]|f\d{1,2}|enter|esc|escape|tab|space|up|down|left|right|home|end|delete|del|backspace|pageup|pagedown|insert)(?:[,|]|$))+$/i.test(
@@ -1640,10 +1666,8 @@ export function isCredentialReference(value: string): boolean {
  * layer's `encrypted` veto), is ciphertext, whose key isn't there.
  */
 export const ENCRYPTION_WRAPPER = String.raw`ENC\[[A-Z0-9_]+,data:|ENC\(|\{cipher\}|\$\{VAULT::(?:[^:}\s]+::){0,3}|\[enc:\w+:|\bEV\[\d+:(?:[A-Za-z0-9+/=]+:)?`;
-// (Jenkins's `hudson.util.Secret`, `{AQAAABAAAA…}`: a version byte and the IV's length, then the IV and the ciphertext.)
-const ENCRYPTED_VALUE = new RegExp(
-	String.raw`^(?:${ENCRYPTION_WRAPPER}|ENC\[|!vault\b|\$ANSIBLE_VAULT|\{?AQAAABAAAA[A-Za-z0-9+/]{30,}={0,2}\}?$)`,
-);
+// (Not Jenkins's `hudson.util.Secret`, `{AQAAABAAAA…}`: its key sits on the same machine, policy.ts.)
+const ENCRYPTED_VALUE = new RegExp(String.raw`^(?:${ENCRYPTION_WRAPPER}|ENC\[|!vault\b|\$ANSIBLE_VAULT)`);
 
 /** Default passwords and words that show up in ordinary output, too common to be anyone's secret. */
 export const COMMON_WORDS = new Set([

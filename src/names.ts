@@ -411,6 +411,8 @@ const IDENTIFIER_WORDS = new Set([
 	"ACCOUNT",
 	"TENANT",
 	"ORG",
+	"ORGANIZATION",
+	"ORGANISATION",
 	"TEAM",
 	"CHANNEL",
 	"STYLE",
@@ -418,6 +420,7 @@ const IDENTIFIER_WORDS = new Set([
 	"UUID",
 	"GUID",
 	"REF",
+	"REFERENCE",
 	"KIND",
 	"TYPE",
 	"MODE",
@@ -480,6 +483,9 @@ const HASH_WORDS = new Set([
 	"COMMIT",
 	"REV",
 	"REVISION",
+	// (A release is the build's commit or version: Sentry's, Langfuse's, Bugsnag's `SENTRY_RELEASE=<sha>`.)
+	"RELEASE",
+	"VCS",
 	"FINGERPRINT",
 	"CRC",
 	"CRC32",
@@ -1434,7 +1440,7 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	if (
 		HASH_WORDS.has(last) ||
 		/^(SHA|MD|BLAKE|CRC)\d*$/.test(last) ||
-		(last === "ID" && core.some((x) => HASH_WORDS.has(x)))
+		(/^(?:ID|NUMBER|NUM)$/.test(last) && core.some((x) => HASH_WORDS.has(x)))
 	)
 		return "hash";
 	if (IDENTIFIER_WORDS.has(last)) return "identifier";
