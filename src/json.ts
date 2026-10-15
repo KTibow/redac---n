@@ -40,11 +40,10 @@ export const TOOL_CONTENT_KEYS = [
 
 /**
  * A key that names a command line by its last word, in any case and joining (`CommandLine`, Windsurf's run_command
- * input; `commandLine`, `bash_command`, `COMMAND_LINE`, `shellCmd`), or one of the tool keys.
+ * input; `commandLine`, `bash_command`, `COMMAND_LINE`, `shellCmd`; vercel.json's `buildCommand`), or one of the tool
+ * keys.
  */
 const COMMAND_KEY = String.raw`(?:(?:[A-Za-z\d]*[a-z\d](?=[A-Z])|[\w-]*[_-])?(?:command|Command|COMMAND|cmd|Cmd|CMD)(?:[_-]?(?:line|Line|LINE))?|${TOOL_COMMAND_KEYS.join("|")})`;
-/** Whether a tool input's key names the command line it runs: TOOL_COMMAND_KEYS, or a key COMMAND_KEY reads as one. */
-export const isCommandKey = (key: string): boolean => new RegExp(String.raw`^${COMMAND_KEY}$`).test(key);
 /** The keys tools take text under: an editor's `new_string`, a writer's `content`, a shell's `command`, a tool's `input`. */
 const TOOL_TEXT_KEY = String.raw`(?:${[...TOOL_CONTENT_KEYS, COMMAND_KEY, "input"].join("|")})`;
 const TOOL_TEXT_ARGUMENT = new RegExp(String.raw`"${TOOL_TEXT_KEY}"[ \t]*:[ \t]*"`);

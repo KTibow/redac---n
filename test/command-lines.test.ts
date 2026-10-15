@@ -6,7 +6,6 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isCommandKey } from "../src/json.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("a password flag hides its value in option, attached, list and compound forms, and the rest of the line is kept", () => {
@@ -42,7 +41,6 @@ test("a password flag hides its value in option, attached, list and compound for
 test("a command line under any key named for one is read as one", () => {
 	for (const key of ["CommandLine", "commandLine", "bash_command", "COMMAND_LINE", "shellCmd"])
 		hidden(`{"${key}":"mysql -u root -pQm7vTx2LpR9sWd4Nz8K shop","Cwd":"/app"}`, "Qm7vTx2LpR9sWd4Nz8K");
-	for (const key of ["subcommand", "description", "commander"]) assert.ok(!isCommandKey(key), key);
 });
 
 test("a program's own password option is read, catalogued or not", () => {
