@@ -234,3 +234,29 @@ test("a sign-in link's token follows its segment and a word that qualifies it; a
 	// (A web link's: a file's path is no link anyone opens.)
 	kept("file:///srv/app/reset/Xk9mQ2pLrT7vW3nB8yZ4cD6f.txt", "Xk9mQ2pLrT7vW3nB8yZ4cD6f.txt");
 });
+
+test("a long random token is hidden under a collection's plural and before a feed's or a download's extension", () => {
+	const token = "RDawDeMmwBAfIonz1nwZvmbIQgys7bwF";
+	for (const text of [
+		`SLACK_WEBHOOK=https://chat.example.com/integrations/${token}`,
+		`curl -X POST -d 'content=Deploy finished' https://3.basecamp.com/3180705/integrations/${token}/buckets/1/chats/2/lines`,
+		`WEBHOOK_URL=https://api.example.com/v2/endpoints/${token}`,
+		`{"webhook": "https://api.example.com/v2/relays/${token}"}`,
+		...["ics", "xml", "rss", "zip", "pdf"].map(
+			(ext) => `curl -fsS https://calendar.example.com/subscribe/${token}.${ext} -o out`,
+		),
+	])
+		hidden(text, token);
+	// IDs services generate are shorter (Spotify's 22, Firestore's 20, ElevenLabs' voice 20), and an image or a page
+	// asset is named by its ID on any host.
+	for (const [text, id] of [
+		["https://api.spotify.com/v1/tracks/4uLU6hMCjMI75M1A2tKUQC", "4uLU6hMCjMI75M1A2tKUQC"],
+		[
+			"https://firestore.googleapis.com/v1/projects/p/databases/x/documents/users/aB3dE5fG7hI9jK1lM3nO",
+			"aB3dE5fG7hI9jK1lM3nO",
+		],
+		["https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5?output_format=mp3", "MEpx6aWSUhHeOdc1CcZ5"],
+		...["png", "jpg", "webp", "css"].map((ext) => [`https://example.com/u/${token}.${ext}`, token]),
+	])
+		kept(text, id);
+});
