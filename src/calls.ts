@@ -228,10 +228,19 @@ const LITERAL_HEAD = new RegExp(
 	String.raw`^(?:([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))[ \t]*)?((?:Some|String::from|SecretStr|Secret)\([ \t]*)?(${STRING_PREFIX})?(["'\x60])`,
 );
 /**
- * What may follow a literal and leave it the value: a Rust raw string's closing `#`s, the wrapper's `)`, a conversion
- * (`.to_string()`, `.encode()`).
+ * A method that converts the value it is called on and takes no other: `.to_string()`, `.encode("utf-8")`,
+ * `.getBytes(StandardCharsets.UTF_8)`, `.toCharArray()`, `.trim()`. Its argument, if any, is a constant (an encoding,
+ * a number, a name in capitals or with a dot), not a variable a method would combine the value with: `.concat(x)`,
+ * `", ".join(parts)`.
  */
-const LITERAL_TAIL = /^#*(?:[ \t]*\))?(?:\.(?:to_string|into|to_owned|encode|strip)\(\))?[ \t]*$/;
+const CONVERSION = String.raw`\.[A-Za-z_]\w{0,30}\([ \t]*(?:"[\w.-]{0,20}"|'[\w.-]{0,20}'|\d{1,5}|[A-Z][A-Z0-9_]{1,30}|[A-Za-z_]\w{0,30}(?:(?:\.|::)\w{1,30}){1,3})?[ \t]*\)`;
+/**
+ * What may follow a literal and leave it the value: a Rust raw string's closing `#`s, the wrapper's `)`, and up to
+ * three conversions (CONVERSION).
+ */
+const LITERAL_TAIL = new RegExp(
+	String.raw`^#*(?:[ \t]*\))?(?:CONVERSION){0,3}[ \t]*$`.replace("CONVERSION", CONVERSION),
+);
 const KEYWORD = /^([A-Za-z_$][\w$]*)[ \t]*(?:=(?![=>])|:(?!:))/;
 
 export interface LiteralHead {
@@ -265,7 +274,43 @@ function argument(text: string, start: number, end: number): Argument {
 	const head = literalHead(text, start, { keyword: true });
 	const lit = head && literalOf(text, head);
 	if (lit && LITERAL_TAIL.test(text.slice(lit.end + 1, end))) arg.literal = lit;
+	else if (!head) {
+		// A converter given the literal, the value it makes: `Buffer.from("…", "utf8")`, `Secret::new("…")`.
+		const converted = convertedLiteral(text, start + (arg.keyword ? KEYWORD.exec(arg.text)![0].length : 0));
+		if (converted && converted.close < end && LITERAL_TAIL.test(text.slice(converted.close + 1, end)))
+			arg.literal = converted;
+	}
 	return arg;
+}
+
+/** An encoding's name, which a converter takes beside the value it converts: `Buffer.from(key, "base64")`. */
+const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\d+|base64|hex|binary|ucs-?2)$/i;
+
+/**
+ * A converter's callee, up to its `(`: one that makes a value of the string it is given, `hexStringToUint8Array(`,
+ * `bytes.fromhex(`, `Buffer.from(`, `new TextEncoder().encode(`, `Secret::new(`, `SecretString::from(`, Go's `[]byte(`;
+ * or a digest that is given a password to hash, `MD5(`, `crypt(`, `hashlib.sha256(`, whose input is the password still.
+ */
+const CONVERTER =
+	/^(?:new[ \t]+)?(?:\[\])?(?:[\w.]|::|\(\)){0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes?|String|str|Uint8Array|parse|Parse)(?:[\w.]|::){0,40}\(|^(?:[A-Za-z_]\w{0,30}(?:\.|::))?(?:md5|MD5|sha1?|SHA1?|sha2|SHA2|sha(?:224|256|384|512)|SHA(?:224|256|384|512)|crypt|CRYPT|digest|DIGEST|hashpw)[ \t]*\(/;
+
+/**
+ * The literal a converter at `at` is given, the value it makes (CONVERTER), and where the converter's call closes.
+ * (Not a lookup's argument, a secret's name: Prefect's `Secret.load("db-password")`, `SecretStr.get(…)`; nor an
+ * encoding's name.)
+ */
+export function convertedLiteral(text: string, at: number): (Literal & { close: number }) | undefined {
+	const converter = CONVERTER.exec(text.slice(at, at + 120));
+	if (
+		!converter ||
+		/(?:^(?:new[ \t]+)?|\.|::)(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0])
+	)
+		return undefined;
+	const open = at + converter[0].length;
+	const literal = callArguments(text, open)?.[0]?.literal;
+	return literal && literal.value.length >= 4 && !ENCODING.test(literal.value)
+		? { ...literal, close: closingBracket(text, open) }
+		: undefined;
 }
 
 /** The string literal starting at `at` (after blanks), read as an argument would be: `"…"`, `b'…'`, `Some("…")`. */

@@ -14,6 +14,7 @@ import {
 	callArguments,
 	calls,
 	closingBracket,
+	convertedLiteral,
 	type Literal,
 	literalEnd,
 	literalAt,
@@ -42,7 +43,7 @@ import {
 } from "./syntax.ts";
 import { lineEnd as lineEndAt, lineStart as lineStartAt, lowerBound, splitLines } from "./lines.ts";
 import { BIP39_WORDS } from "./bip39-data.ts";
-import { insertCells } from "./sql.ts";
+import { sqlCells } from "./sql.ts";
 import { isUrl, queryParams, urls } from "./urls.ts";
 import { blockExtent, isBlockIndicator, yamlLines } from "./yaml.ts";
 import { naturalness } from "./charlm.ts";
@@ -628,9 +629,6 @@ function namedValue(
 	namedFinding(out, value.start, value.end, name, rule, confidence);
 }
 
-/** An encoding's name, which a converter takes beside the value it converts: `Buffer.from(key, "base64")`. */
-const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\d+|base64|hex|binary|ucs-?2)$/i;
-
 /** The rules, each a reader of one syntax; findNamed runs them all. */
 const RULES: ((text: string, out: Finding[]) => void)[] = [
 	assignments,
@@ -749,14 +747,38 @@ function urlTokens(text: string, f: Finding): Finding[] {
 }
 
 /**
- * SQL rows, each value under its column's name: `INSERT INTO users (email, password) VALUES ('ann@x.io', 'V'), (…)`.
- * (`UPDATE … SET password = 'V'` is an assignment; a psql grid, a table.)
+ * SQL rows, each value under its column's name: `INSERT INTO users (email, password) VALUES ('ann@x.io', 'V'), (…)`,
+ * and pg_dump's `COPY users (email, password) FROM stdin;` rows. A key/value table's value is under the name its row
+ * gives it, as a JSON object's `{"name": …, "value": …}` is: `INSERT INTO wp_options (option_name, option_value) VALUES
+ * ('smtp_password', 'V')` (keyValueName). (`UPDATE … SET password = 'V'` is an assignment; a psql grid, a table.)
  */
 function sqlRows(text: string, out: Finding[]) {
-	for (const { column, value } of insertCells(text, (_, columns) => columns.some(isCredentialName))) {
-		if (value.literal && isCredentialName(column) && isNamedSecret(column, `'${value.literal.value}'`, true))
-			namedFinding(out, value.literal.start, value.literal.end, column, "named:sql-row");
+	for (const { column, value, columns, row } of sqlCells(
+		text,
+		(_, columns) => columns.some(isCredentialName) || columns.some((c) => keyColumnOf(c, columns) >= 0),
+	)) {
+		if (!value.literal) continue;
+		const keyColumn = isCredentialName(column) ? -1 : keyColumnOf(column, columns);
+		const name = keyColumn >= 0 ? row[keyColumn]?.literal?.value : column;
+		if (
+			name &&
+			/^[\w.:/-]{1,100}$/.test(name) &&
+			isCredentialName(name) &&
+			isNamedSecret(name, `'${value.literal.value}'`, true)
+		)
+			namedFinding(out, value.literal.start, value.literal.end, name, "named:sql-row");
 	}
+}
+
+/**
+ * The column that names a key/value table's value column: `value` is named by `name`, `key` or another PAIR_NAME,
+ * `option_value` by `option_name`, `meta_value` by `meta_key`, `setting_value` by `setting_key`. -1 for none, and for a
+ * column that holds no value.
+ */
+function keyColumnOf(column: string, columns: readonly string[]): number {
+	const stem = /^(.*?)[_.]?(?:value|val)$/i.exec(column)?.[1];
+	if (stem === undefined || !(stem || PAIR_VALUE.test(column))) return -1;
+	return columns.findIndex((c) => (stem ? new RegExp(`^${stem}[_.]?(?:name|key)$`, "i").test(c) : PAIR_NAME.test(c)));
 }
 
 /** An INI or TOML section header line: `[database]`, `[profile "prod"]`. */
@@ -1229,22 +1251,6 @@ function assignedValue(
 	return span;
 }
 
-/**
- * The literal a converter at `at` is given, the value it makes: `hexStringToUint8Array("…")`, `SecretStr("…")`,
- * `bytes.fromhex("…")`, `SecureString("…")`. (Not a lookup's argument, a secret's name: Prefect's
- * `Secret.load("db-password")`, `SecretStr.get(…)`; nor an encoding's name.)
- */
-function convertedLiteral(text: string, at: number): Span | undefined {
-	const converter =
-		/^[\w.]{0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes|String|str|Uint8Array|parse|Parse)[\w.]{0,40}\(/.exec(
-			text.slice(at, at + 120),
-		);
-	if (!converter || /\.(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0]))
-		return undefined;
-	const literal = callArguments(text, at + converter[0].length)?.[0]?.literal;
-	return literal && literal.value.length >= 4 && !ENCODING.test(literal.value) ? literal : undefined;
-}
-
 /** Inside a `--set` argument (helm, helmfile), after a key and its `=`: the pairs before it, then this one's key. */
 const SET_LIST = /--set(?:-string|-file|-json|-literal)?[ \t=]+["']?(?:[^\s"',]*,)*[^\s"',=]+=$/;
 
@@ -1428,6 +1434,9 @@ function spacedPairs(text: string, out: Finding[]) {
 		if (/^[\w-]+:\s/.test(raw)) continue; // `PSK identity: None`: a label, then its own value
 		if (/^--?[A-Za-z]|^(?:&&|\|\||[|;>&])/.test(raw)) continue; // `htpasswd -nb admin pw`, `pwd && ls`: a command line
 		if (/^(?:->|=>|::|\?\.|<-)/.test(raw)) continue; // `LoginField.PASSWORD -> input.text`: a `when` arm, an operator
+		// A declaration, the name its type's: `PasswordAuthentication auth = new PasswordAuthentication(…);`. (The variable's
+		// value is the assignment's to read.)
+		if (/^[A-Za-z_$][\w$]*(?:[ \t]+=[ \t]|[ \t]*=(?!=).*;[ \t]*$)/.test(raw)) continue;
 		// A note or a type in brackets first (`password (optional)`, `token [required]`, a docstring's `password (str|None):`),
 		// a member (`.field`), code in braces (`{ get; set; }`). (A value in parentheses and nothing else, `password (12:30)`,
 		// is the prose rule's, which reads one: `the passwd (M34d0w)`.)
