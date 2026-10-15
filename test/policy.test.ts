@@ -241,6 +241,95 @@ test("the decision reads a proposal's code shapes from the proposal itself, what
 	}
 });
 
+test("a default PIN is one the line's words call so, not a host's or a path's", () => {
+	hidden("curl https://api.example.com/login -d password=123456", "123456");
+	hidden("curl https://api.example.com/verify -d pin=0000", "0000");
+	hidden("curl https://example.com/default/login -d password=123456", "123456");
+	kept("The default Bluetooth PIN is 0000", "0000");
+	kept("factory PIN: 1234", "1234");
+	kept("For example, password=123456", "123456");
+});
+
+test("jwt.io's sample claims make a sample only without an issuer or an expiry", () => {
+	const jwt = (claims: object) =>
+		`eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.Zx9Kp3Lm7Qw2Rt5Yv8Bn4Cd6Fg1Hj0KsLm2Nq5Xo7PvZx9Kp3Lm7Qw2Rt5Yv8Bn4Cd6Fg1Hj0KsLm2Nq5Xo7Pv`;
+	for (const claims of [
+		{ iss: "https://dev-abc123.us.auth0.com/", sub: "auth0|65f1", name: "John Doe", exp: 2000000000 },
+		{ sub: "1234567890", name: "John Doe", exp: 2000000000 },
+	]) {
+		hidden(`Authorization: Bearer ${jwt(claims)}`, "Zx9Kp3Lm7Qw2Rt5Yv8Bn4Cd6");
+		hidden(`ACCESS_TOKEN=${jwt(claims)}`, "Zx9Kp3Lm7Qw2Rt5Yv8Bn4Cd6");
+	}
+	kept(
+		`Authorization: Bearer ${jwt({ sub: "1234567890", name: "John Doe", admin: true, iat: 1516239022 })}`,
+		"Zx9Kp3Lm7Qw2Rt5Yv8Bn4Cd6",
+	);
+});
+
+test("Algolia's key is public only where the code says search-only, and never in code that writes the index", () => {
+	const key = "3fa9c27d41e8b60d5a92e71c08b4d6f3";
+	hidden(`const client = algoliasearch(process.env.NEXT_PUBLIC_ALGOLIA_APP_ID, "${key}");`, key);
+	hidden(`const publicIndex = "x";\nconst client = algoliasearch("APPID12345", "${key}");`, key);
+	kept(`// public search key\nconst client = algoliasearch("APPID12345", "${key}");`, key);
+	const script = `const appId = 'ABCDE12345';\nconst indexName = 'prod_products';\nconst apiKey = '${key}';\nconst client = algoliasearch(appId, apiKey);\nawait client.initIndex(indexName).saveObjects(records);`;
+	hidden(script, key);
+	hidden(`// crawler config\nnew Crawler({ appId: 'ABCDE12345', indexName: 'docs', apiKey: '${key}' })`, key);
+	kept(`options: {\n  appId: 'ZTF29HGJ69',\n  apiKey: '${key}',\n  indexName: 'vitest',\n}`, key);
+});
+
+test("Rollbar's token is the server's in `Rollbar.init`, as in `new Rollbar`; the browser snippet's config is public", () => {
+	const token = "Qm7xV2pLs9Rk4TnB8wYc3HdZ6jGf1AeU";
+	hidden(`Rollbar.init({ accessToken: "${token}" })`, token);
+	hidden(`const rollbar = new Rollbar({ accessToken: "${token}" })`, token);
+	kept(`var _rollbarConfig = { accessToken: "${token}", captureUncaught: true };`, token);
+});
+
+test("the Google keys Firebase's tools generate into an app are client configuration", () => {
+	const key = "AI\x7aaSyB7xV2pLs9Rk4TnB8wYc3HdZ6jGf1AeUm5";
+	kept(
+		`<resources>\n  <string name="google_api_key" translatable="false">${key}</string>\n  <string name="google_app_id" translatable="false">1:1234567890:android:abc123</string>\n</resources>`,
+		key,
+	);
+	kept(
+		`<dict>\n\t<key>API_KEY</key>\n\t<string>${key}</string>\n\t<key>GCM_SENDER_ID</key>\n\t<string>1234567890</string>\n\t<key>GOOGLE_APP_ID</key>\n\t<string>1:1234567890:ios:abc</string>\n</dict>`,
+		key,
+	);
+	kept(
+		`export const environment = {\n  firebase: {\n    apiKey: "${key}",\n    projectId: "demo",\n    storageBucket: "demo.appspot.com",\n  },\n};`,
+		key,
+	);
+	hidden(`<dict>\n\t<key>API_KEY</key>\n\t<string>${key}</string>\n</dict>`, key);
+	hidden(`GEMINI_API_KEY=${key}`, key);
+});
+
+test("a table's row label says public as its column's header does", () => {
+	const anon = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from('{"iss":"supabase","ref":"uqqoglkphwpitnxgzcqk","role":"anon","iat":1700000000,"exp":2000000000}').toString("base64url")}.j2MrvyIBpGPtmhGEVt8bXOXMdCoLjAFwXLxVYs6ZgeI`;
+	const svc = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from('{"iss":"supabase","ref":"uqqoglkphwpitnxgzcqk","role":"service_role","iat":1700000000,"exp":2000000000}').toString("base64url")}.Q7mT2vX9pL4wR8nK3cJ6hF1bY5gZ0dS2aE7uV4iO9tN`;
+	const table = `  NAME             | KEY VALUE\n  -----------------|-----------\n  anon             | ${anon}\n  service_role     | ${svc}\n`;
+	kept(table, anon);
+	hidden(table, svc.split(".")[2]);
+	hidden(`SUPABASE_KEY=${anon}`, anon.split(".")[2]);
+});
+
+test("a value passed to a browser SDK is public where it's assigned too", () => {
+	const key = "YNvoHCTTQjGP0tCNgS15VTDZAw4PFWIW";
+	const snippet = `analytics._writeKey="${key}";analytics.SNIPPET_VERSION="5.2.0";\n  analytics.load("${key}");\n  analytics.page();`;
+	kept(snippet, key);
+	// (Not a key the SDK takes in the admin key's place, nor one assigned under a secret's name.)
+	const algolia = "3fa9c27d41e8b60d5a92e71c08b4d6f3";
+	hidden(`const ALGOLIA_KEY = "${algolia}";\nconst c = algoliasearch("APPID12345", "${algolia}");`, algolia);
+	hidden(`const SEGMENT_SECRET = "${key}";\nanalytics.load("${key}");`, key);
+});
+
+test("a key is named with the object's key it sits in, when that says it's public", () => {
+	const token = "d6243d55ad03f2962b48c1771b9f1250";
+	kept(`module.exports = {\n  mixpanel: {\n    projectToken: '${token}',\n  },\n};`, token);
+	kept(`analytics:\n  mixpanel:\n    projectToken: ${token}\n`, token);
+	kept(`{"mixpanel": {"projectToken": "${token}"}}`, token);
+	hidden(`module.exports = {\n  mixpanel: {\n    apiSecret: '${token}',\n  },\n};`, token);
+	hidden(`const c = { stripe: { secretKey: "Kx9mQ2pLw7vRtZ8nB4cYd3Hq" } }`, "Kx9mQ2pLw7vRtZ8nB4cYd3Hq");
+});
+
 test("a service_role JWT is hidden under any name", () => {
 	const svc = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${Buffer.from('{"iss":"supabase","ref":"qwertyuiopasdfghjkl","role":"service_role","iat":1700000000,"exp":2015576000}').toString("base64url")}.Q7mT2vX9pL4wR8nK3cJ6hF1bY5gZ0dS2aE7uV4iO9tN`;
 	hidden(`{"publicKey": "${svc}"}`, svc.split(".")[2]);

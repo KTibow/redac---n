@@ -17,7 +17,7 @@ import {
 	PUBLISHED_EXAMPLE,
 } from "./public.ts";
 import { isBase58Address, isBech32Address, isNatsPublicKey, isStellarPublicKey, isXrpAddress } from "./checksums.ts";
-import { isPairLabel } from "./named.ts";
+import { enclosingKey, isPairLabel } from "./named.ts";
 import { nameClass, namesPasswordOrPin } from "./names.ts";
 import { base64Binary, base64Prefix } from "./base64.ts";
 import { isDerPublicKey, isPgpPublicKey, isPublicPem } from "./publickeys.ts";
@@ -85,9 +85,24 @@ function isClientSdkKey(sdk: string, name: string, before: string): boolean {
 	const callee = sdk.replace(/^new\s+/, "").replace(/\s*[({[:=].*$/s, "");
 	const positional = !name || callee === name;
 	if (!positional) return PUBLIC_SDK_PARAM.test(name.replace(/^.*[.\s]/, ""));
+	// (`public` as a word, not inside a name or a path: `NEXT_PUBLIC_ALGOLIA_APP_ID`, `publicIndex`, `public/`.)
 	return (
-		!/^(?:algoliasearch|instantsearch)/.test(sdk) || /search[-_ ]?(?:only|key)|public|read[-_ ]?only/i.test(before)
+		!/^(?:algoliasearch|instantsearch)/.test(sdk) ||
+		/search[-_ ]?(?:only|key)|(?<![\w$./-])public(?![\w$/-])|read[-_ ]?only/i.test(before)
 	);
+}
+
+/** Whether `value` is passed to a client SDK as its public key somewhere in `text` other than at `self` (isClientSdkKey). */
+function sdkKeyElsewhere(text: string, value: string, self: number): boolean {
+	for (let i = text.indexOf(value), n = 0; i >= 0 && n < 50; i = text.indexOf(value, i + 1), n++) {
+		if (i === self) continue;
+		const sdk = clientSdkAt(text, i);
+		if (!sdk) continue;
+		const before = text.slice(Math.max(0, i - 300), i);
+		const param = /([\w$]+)["']?[ \t]*:[ \t]*["'`]$/.exec(before)?.[1] ?? "";
+		if (isClientSdkKey(sdk, param, before)) return true;
+	}
+	return false;
 }
 
 /**
@@ -116,13 +131,15 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	const left = text.slice(Math.max(0, f.start - 200), f.start);
 	// A device's published default PIN, counting or one digit repeated, that its line calls the default or an example
 	// (`The default Bluetooth PIN is 0000`, `factory PIN: 1234`). Anywhere else a PIN of `0000` is someone's PIN
-	// (`pin_value=0000`, `--password 123456`).
+	// (`pin_value=0000`, `--password 123456`). (The line's words, not a host's or a path's: `api.example.com/login`.)
 	if (
 		/^\d{4,8}$/.test(value) &&
 		isCountingDigits(value) &&
 		f.name !== undefined &&
 		namesPasswordOrPin(f.name) &&
-		/\b(?:default|factory|example|such as|for instance)\b|\be\.g\./i.test(left.slice(left.lastIndexOf("\n") + 1))
+		/(?<![\w./-])(?:default|factory|example|such as|for instance)(?![\w./-])|\be\.g\./i.test(
+			left.slice(left.lastIndexOf("\n") + 1),
+		)
 	)
 		return "a published default PIN";
 	// The token the span sits in, to blanks, quotes and separators, and its part after a label (`key_id:rzp_…`,
@@ -274,6 +291,9 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// (A name of key-like words: `Token for the public API:` is a sentence, not a name.)
 	if (name && nameClass(name.replace(/\s+/g, "_")) === "public" && /key|token|id\b|dsn|sid/i.test(name) && !serverLine)
 		return "public by its name";
+	// (Or with the key of the object it sits in: `mixpanel: { projectToken: … }` is `mixpanel.projectToken`.)
+	const parent = name && /key|token/i.test(name) && /^[\w$-]+$/.test(name) ? enclosingKey(text, f.start) : undefined;
+	if (parent && nameClass(`${parent}.${name}`) === "public" && !serverLine) return "public by its name";
 	// A random token the unnamed layer guessed at, under a name that says ID or hash (`bridgeSessionId`, `sha`): what the
 	// unnamed layer's own name vetoes say, for a finding whose name only this stage sees (a transcript leaf's key).
 	if (isGuess(f.rule) && ["identifier", "hash"].includes(nameClass(name.replace(/\s+/g, "_"))))
@@ -281,7 +301,15 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// JWTs meant to be public (anon and publishable roles, published samples). Under a credential's name, only
 	// a published sample is, unless the name itself says anon or public: an anon key assigned to `SUPABASE_KEY`
 	// is treated as the key it's named; `anon key:` in `supabase status` is what it says.
-	if (/^eyJ/.test(word) && isPublicJwt(word, layerOf(f.rule) === "named" && !/anon|public|publishable/i.test(name)))
+	// (A table's cell is named by its column's header and its row's label too: `anon | eyJ…` under `NAME | KEY VALUE`.)
+	const saysPublic = (s: string) => /anon|public|publishable/i.test(s);
+	if (
+		/^eyJ/.test(word) &&
+		isPublicJwt(
+			word,
+			layerOf(f.rule) === "named" && !saysPublic(name) && !(f.rule === "named:table-cell" && saysPublic(read)),
+		)
+	)
 		return "public JWT";
 	if (isJwtHeader(word)) return "a JWT's header";
 	// The ID half of an `id:secret` value under a name (`credential: <client id>:<secret>`): the secret half is
@@ -302,14 +330,30 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// place: Algolia's search key and admin key are both `algoliasearch(appId, key)`, so only a search key said so.
 	const sdk = clientSdkAt(text, f.start);
 	if (sdk && isClientSdkKey(sdk, name, `${above}\n${line}`)) return "client SDK key";
+	// (And so is the same value where it is assigned before it's passed: Segment's snippet sets `analytics._writeKey="…"`
+	// and calls `analytics.load("…")`.)
+	if (
+		value.length >= 16 &&
+		!/secret|passw|private|admin|master|server/i.test(name) &&
+		sdkKeyElsewhere(text, value, f.start)
+	)
+		return "client SDK key";
 	// A Google API key in a client app's configuration (see isClientGoogleKey).
 	if (/^AIza/.test(value) && isClientGoogleKey(text, f.start)) return "client-side Google key";
 	// The search-only key of an Algolia DocSearch config (`appId`, `apiKey`, `indexName`), in every docs site;
-	// never a key named admin, write or secret.
+	// never a key named admin, write or secret, nor one in code that writes to the index (an indexing script's
+	// `saveObjects`, a crawler's config), which takes the admin key.
 	if (/^[0-9a-f]{32}$/.test(value)) {
 		const near = text.slice(Math.max(0, f.start - 300), f.end + 300);
 		const key = /([\w-]+)["']?[ \t]*[:=][ \t]*["'`]?$/.exec(left.slice(-80))?.[1] ?? "";
-		if (/\bindexName\b/.test(near) && /\bappId\b/.test(near) && !/admin|write|secret|private|password/i.test(key))
+		if (
+			/\bindexName\b/.test(near) &&
+			/\bappId\b/.test(near) &&
+			!/admin|write|secret|private|password/i.test(key) &&
+			!/\.(?:save|add|partialUpdate|delete|clear|replaceAll)Objects?\(|\.(?:setSettings|saveRules|saveSynonyms|copyIndex|moveIndex)\(|\bnew[ \t]+Crawler\(/.test(
+				text.slice(Math.max(0, f.start - 2000), f.end + 2000),
+			)
+		)
 			return "DocSearch key";
 	}
 	// Public identifiers and keys whose shape or checksum says so.
