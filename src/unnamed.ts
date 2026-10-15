@@ -16,7 +16,7 @@ import { base64Binary, base64Bytes } from "./base64.ts";
 import { naturalness } from "./charlm.ts";
 import { contextOf, type Context, Doc } from "./context.ts";
 import { isCredentialName, isVendorClient, mentionsCredential } from "./names.ts";
-import { isPlaceholder } from "./public.ts";
+import { isPlaceholder, isTruncated } from "./public.ts";
 import { alphabetOf, entropyZ, shape, type Alphabet } from "./random.ts";
 import type { Finding, Guessing } from "./types.ts";
 import { trailingRun } from "./lines.ts";
@@ -49,7 +49,7 @@ const API_OBJECT_ID =
  * are also prefixes of keys (`re_` is Resend's), so these are public only outside a key's place (keyPlace).
  */
 const OBJECT_ID =
-	/^(?:env|usr|svc|srv|db|setl|order|job|raysubmit|ins|client|sia|sms|idn|pri|pro|sub|txn|ctm|add|biz|dsc|dpl|prj|team|conn|directory|user|ap|in|ta|fu|vol|sb|sess(?=_)|we|promo|qt|cs|dp|cus|pi|ch|il|ii|price|prod|evt|acct|tr|po|pm|seti|src|card|ba|btok|tok|re|plink|si|pmc|ipi|cbtxn|ich|ic|fee|link|req|test_clock|whe|wh|ca|cn|du|py|mandate|pyr|trr|setatt|sched|subi|ri|gsk_live_?)[-_]/;
+	/^(?:env|usr|svc|srv|db|setl|order|org|job|raysubmit|ins|client|sia|sms|idn|pri|pro|sub|txn|ctm|add|biz|dsc|dpl|prj|team|conn|directory|user|ap|in|ta|fu|vol|sb|sess(?=_)|we|promo|qt|cs|dp|cus|pi|ch|il|ii|price|prod|evt|acct|tr|po|pm|seti|src|card|ba|btok|tok|re|plink|si|pmc|ipi|cbtxn|ich|ic|fee|link|req|test_clock|whe|wh|ca|cn|du|py|mandate|pyr|trr|setatt|sched|subi|ri|gsk_live_?)[-_]/;
 /** Right after an encryption wrapper (values.ts ENCRYPTION_WRAPPER), or SOPS's `,iv:` and `,tag:` fields, or Splunk's `$7$`. */
 const AFTER_ENCRYPTION_WRAPPER = new RegExp(String.raw`(?:${ENCRYPTION_WRAPPER}|,iv:|,tag:|(?:^|[\s=:"'])\$[17]\$)$`);
 
@@ -394,7 +394,13 @@ const isUserinfo = (f: Features) => /^[^\s"'<>@?#/]*@[\w-]+(?:\.[\w-]+)+/.test(f
  */
 function urlPathId(f: Features): string | undefined {
 	if (f.ctx.syntax !== "path" || f.secretFile || isHookUrl(f) || isUserinfo(f)) return undefined;
-	if (/^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) && !isHookSegment(f.ctx.pathParent)) return "collection-id";
+	// (A collection is a plural, or a resource's name in words, `/v1/text-to-speech/<voice id>`; not a credential's.)
+	if (
+		(/^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) ||
+			(/^[a-z]{3,}(?:-[a-z]+)+$/.test(f.ctx.pathParent) && !/key|token|secret|auth|pass/.test(f.ctx.pathParent))) &&
+		!isHookSegment(f.ctx.pathParent)
+	)
+		return "collection-id";
 	if (f.ctx.nameClass === "credential") return undefined;
 	const mediaHost =
 		/:\/\/(?:[\w-]+\.)*[\w-]*(?:img|image|images|cdn|static|media|pic|pics|photo|photos|thumb|thumbs|resiz|assets?)[\w-]*\.[\w.-]+\/[^\s"']*$/i.test(
@@ -489,6 +495,15 @@ const VETOES: Veto[] = [
 	// The token's own shape.
 	["digits", (_, t) => /^\d+$/.test(t)],
 	["placeholder", (_, t) => isPlaceholder(t)],
+	// A key shown cut short, its front before an ellipsis (`sk-ant-api03-Zx9K...`, `…QAAA` after it): the token stops at
+	// the dots, the display doesn't.
+	[
+		"placeholder",
+		(f, t) => {
+			const cut = /^(?:\.\.\.|…)[\w+/=-]{0,40}/.exec(f.ctx.right)?.[0];
+			return cut !== undefined && isTruncated(`${f.lead ?? ""}${t}${cut}`);
+		},
+	],
 	// Hex of one short unit written over and over (`Key = ef012345ef012345ef012345ef012345`): a filler someone typed, not
 	// key bytes, which never repeat in step. (Other alphabets' fillers, `foobarfoobar…`, are in the model's training
 	// negatives, which a veto would change.)
@@ -528,6 +543,42 @@ const VETOES: Veto[] = [
 			/(?:^|[\s;{])(?:class|struct|enum|union|interface|trait|namespace|record)[ \t]+$/.test(f.ctx.left) &&
 			/^[A-Z][A-Za-z0-9_]*$/.test(t) &&
 			/^[ \t]*(?:final\b|[:{<(]|extends\b|implements\b|\r?$)/m.test(f.ctx.right),
+	],
+	// A cell of a row of a command's table, six cells or more and three of the others counts, sizes or dates, with no
+	// credential's word: an ID (Elasticsearch's `_cat/indices`, `green open chunks-2026.10 <uuid> 3 1 1820331 0 14.2gb`).
+	[
+		"table-row",
+		(f, t, cred) => {
+			if (cred || f.ctx.lineCredential) return false;
+			const cells = `${f.ctx.left}${f.lead ?? ""}${t}${f.ctx.right}`.trim().split(/[ \t]+/);
+			if (cells.length < 6 || !/(?:^|[ \t])$/.test(f.ctx.left) || !/^(?:[ \t]|$)/.test(f.ctx.right)) return false;
+			const counts = cells.filter((c) =>
+				/^\d+(?:\.\d+)?(?:[kmgtp]?i?b|[kmg]|%|ms|s|m|h|d)?$|^\d{4}-\d\d-\d\d(?:T[\d:.]+Z?)?$/i.test(c),
+			);
+			return counts.length >= 3 && !/key|token|secret|passw|auth|credential/i.test(f.ctx.left + f.ctx.right);
+		},
+	],
+	// The object a lookup is given, its first argument: `Subscription::retrieve("<id>")`, `stripe.customers.retrieve(…)`,
+	// `Model.findById(…)`. (Not a secret's lookup, `get_secret`, `Secret.fetch`: there the argument names the secret.)
+	[
+		"lookup-id",
+		(f, _, cred) =>
+			!cred &&
+			f.ctx.syntax === "call" &&
+			/(?:^|[.:])(?:retrieve|find|findById|findOne|fetch|lookup|describe|delete|destroy|cancel|getById|get_by_id|find_by_id)$/i.test(
+				f.ctx.name,
+			) &&
+			/(?:::|\.|->)\w+\([ \t]*["'`]$/.test(f.ctx.left) &&
+			!/secret|token|key|passw|credential|vault/i.test(/[\w$\\:.>-]*\([ \t]*["'`]$/.exec(f.ctx.left)?.[0] ?? ""),
+	],
+	// A static file's cache buster, a digest of its content: `site.css?v=<base64url SHA-256>` (ASP.NET's
+	// `asp-append-version`), and as IIS logs it, the query after the path's field, `/css/site.css v=…`.
+	[
+		"cache-buster",
+		(f) =>
+			/\.(?:css|js|mjs|png|svg|jpe?g|gif|webp|avif|woff2?|ttf|otf|eot|ico|map)(?:\?|[ \t]+)(?:[\w.-]+=[^\s&=]*&)*(?:v|ver|version|hash|h|cb|rev|_)=$/i.test(
+				f.ctx.left,
+			),
 	],
 	["public-id", (f) => inPublicNamespace(f)],
 	// A hashed host in `~/.ssh/known_hosts` (`|1|<salt>|<HMAC-SHA1 of the host name>`, both base64 of 20 bytes): public, as the host names are.
@@ -626,8 +677,12 @@ const VETOES: Veto[] = [
 	["password-hash", (f, t) => isPasswordHashPart(f.ctx.left, t, f.ctx.right)],
 	// AWS unique IDs of roles, users, groups, policies and instance profiles, and CloudFront key pair IDs.
 	["aws-unique-id", (_, t) => /^(?:AROA|AIDA|AGPA|ANPA|ANVA|AIPA|APKA)[A-Z0-9]{12,20}$/.test(t)],
-	// (In a key's place the same prefixes are credentials: Resend `re_…`, Wompi `prod_events_…`.)
-	["object-id", (f, t) => OBJECT_ID.test(t) && !keyPlace(f)],
+	// (In a key's place the same prefixes are credentials: Resend `re_…`, Wompi `prod_events_…`. Airtable's bases,
+	// tables, fields, records and views: three letters and 14 characters, `appx4ZUkcFSHS2ONg`.)
+	[
+		"object-id",
+		(f, t) => (OBJECT_ID.test(t) || /^(?:app|tbl|fld|rec|viw|wsp|usr|sel)[A-Za-z0-9]{14}$/.test(t)) && !keyPlace(f),
+	],
 	["hash-prefix", (f) => f.ctx.hashPrefix],
 	// Signatures by name, Gemini's `thoughtSignature` among them; a `sig` only when longer than an HMAC key; a mail's
 	// DKIM or ARC signature (`b=`), which every receiving server checks.
@@ -660,12 +715,15 @@ const VETOES: Veto[] = [
 			),
 	],
 	// Where it sits: a file path, a PEM block of public material, a line of a wrapped blob.
-	["fs-path", (f, _, cred) => f.ctx.fsPath && !cred],
+	// (Not a request target in a log under a hook's segment, `"POST /hooks/<token> HTTP/1.1"`: a URL's path.)
+	["fs-path", (f, _, cred) => f.ctx.fsPath && !cred && !isHookSegment(f.ctx.pathParent)],
 	["armored-public", (f) => f.ctx.armored],
 	// A PEM block's label on the line above it, a name of parts (`ALICE_cf_c2pnb163v1`, `PRIME192V1_RFC5114-Peer`): the
 	// block holds the key.
 	["block-label", (f, t) => f.ctx.labelsBlock && /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(t)],
-	["blob-line", (f, _, cred) => f.ctx.blobLine && !cred],
+	// (Not lines a handover heads, keys listed one per line: "Here are your new API keys:" over three `openssl rand
+	// -base64 32`s, of one width as a blob's lines are.)
+	["blob-line", (f, _, cred) => f.ctx.blobLine && !cred && !f.ctx.handover],
 	["ssh-public-key", (_, t) => /^AAAA[A-Z]\d?Nza|^AAAAE2Vj/.test(t)],
 	// (After a version's number, `1.2.`, not after the last digit of a token cut at a dot: `<id>7.<secret>`.)
 	["version", (f, t) => /(?:^|[^\w.])v?\d{1,4}(?:\.\d{1,6})*\.$/.test(f.ctx.left) || /\+g[0-9a-f]{7,40}$/.test(t)],
@@ -744,11 +802,14 @@ const VETOES: Veto[] = [
 	],
 	// The local part of an email address or Message-ID (`<CAOS…@mail.gmail.com>`, its first piece when an `=` in it
 	// split it, `CAPig+…=JtAj…@mail.gmail.com`), a push token's body. (Not a URL's userinfo, `https://<token>@host`: a
-	// password or a token there.)
+	// password or a token there; nor the password after a user and a colon with the scheme left off, as proxy variables
+	// are written, `HTTPS_PROXY=svc:<password>@proxy:8080`: an address's local part holds no colon.)
 	[
 		"local-part",
 		(f) =>
-			(/^(?:=[\w+=.-]*)?@/.test(f.ctx.right) && !/:\/\/[^\s/@]*$/.test(f.ctx.left)) ||
+			(/^(?:=[\w+=.-]*)?@/.test(f.ctx.right) &&
+				!/:\/\/[^\s/@]*$/.test(f.ctx.left) &&
+				!/(?:^|[\s="'])[\w.%+-]{1,64}:$/.test(f.ctx.left)) ||
 			/ExponentPushToken\[$|ExpoPushToken\[$/.test(f.ctx.left),
 	],
 	// An Android app's signature hash in MSAL's redirect URI (`msauth://com.contoso.app/<base64 SHA-1>`, encoded or in
@@ -773,15 +834,20 @@ const VETOES: Veto[] = [
 	// A fragment of a percent-encoded value (`…%2fAx%2bTHQ…`): the whole value, not a key, if anything.
 	["percent-fragment", (f) => /%[0-9A-Fa-f]{2}$/.test(f.ctx.left) || /^%[0-9A-Fa-f]{2}/.test(f.ctx.right)],
 	// Cloud resource IDs: `/subscriptions/<uuid>/resourceGroups/<name>/providers/…`, ARNs.
-	// (The path ends at a query: a parameter after `?` or `&` is its own, and a credential's name keeps it.)
+	// (The path ends at a query: a parameter after `?` or `&` is its own, and a credential's name keeps it. And a hook's
+	// segment after the resource starts a secret's path: `/projects/42/webhooks/<token>`.)
 	[
 		"resource-id",
-		(f, _, cred) =>
-			!cred &&
-			(/\/(?:subscriptions|resourceGroups|resourcegroups|providers|projects|locations|instances|clusters|namespaces)\/[^\s"'?&#]*$/.test(
-				f.ctx.left,
-			) ||
-				/\barn:aws[\w-]*:[^\s"'?&#]*$/.test(f.ctx.left)),
+		(f, _, cred) => {
+			if (cred) return false;
+			const path =
+				/\/(?:subscriptions|resourceGroups|resourcegroups|providers|projects|locations|instances|clusters|namespaces)\/([^\s"'?&#]*)$/.exec(
+					f.ctx.left,
+				)?.[1];
+			return (
+				(path !== undefined && !path.split("/").some(isHookSegment)) || /\barn:aws[\w-]*:[^\s"'?&#]*$/.test(f.ctx.left)
+			);
+		},
 	],
 	// IDs that frameworks generate: cuid2 (24 lowercase characters starting with a letter, random all through: only
 	// where IDs are written says it's one).
@@ -793,11 +859,17 @@ const VETOES: Veto[] = [
 		"public-browser-key",
 		(f) => f.ctx.syntax === "call" && (PUBLIC_KEY_CALLEE.test(f.ctx.name) || FULLSTORY_GLOBAL.test(f.ctx.name)),
 	],
-	// A Solana address near Solana's words. (Other blockchain addresses and content IDs are `inert`'s: values.ts.)
+	// A Solana address near Solana's words. (Other blockchain addresses and content IDs are `inert`'s: values.ts.) Not
+	// under a credential's name, nor where an RPC provider's URL takes its key: after the API's version
+	// (`solana-devnet.g.alchemy.com/v2/<key>`), or in a key's parameter.
 	[
 		"public-address",
-		(f, t) =>
-			/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t) && /solana|devnet|mainnet-beta|lamports|phantom|pubkey/i.test(f.ctx.near),
+		(f, t, cred) =>
+			/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t) &&
+			/solana|devnet|mainnet-beta|lamports|phantom|pubkey/i.test(f.ctx.near) &&
+			!cred &&
+			!(f.ctx.inUrl && /\/v\d{1,2}\/$/.test(f.ctx.left)) &&
+			!/[?&](?:api[-_]?key|key|token)=$/i.test(f.ctx.left),
 	],
 	["timestamp", (_, t) => /^\d{8}T\d{6}Z$/.test(t)],
 	// A Google Drive file's ID near Drive's words.

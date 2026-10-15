@@ -537,6 +537,20 @@ const SHELL_WORD_END = /[ \t;&|<>()"'`]/;
 /** The word after a quote that never closes, to its line's end. */
 const UNCLOSED_WORD = new RegExp(`^${unquotedValue(String.raw`[^\s"'\x60]`, 4, String.raw`[ \t]*\r?$`)}`, "m");
 
+/** An HTML tag, opening, closing or empty, whole: `<br>`, `<br />`, `</td>`, `<span class="x">`. */
+const MARKUP_TAG = /^<\/?[A-Za-z][\w-]{0,30}(?:[ \t]+[^<>\n]{0,160})?\/?>/;
+
+/**
+ * Whether markup starts at `i`, after a value read from `from`: a whole tag, or the close of a comment opened before it
+ * on the line. (Markup after an unquoted value is the page's: `Password: Kx9…<br />`, `<!-- DB_PASSWORD=Kx9…-->`.)
+ */
+function markupAt(text: string, i: number, from: number): boolean {
+	return (
+		(text[i] === "<" && MARKUP_TAG.test(text.slice(i, i + 200))) ||
+		(text.startsWith("-->", i) && text.lastIndexOf("<!--", i) >= lineStartAt(text, from))
+	);
+}
+
 /** Reads the value starting at `at`: quoted, JSON-escaped-quoted, or bare up to a delimiter. */
 function readValue(
 	text: string,
@@ -602,6 +616,9 @@ function readValue(
 			continue;
 		}
 		if (ch === "\\" && isEscapedBreak(text, i)) break;
+		// (A comment's close after the value is the page's: `<!-- DB_PASSWORD=Kx9…-->`. A tag may stand for a line break
+		// between a label and its value, `Secret key<br>Kx9…`: the readers of labels read on through it.)
+		if (i > at && open === 0 && text.startsWith("-->", i) && markupAt(text, i, at)) break;
 		if (ch === "{" && text[i + 1] === "{") expansion = true;
 		if (ch === "(" || ch === "[" || ch === "{") {
 			if (open++ === 0) opened = i;
@@ -729,6 +746,17 @@ export function findNamed(text: string): Finding[] {
 		.flatMap((f) => urlTokens(text, f));
 }
 
+/** explainedByNeighbours's tests for a name and a value, built once for both (a config repeats them). */
+const NEIGHBOUR_TESTS = new Map<string, [others: RegExp, user: RegExp]>();
+
+/** How many times `word` is in `text` with no name's character (`\w`, `.`, `-`) right after it, up to 2. */
+function wholeWords(text: string, word: string): number {
+	let count = 0;
+	for (let i = text.indexOf(word); i >= 0 && count < 2; i = text.indexOf(word, i + 1))
+		if (!/[\w.-]/.test(text[i + word.length] ?? "")) count++;
+	return count;
+}
+
 /**
  * Whether the text around a finding says its value is no secret, whichever reader found it (isNamedSecret judges the
  * value under its name; this, what stands near them, within 200 characters before and 100 after).
@@ -757,15 +785,24 @@ function explainedByNeighbours(text: string, f: Finding): boolean {
 	if (value && value.length <= 32) {
 		const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		const stem = /^(.+?[-_.])(?:pass(?:word)?|passwd|pwd|pw)$/i.exec(value)?.[1];
-		const esc = stem ? `(?:${escape(value)}|${escape(stem)}user(?:name)?)` : escape(value);
-		const others = near.replace(new RegExp(String.raw`[\w.-]*${escape(name)}["']?[ \t]*[:=][^\n]*`, "g"), "");
-		if (
-			new RegExp(
-				String.raw`(?<![\w.-])(?:[\w.-]*[_.-])?(?:user(?:name)?|login|db|database|dbname|name|account)["']?[ \t]*[:=][ \t]*["'\`]?${esc}["'\`]?(?:[\s,;]|$)`,
-				"i",
-			).test(others)
-		)
-			return true;
+		// (Only where the value is written again near it as a whole word, or there is a stem: the regular expressions
+		// below, built for each name and value, are too slow to build for every value of a long config.)
+		if (!stem && wholeWords(near.toLowerCase(), value.toLowerCase()) === 1) return false;
+		const key = `${name}\n${value}`;
+		let tests = NEIGHBOUR_TESTS.get(key);
+		if (!tests) {
+			const esc = stem ? `(?:${escape(value)}|${escape(stem)}user(?:name)?)` : escape(value);
+			tests = [
+				new RegExp(String.raw`[\w.-]*${escape(name)}["']?[ \t]*[:=][^\n]*`, "g"),
+				new RegExp(
+					String.raw`(?<![\w.-])(?:[\w.-]*[_.-])?(?:user(?:name)?|login|db|database|dbname|name|account)["']?[ \t]*[:=][ \t]*["'\`]?${esc}["'\`]?(?:[\s,;]|$)`,
+					"i",
+				),
+			];
+			if (NEIGHBOUR_TESTS.size >= 1000) NEIGHBOUR_TESTS.clear();
+			NEIGHBOUR_TESTS.set(key, tests);
+		}
+		if (tests[1].test(near.replace(tests[0], ""))) return true;
 	}
 	return false;
 }
@@ -831,6 +868,37 @@ function keyColumnOf(column: string, columns: readonly string[]): number {
 
 /** An INI or TOML section header line: `[database]`, `[profile "prod"]`. */
 const INI_SECTION = /(?:^|\n)[ \t]*\[[\w. "'-]{1,80}\][ \t]*\r?(?=\n)/g;
+
+/** A config file's line: `host = db.internal`, `port = 5432`, a value with no quote, bracket or `;` of code's. */
+const CONFIG_PAIR = /^[ \t]*[A-Za-z_][\w.-]{0,60}[ \t]*=[ \t]*[^\s"'`([{;][^"'`()[\]{};]*\r?$/;
+
+/**
+ * Whether the line at `lineStart` is in a config file with no `[section]` (a `.conf`, a `.properties`): the lines
+ * around it, up to a blank line, are `name = value` pairs, one at least besides it, and none holds code (a quote, a
+ * bracket, a `;`, a keyword). Its value is then a literal, brackets and all: `password = Winter(2025)!!`.
+ */
+function isConfigBlock(text: string, lineStart: number): boolean {
+	const around: string[] = [];
+	for (let at = lineStart, n = 0; at > 0 && n < 6; n++) {
+		const start = lineStartAt(text, at - 1);
+		const line = text.slice(start, at - 1);
+		if (!line.trim()) break;
+		around.push(line);
+		at = start;
+	}
+	for (let at = lineEndAt(text, lineStart) + 1, n = 0; at < text.length && n < 6; n++) {
+		const line = text.slice(at, lineEndAt(text, at));
+		if (!line.trim()) break;
+		around.push(line);
+		at += line.length + 1;
+	}
+	// (Comments are the file's own.)
+	around.splice(0, around.length, ...around.filter((l) => !/^[ \t]*[#;]/.test(l)));
+	return (
+		around.some((l) => CONFIG_PAIR.test(l)) &&
+		around.every((l) => CONFIG_PAIR.test(l) && !/^[ \t]*(?:export|const|let|var|my|local|set)\b/.test(l))
+	);
+}
 /** A flag that sets an environment variable or a property, before `NAME=value`: `-e`, `--env`, `--build-arg`, `-D`, `--set`. */
 const ENV_FLAG = /(?:^|\s)(?:-e|--env|--build-arg|-D|--set|--set-string|--var|-var|env)[ \t]+["']?$/;
 
@@ -916,7 +984,13 @@ function assignments(text: string, out: Finding[]) {
 		const entry = /^(.*?)[ \t]*[,;{][ \t]*\r?$/.exec(text.slice(at, lineEndAt(text, at)))?.[1];
 		// `"NAME=value with spaces"` (docker inspect, compose lists): the value runs to the quote that opened the pair,
 		// escaped as it was (`\"NAME=value\"` inside a JSON string).
-		const pairQuote = m[1] === "" && op === "=" && /["']/.test(text[m.index - 1] ?? "") ? m.index - 1 : -1;
+		// (And a YAML item that quotes a pair whole, `- 'DB_PASSWORD: …'  # note`: its own quote closes it.)
+		const pairQuote =
+			m[1] === "" &&
+			/["']/.test(text[m.index - 1] ?? "") &&
+			(op === "=" || (op === ":" && /^[ \t]*(?:-[ \t]+)?$/.test(text.slice(lineStart, m.index - 1))))
+				? m.index - 1
+				: -1;
 		// An entry of a call or a literal written over several lines, the line before opening a bracket or ending an entry
 		// (`login(\n  password=user_input[CONF_PASSWORD],`, `{\n  'password': None},`), or its last entry (isLastEntry):
 		// code, its value read as code is, not a whole-line env, YAML or INI value nor a log's pair. (Its value may open a
@@ -953,7 +1027,7 @@ function assignments(text: string, out: Finding[]) {
 			!sigil &&
 			/^[ \t]*$/.test(before) &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
-			underSection(m.index);
+			(underSection(m.index) || isConfigBlock(text, lineStart));
 		// `key: # a comment`: YAML has no value there.
 		if (yamlLine && text[at] === "#") continue;
 		const wholeLine = (envLine || yamlLine || iniLine) && unquoted;
@@ -1107,6 +1181,39 @@ function assignments(text: string, out: Finding[]) {
 		namedFinding(out, colon > 0 ? span[0] + colon : span[0], span[1], name, "named:assign");
 		if (literal) out[out.length - 1].literal = true;
 	}
+}
+
+/**
+ * The key of the object or mapping the entry at `at` sits in: before the nearest `{` it is inside (`mixpanel: {`,
+ * `"mixpanel": {`), or a YAML line indented less with nothing after its key (`mixpanel:`). Read within 2,000
+ * characters; undefined if none.
+ */
+export function enclosingKey(text: string, at: number): string | undefined {
+	const from = Math.max(0, at - 2000);
+	let depth = 0;
+	for (let i = at - 1; i >= from; i--) {
+		const c = text[i];
+		if (c === "}" || c === "]" || c === ")") depth++;
+		else if (c === "(" || c === "[") {
+			if (depth-- === 0) return undefined;
+		} else if (c === "{") {
+			if (depth-- === 0)
+				return /(?:^|[\s,{(])["']?([A-Za-z_$][\w$-]{0,60})["']?[ \t]*[:=][ \t]*$/.exec(text.slice(from, i))?.[1];
+		}
+	}
+	// A YAML mapping: the first line above indented less, a key alone on it.
+	const lineStart = lineStartAt(text, at);
+	const indent = /^[ \t]*/.exec(text.slice(lineStart, at))![0].length;
+	if (!/^[ \t]*$/.test(text.slice(lineStart, lineStart + indent)) || indent === 0) return undefined;
+	for (let k = lineStart; k > from;) {
+		const start = lineStartAt(text, k - 1);
+		const line = text.slice(start, k - 1);
+		k = start;
+		if (!line.trim() || /^[ \t]*#/.test(line)) continue;
+		if (/^[ \t]*/.exec(line)![0].length >= indent) continue;
+		return /^[ \t]*(?:-[ \t]+)?["']?([A-Za-z_][\w-]{0,60})["']?:[ \t]*\r?$/.exec(line)?.[1];
+	}
+	return undefined;
 }
 
 /** An interpolated string opened and not closed (Python's `f"`, `rf'`, C#'s `$"`, `$@"`): what comes after is inside it. */
@@ -1285,9 +1392,12 @@ function assignedValue(
 			const end = esc >= 0 ? at + esc : close;
 			// A query string or a connection string in quotes (`'a=1&b=2'`, `"Pwd=x;User Id=u"`): each value ends at the
 			// next `&name=` or `;name=`.
+			// (Not inside a bracket the value opened: `"DB_PASSWORD=@Microsoft.KeyVault(VaultName=kv;SecretName=db)"`.)
 			const next = text.slice(at, end).search(/[&;][\w.-][\w. -]{0,59}=/);
 			// (A shell command in quotes: `'PGPASSWORD=x psql -h db'`, the value is its first word.)
-			return next >= 0 ? [at, at + next] : shellWordValue(text, [at, end]);
+			return next >= 0 && throughBrackets(text, at, at + next) === at + next
+				? [at, at + next]
+				: shellWordValue(text, [at, end]);
 		}
 	}
 	// A string in parentheses, as Black wraps a long one: `DATABASES_PASSWORD = (\n    "…"\n)`.
@@ -1373,8 +1483,11 @@ function shellWordValue(text: string, span: [number, number]): [number, number] 
 		return [span[0], span[0] + joined[1].length];
 	const words = [...text.slice(span[0], span[1]).matchAll(/\S+/g)];
 	if (words.length < 2) return span;
-	const first = words[0][0];
-	const [next, ...later] = words.slice(1).map((w) => w[0]);
+	// (A shell expansion is one word with the blanks inside its brackets: `${DB_PASSWORD:-$(openssl rand -hex 16)}`.)
+	const firstEnd = throughBrackets(text, span[0], span[0] + words[0][0].length);
+	if (firstEnd >= span[1]) return [span[0], firstEnd];
+	const first = text.slice(span[0], firstEnd);
+	const [next, ...later] = words.filter((w) => span[0] + w.index >= firstEnd).map((w) => w[0]);
 	// (Or any program's name, `gh`, `vercel`, `mvn`, on a line of its own: not an env file's next line, nor a passphrase
 	// of plain words, `correct horse battery staple`.)
 	const lineAt = lineStartAt(text, span[0]);
@@ -3006,6 +3119,7 @@ function siblingPairs(text: string, out: Finding[]) {
 		literal: boolean;
 		line: number;
 		indent: number;
+		block?: boolean;
 	};
 	const attrs: Attr[] = [];
 	let line = 0;
@@ -3018,7 +3132,36 @@ function siblingPairs(text: string, out: Finding[]) {
 	const yaml = /^[ \t-]*["']?[A-Za-z]\w*["']?[ \t]*:/m.test(text) ? yamlLines(text) : [];
 	const mapping = new Set<number>();
 	yaml.forEach((l, i) => {
-		if (!l.key || !l.value || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
+		if (!l.key || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
+		// (A value written as a block scalar, `value: |` and its lines below, is those lines.)
+		const body = l.block && PAIR_VALUE.test(l.key) ? blockExtent(text, l.start) : undefined;
+		// A value slot under a credential's key, as GitLab's CI variables are written (`DB_PASSWORD:` / `  value: …`):
+		// the parent names it.
+		if (PAIR_VALUE.test(l.key) && (body || l.value)) {
+			let p = i - 1;
+			while (p >= 0 && (yaml[p].blank || yaml[p].indent >= l.indent)) p--;
+			const parent = yaml[p];
+			if (parent?.key && !parent.value && !parent.block && isCredentialName(parent.key)) {
+				if (body) multiLineValue(out, parent.key, body, "named:sibling-pair");
+				else if (isNamedSecret(parent.key, l.quoted ? `"${l.value!.value}"` : l.value!.value, true))
+					namedFinding(out, l.value!.start, l.value!.end, parent.key, "named:sibling-pair");
+			}
+		}
+		if (body) {
+			mapping.add(l.start);
+			attrs.push({
+				key: l.key,
+				value: body.value,
+				start: body.start,
+				quoted: true,
+				literal: true,
+				line: i,
+				indent: l.indent,
+				block: true,
+			});
+			return;
+		}
+		if (!l.value) return;
 		mapping.add(l.start);
 		attrs.push({
 			key: l.key,
@@ -3083,6 +3226,15 @@ function siblingPairs(text: string, out: Finding[]) {
 				(second.line > first.line && second.indent < first.indent)
 			)
 				continue;
+			if (v.block) {
+				multiLineValue(
+					out,
+					credential,
+					{ value: v.value, start: v.start, end: v.start + v.value.length },
+					"named:sibling-pair",
+				);
+				break;
+			}
 			if (!v.value || !isNamedSecret(credential, v.quoted ? `"${v.value}"` : v.value, v.literal)) break;
 			namedFinding(out, v.start, v.start + v.value.length, credential, "named:sibling-pair");
 			break;
@@ -3327,7 +3479,9 @@ function prose(text: string, out: Finding[]) {
 		if (isVerdictUnderPass(name, withoutUnopenedClosers(m[4]))) continue;
 		const last = lastWord(name);
 		// (Cut at a quote inside its own brackets, the value runs on to their close: `Option<&'static str>`.)
-		const end = throughBrackets(text, m.indices![4]![0], m.indices![4]![1]);
+		let end = throughBrackets(text, m.indices![4]![0], m.indices![4]![1]);
+		// (Or ends where markup starts: `<td>Password: Kx9…<br>more</td>`.)
+		for (let i = m.indices![4]![0] + 1; i < end; i++) if (markupAt(text, i, m.indices![4]![0])) end = i;
 		const value = withoutUnopenedClosers(text.slice(m.indices![4]![0], end));
 		if (!isCredentialName(name.replace(/\s+/g, "_")) || /cookie/i.test(name) || clientSdkAt(text, m.index)) continue;
 		// A signature's parameter and its type, `decode(secret: Base32SecretKey): …`: the line opens a bracket before the
@@ -3512,6 +3666,8 @@ function isProseValue(value: string): boolean {
 	// (Nor a required field's star: `password (required*)`.)
 	const v = value.replace(/[.,;:!?)*]+$/, "");
 	const lower = v.toLowerCase();
+	// (A reference whose own bracket closes it is one before that's cut: `@Microsoft.KeyVault(SecretName=db)`.)
+	if (isInert(value)) return false;
 	return !PROSE_WORDS.has(lower) && !COMMON_WORDS.has(lower) && !PROSE_CODE.test(v) && looksSecret(`"${v}"`, true);
 }
 
@@ -4039,10 +4195,16 @@ function passwordShaped(text: string, out: Finding[]) {
 		const k = [2, 3, 4, 5].find((i) => m[i] !== undefined)!;
 		// (The sentence's punctuation and a bracket it closes, in either order: `(password: Xk9!mQ2z).`; a call's own
 		// `)` stays. Nor quotes at its end that it didn't open: a string's around it, `"$(openssl passwd -6 …)"`.)
-		const value = withoutUnopenedClosers(
-			m[k].replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:]+$/, ""),
-		).replace(/[.,;:]+$/, "");
 		const [start] = m.indices![k]!;
+		// (Unquoted, it ends where markup starts: `<td>Password: Kx9!…<br />`.)
+		let read = m[k];
+		if (k === 5) for (let i = 1; i < read.length; i++) if (markupAt(text, start + i, start)) read = read.slice(0, i);
+		const value = withoutUnopenedClosers(
+			read.replace(/(?<=^[^"'\x60]*)["'\x60]+$/, "").replace(/[.,;:]+$/, ""),
+		).replace(/[.,;:]+$/, "");
+		// (Nor a part of a reference the colon stood inside: `password: arn:aws:secretsmanager:…:secret:rds!db-…`.)
+		const word = /[^\s"'\x60]*$/.exec(text.slice(Math.max(0, start - 200), start))![0];
+		if (k === 5 && word && isInert(word + value)) continue;
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
 		// `["Summer2024!",` or `[Summer2024!,`, the readers' of those.)

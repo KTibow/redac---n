@@ -1704,3 +1704,82 @@ test("a Name/Value table with more columns names each row's value by its Name ce
 	kept(table, "GMT Standard Time");
 	kept(table, "SlotSetting");
 });
+
+test("a release, a VCS revision, a reference and an organization are named as IDs and hashes", () => {
+	for (const name of ["SENTRY_RELEASE", "LANGFUSE_RELEASE", "RELEASE", "BUILD_VCS_NUMBER", "VCS_REVISION"])
+		assert.equal(nameClass(name), "hash", name);
+	for (const name of ["pspReference", "merchantReference", "payment_reference", "organization", "ORGANISATION"])
+		assert.equal(nameClass(name), "identifier", name);
+	for (const name of ["RELEASE_TOKEN", "SENTRY_AUTH_TOKEN", "ORGANIZATION_API_KEY"])
+		assert.equal(nameClass(name), "credential", name);
+	kept("LANGFUSE_RELEASE=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env.observability" });
+	kept("BUILD_VCS_NUMBER=0e38f1d46da738d2c1f329127d8f93f3fab0e2c2\n", "0e38f1d4", { command: "set" });
+	hidden("RELEASE_TOKEN=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env" });
+});
+
+test("a config file's `key = value` lines with no section are literals, brackets and all", () => {
+	for (const v of ["Winter(2025)!!", "Summer[2024]x", "Rt5{Yu8}Io3", "Kj8;Hd3Lp9", "Qw3<Er5Ty9"]) {
+		hidden(`host = db.internal\nport = 5432\npassword = ${v}\n`, v);
+		hidden(`# db\nhost = db.internal\nuser = app\npassword = ${v}\n`, v, { command: "cat db.conf" });
+	}
+	// (Code's lines around it make it code: a call, a subscript, a keyword.)
+	for (const text of [
+		'host = os.environ["HOST"]\nport = 5432\npassword = get_password(user)\n',
+		"host = db.internal\nport = 5432\npassword = get_password(user)\n",
+		"const host = cfg.host\npassword = load(cfg)\n",
+	])
+		kept(text, text.match(/password = (.*)\n/)![1]);
+});
+
+test("a key and value table's row names its value by its key cell", () => {
+	hidden(
+		"INSERT INTO config (name, value) VALUES ('aws_secret_access_key', 'qT7xKp2LmZ9vRnB4sWyH8dFh6ZcQe3JaUo5GtN1c');",
+		"qT7xKp2LmZ9vRnB4sWyH8dFh6ZcQe3JaUo5GtN1c",
+	);
+	const options =
+		"INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('mailserver_pass', 'Hx7mQ2pL9vRt', 'yes'), ('siteurl', 'https://x.io', 'yes'), ('blogname', 'My Blog', 'yes');";
+	hidden(options, "Hx7mQ2pL9vRt");
+	kept(options, "https://x.io");
+	kept(options, "My Blog");
+	kept("INSERT INTO settings (key, value) VALUES ('smtp_password', '{{ smtp_pass }}');", "{{ smtp_pass }}");
+	kept("INSERT INTO settings (key, value) VALUES ('session_cookie_name', 'Hx7mQ2pL9vRtZk3v');", "Hx7mQ2pL9vRtZk3v");
+});
+
+test("a YAML value slot is named by its sibling or its parent, a block scalar's lines too", () => {
+	const v = "Zq8vT3mK9xLwPr2Yd7Hn";
+	for (const indicator of ["|", "|-", ">", ">-"]) {
+		hidden(`env:\n  - name: DB_PASSWORD\n    value: ${indicator}\n      ${v}\n`, v);
+		hidden(`variables:\n  DB_PASSWORD:\n    value: ${indicator}\n      ${v}\n`, v);
+	}
+	hidden(`variables:\n  DB_PASSWORD:\n    value: "${v}"\n    description: db\n`, v);
+	hidden(`secrets:\n  api_key:\n    value: ${v}\n    expires: 2025\n`, v);
+	kept(`env:\n  - name: CONFIG\n    value: |\n      ${v}\n`, v);
+	kept(`env:\n  - name: DB_PASSWORD\n    value: |-\n      {{ .Values.db.password }}\n`, "{{ .Values.db.password }}");
+	kept(`variables:\n  DB_PASSWORD:\n    value: "{{ vault_db }}"\n`, "{{ vault_db }}");
+});
+
+test("a value ends where the syntax around it resumes: its quote, a page's markup, a shell expansion's close", () => {
+	const v = "Zq8vT3mK9xLwPr2Yd7Hn";
+	for (const q of ["'", '"']) {
+		const out = r().redact(`environment:\n  - ${q}DB_PASSWORD: ${v}${q}  # note\n`).text;
+		assert.match(out, new RegExp(`- ${q}DB_PASSWORD: \\[REDACTED [^\\]]+\\]${q}  # note`));
+	}
+	for (const [text, after] of [
+		["<!-- DB_PASSWORD=Hx7mQ2pL9vRt-->", "]-->"],
+		["<td>Password: Hx7mQ2pL9vRt<br />more</td>", "]<br />more</td>"],
+		["<td>Password: Hx7mQ2pL9vRt<br>more</td>", "]<br>more</td>"],
+		["<p>password=Hx7mQ2pL9vRt</p>", "]</p>"],
+	]) {
+		const out = r().redact(text).text;
+		assert.ok(out.endsWith(after) && !out.includes("Hx7mQ2pL9vRt"), out);
+	}
+	// A shell expansion is read whole, as one word with the blanks in its brackets.
+	for (const text of [
+		"#!/bin/sh\nDB_PASSWORD=${DB_PASSWORD:-$(openssl rand -hex 16)}\nexport DB_PASSWORD\n",
+		"export SECRET_KEY=${SECRET_KEY:-$(head -c 32 /dev/urandom | base64)}\n",
+		'az webapp config appsettings set -g rg -n app --settings "DB_PASSWORD=@Microsoft.KeyVault(VaultName=kv;SecretName=db)"',
+	])
+		assert.equal(r().redact(text).text, text);
+	hidden("DB_PASSWORD=${DB_PASSWORD:-Kx9mQ2pLw7vR} ./run.sh", "Kx9mQ2pLw7vR");
+	hidden('docker run -e "DB_PASSWORD=Kx9mQ2pLw7vR;Host=db" app', "Kx9mQ2pLw7vR");
+});

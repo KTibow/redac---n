@@ -69,6 +69,14 @@ export function isClientGoogleKey(text: string, start: number): boolean {
 	// An Android manifest's Maps key and the iOS SDK's: the app ships them. (The manifest's within its `<meta-data>` tag,
 	// its attributes on one line or several, in either order.)
 	if (/GMSServices\.provideAPIKey\(\s*"$|GMSPlacesClient\.provideAPIKey\(\s*"$/.test(line)) return true;
+	// The files Firebase's tools generate into an app: the Android plugin's `values.xml` (`<string
+	// name="google_api_key">`), and iOS's `GoogleService-Info.plist` (`<key>API_KEY</key>` beside `GOOGLE_APP_ID`).
+	if (/<string\b[^<>]*\bname="google(?:_crash_reporting)?_api_key"[^<>]*>$/.test(line)) return true;
+	if (
+		/<key>API_KEY<\/key>\s*<string>$/.test(before) &&
+		/<key>(?:GOOGLE_APP_ID|GCM_SENDER_ID)<\/key>/.test(text.slice(Math.max(0, start - 3000), start + 3000))
+	)
+		return true;
 	const tag = /<meta-data\b[^<>]*android:value="$/.exec(before)?.[0];
 	if (
 		tag &&
@@ -102,11 +110,12 @@ export function isClientGoogleKey(text: string, start: number): boolean {
 		};
 		object = [...siblings(up), line + lineAfter, ...siblings(down)].join("\n");
 	}
-	// (The bracket must be the config's own: `firebaseConfig = {`, `initializeApp({`, `FirebaseOptions(`.)
+	// (The bracket must be the config's own: `firebaseConfig = {`, `initializeApp({`, `FirebaseOptions(`, an Angular
+	// environment's `firebase: {`.)
 	return (
 		/authDomain|messagingSenderId|"api_key"\s*:\s*\[/.test(object) ||
 		(open >= 0 &&
-			/(?:firebaseConfig\w*\s*[:=]\s*\{|initializeApp\(\s*\{?|FirebaseOptions\(|"api_key"\s*:\s*\[\s*\{)$/.test(
+			/(?:firebaseConfig\w*\s*[:=]\s*\{|\bfirebase["']?\s*:\s*\{|initializeApp\(\s*\{?|FirebaseOptions\(|"api_key"\s*:\s*\[\s*\{)$/.test(
 				before.slice(0, open + 1),
 			))
 	);
@@ -176,7 +185,14 @@ const STAND_IN = (() => {
 	);
 })();
 
-/** What separates the parts of a placeholder: `YOUR_API_KEY_HERE`, `example-token`, `<your-key>`, `sk-[redacted]`. */
+/**
+ * Words a placeholder says around its stand-in words, alone or run together: what goes there (`your-api-key-here`,
+ * `example-db-password`, `<your-project-id>`), and the instruction (`replace-with-your-own`).
+ */
+const PLACEHOLDER_WORD =
+	/^(?:api|apikey|key|keys|token|tokens|secret|secrets|password|passwd|pass|pwd|passphrase|pin|credentials?|value|string|text|data|info|goes|real|actual|own|this|that|for|with|your|mine|the|not|put|insert|enter|paste|add|set|replace|change|use|here|there|test|testing|sample|demo|dummy|default|access|refresh|client|app|application|auth|bearer|session|cookie|signing|webhook|private|public|user|username|name|email|account|project|org|organization|company|team|domain|host|hostname|server|database|bucket|region|url|endpoint|service|tenant|live|prod|production|dev|development|staging|sandbox|env|environment|admin|root|master|generated|random|strong|long|unique|security|privacy|reasons|brevity|redacting|sensitive)+$/i;
+
+/** What separates the parts of a placeholder:`YOUR_API_KEY_HERE`, `example-token`, `<your-key>`, `sk-[redacted]`. */
 const PLACEHOLDER_SEPARATORS = /[-_. :/[\]<>(){}*]+/;
 
 /**
@@ -189,21 +205,27 @@ const PLACEHOLDER_SEPARATORS = /[-_. :/[\]<>(){}*]+/;
 function isStandIn(token: string): boolean {
 	if (token.search(STAND_IN) < 0) return false;
 	const isWord = (p: string) => /^[A-Za-z]+$/.test(p) && naturalness(p.toLowerCase()) > 0.3;
-	return token
-		.split(PLACEHOLDER_SEPARATORS)
-		.filter(Boolean)
-		.every((part) => {
-			const standIns = [...part.matchAll(STAND_IN)];
-			if (!standIns.length) return /^\d{1,4}$/.test(part) || /^[A-Za-z]{1,4}$/.test(part) || isWord(part);
-			// (The parts around the stand-in words; the mask `xxxx` shows the last 1 to 4 characters after it.)
-			let from = 0;
-			return [...standIns.map((m) => m.index), part.length].every((to, i) => {
-				const joined = part.slice(from, to);
-				const mask = /^[xX]+$/.test(standIns[i - 1]?.[0] ?? "");
-				from = to + (standIns[i]?.[0].length ?? 0);
-				return joined === "" || isWord(joined) || (mask && /^[A-Za-z0-9]{1,4}$/.test(joined));
-			});
+	const parts = token.split(PLACEHOLDER_SEPARATORS).filter(Boolean);
+	// Words a placeholder doesn't say, two of them or one and a number, make a password of words that happens to hold a
+	// stand-in word: `Hidden-Dragon-2024`, `Crouching-Tiger-Hidden-Dragon`, `Summer-Changed-2024`. (A short part is a
+	// vendor's prefix, `sk_`; a long word that's none of these is the password's.)
+	const foreign = parts.filter(
+		(part) => /^[A-Za-z]{4,}$/.test(part) && part.search(STAND_IN) < 0 && !PLACEHOLDER_WORD.test(part),
+	).length;
+	// (Words with blanks between them are a sentence's: `hidden thing found`.)
+	if (!/\s/.test(token) && (foreign >= 2 || (foreign && parts.some((part) => /^\d+$/.test(part))))) return false;
+	return parts.every((part) => {
+		const standIns = [...part.matchAll(STAND_IN)];
+		if (!standIns.length) return /^\d{1,4}$/.test(part) || /^[A-Za-z]{1,4}$/.test(part) || isWord(part);
+		// (The parts around the stand-in words; the mask `xxxx` shows the last 1 to 4 characters after it.)
+		let from = 0;
+		return [...standIns.map((m) => m.index), part.length].every((to, i) => {
+			const joined = part.slice(from, to);
+			const mask = /^[xX]+$/.test(standIns[i - 1]?.[0] ?? "");
+			from = to + (standIns[i]?.[0].length ?? 0);
+			return joined === "" || isWord(joined) || (mask && /^[A-Za-z0-9]{1,4}$/.test(joined));
 		});
+	});
 }
 
 /** A masked key, a few characters shown around the stars: `sk-****abcd`, `ab****yz`. */
@@ -216,13 +238,20 @@ const MASKED = /^[^*\s]{0,8}\*{4,}[^*\s]{0,8}$/;
  * off (`...` then 300 characters).
  */
 export function isTruncated(token: string): boolean {
-	const m = /^([\w+/=:.-]{0,16}?)(?:\.\.\.|…)([\w+/=:.-]{0,40})$/.exec(token);
+	const m = /^([\w+/=:.-]{0,32}?)(?:\.\.\.|…)([\w+/=:.-]{0,40})$/.exec(token);
 	if (!m) return false;
+	// (Up to 16 characters before the ellipsis, or a longer vendor prefix of short parts and up to 10 of the key:
+	// `sk-ant-api03-Zx9K…`, `github_pat_11ABCDE0Y0…`.)
+	const prefix = /^(?:[a-z][a-z0-9]{1,7}[-_]){2,4}(?=[A-Za-z0-9+/=]{0,10}$)/.exec(m[1])?.[0];
+	if (m[1].length > 16 && !prefix) return false;
 	const runs = (side: string) => side.match(/[A-Za-z]+/g) ?? [];
 	const isWord = (run: string) => naturalness(run.toLowerCase()) > 0.3;
-	// (A person's word: capitalised, or five letters that read as one; a vendor's prefix is neither: `sk-proj`, `AKIA`.)
+	// (A person's word: capitalised, or five letters that read as one; a vendor's prefix is neither: `sk-proj`, `AKIA`,
+	// and a long one's words are the vendor's: `github_pat_`.)
 	return (
-		!runs(m[1]).some((run) => /^[A-Z][a-z]{3,}$/.test(run) || (run.length >= 5 && isWord(run))) &&
+		!runs(m[1].length > 16 ? m[1].slice(prefix!.length) : m[1]).some(
+			(run) => /^[A-Z][a-z]{3,}$/.test(run) || (run.length >= 5 && isWord(run)),
+		) &&
 		(m[2].length <= 8 || runs(m[2]).every((run) => run.length <= 2 || isWord(run)))
 	);
 }
@@ -314,10 +343,14 @@ export function isPublicJwt(token: string, samplesOnly = false): boolean {
 	if (!payload) return false;
 	// (jwt.io's sample claims say a sample when a public key signed them, RS256's and the others'; an HMAC token is a
 	// sample only by its docs key, signedWithDocsKey, as one signed with a real secret may copy the claims.)
+	// (The samples name no issuer and set no expiry: a token that does, `"iss":"https://dev-…auth0.com/"`, came from a
+	// real one, whose test user may well be John Doe.)
 	const hmac = /"alg"\s*:\s*"HS\d+"/.test(base64Binary(head) ?? "");
 	return (
 		(!samplesOnly && /"role"\s*:\s*"anon"/.test(payload)) ||
-		(!hmac && (/"sub"\s*:\s*"1234567890"/.test(payload) || /"name"\s*:\s*"John Doe"/.test(payload))) ||
+		(!hmac &&
+			(/"sub"\s*:\s*"1234567890"/.test(payload) || /"name"\s*:\s*"John Doe"/.test(payload)) &&
+			!/"(?:iss|exp)"\s*:/.test(payload)) ||
 		signedWithDocsKey(token)
 	);
 }
@@ -361,10 +394,11 @@ const base64url = (bytes: Uint8Array) =>
  * Browser and mobile SDK initialisers, whose keys are public by design: calls (`Sentry.init(`, `new Pusher(`,
  * `loadStripe(`) or config objects (`firebaseConfig = {`, `_rollbarConfig = {`). Not a vendor word alone:
  * `IntercomClient(…)` is a server SDK, a bare `createInstance(` is any factory unless Optimizely's is imported (see
- * clientSdkAt), and a comment naming the vendor initialises nothing.
+ * clientSdkAt), and a comment naming the vendor initialises nothing. Nor `Rollbar.init(`, which Node servers call with
+ * their server token, as `new Rollbar(` is: only the browser snippet's `_rollbarConfig` says client.
  */
 const CLIENT_SDK_CALL =
-	/(?:\b(?:AnalyticsBrowser\.load|analytics\.load|Bugsnag\.start|Rollbar\.init|optimizely(?:Sdk)?\.createInstance|createInstance|(?:new\s+)?GrowthBook|Purchases\.configure|braintree\.\w+\.create|(?:new\s+)?AdyenCheckout|branch\.init|initializeApp|new\s+mapboxgl\.\w+|(?:new\s+)?Pusher|Sentry\.init|posthog\.init|amplitude\.(?:init|getInstance\(\)\.init)|mixpanel\.init|LDClient\.initialize|datadogRum\.init|DD_RUM\.init|heap\.load|algoliasearch|docsearch|instantsearch|Intercom|loadStripe|Stripe|Square\.payments)\s*\(|\b(?:_rollbarConfig|firebaseConfig\w*)\s*[:=]\s*\{)/g;
+	/(?:\b(?:AnalyticsBrowser\.load|analytics\.load|Bugsnag\.start|optimizely(?:Sdk)?\.createInstance|createInstance|(?:new\s+)?GrowthBook|Purchases\.configure|braintree\.\w+\.create|(?:new\s+)?AdyenCheckout|branch\.init|initializeApp|new\s+mapboxgl\.\w+|(?:new\s+)?Pusher|Sentry\.init|posthog\.init|amplitude\.(?:init|getInstance\(\)\.init)|mixpanel\.init|LDClient\.initialize|datadogRum\.init|DD_RUM\.init|heap\.load|algoliasearch|docsearch|instantsearch|Intercom|loadStripe|Stripe|Square\.payments)\s*\(|\b(?:_rollbarConfig|firebaseConfig\w*)\s*[:=]\s*\{)/g;
 
 /**
  * The client SDK initialiser whose arguments `at` is directly inside, or inside an object or list given as one of them,

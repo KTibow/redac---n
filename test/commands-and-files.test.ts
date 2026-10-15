@@ -952,3 +952,32 @@ test("htpasswd's LDAP-scheme hashes are read as its crypt hashes are", () => {
 		assert.ok(out.includes("bob:") && out.includes("carol:"), out);
 	}
 });
+
+test("a secret file's padded assignments are read as assignments, so a reference among them stays", () => {
+	const tfvars = [
+		'grafana_admin_pass  = "Kx9mQ2pLw7vR"',
+		'db_password         = "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf"',
+		'api_key_secret_id   = "projects/468039570476/secrets/vllm-api-key/versions/latest"',
+		'region              = "us-central1"',
+	].join("\n");
+	const path = { path: "infra/envs/prod/terraform.tfvars" };
+	hidden(tfvars, "Kx9mQ2pLw7vR", path);
+	kept(tfvars, "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf", path);
+	kept(tfvars, "projects/468039570476/secrets/vllm-api-key/versions/latest", path);
+	// (A table that a secret manager prints still has its values: `vault kv get`.)
+	hidden("Key              Value\n---              -----\nclient_secret    Kx9mQ2pLw7vRtZ8n\n", "Kx9mQ2pLw7vRtZ8n", {
+		command: "vault kv get secret/app",
+	});
+});
+
+test("a command that prints a secret file's lines has them read as that file, name by name", () => {
+	const out =
+		"CLOUDINARY_URL=cloudinary://293633814225778:QbHn4SnyUiS6r_FY4XBPpMmW1YN@tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products\n";
+	const hint = { command: "vercel env pull .env.local && cat .env.local | grep -i cloudinary" };
+	hidden(out, "QbHn4SnyUiS6r_FY4XBPpMmW1YN", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop", hint);
+	hidden("STRIPE_SECRET_KEY=Kx9mQ2pLw7vRtZ8nB4cYd3Hq\nAPP_ENV=prod\n", "Kx9mQ2pLw7vRtZ8nB4cYd3Hq", {
+		command: "heroku config -s",
+	});
+});
