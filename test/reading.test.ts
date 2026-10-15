@@ -121,6 +121,12 @@ test("spaces of other widths, full-width signs and line continuations, and backs
 	assert.equal(normalize("PASSWORD：x＝y").text, "PASSWORD:x=y");
 	assert.equal(normalize("a&amp;b \\t c").text, "a&b \\t c");
 	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
+	// An entity escaped twice (JSON in an attribute escaped twice) is the character.
+	assert.equal(normalize("{&amp;quot;a&amp;quot;:1} &amp;amp;lt;").text, '{"a":1} <');
+	// A word processor's dashes before a command line's flags; prose's dashes stay.
+	assert.equal(normalize("mysql –u root —password x −p").text, "mysql -u root --password x -p");
+	for (const prose of ["pages 10–12 — see above", "a well‑known value", "Paris–Berlin"])
+		assert.equal(normalize(prose).text, prose);
 });
 
 test("typographic quotes, as autocorrect writes pasted JSON and config, are read as the straight ones", () => {
@@ -155,9 +161,9 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 	const bytes = Buffer.from(`API_KEY=${key}\nDEBUG=1\n`);
 	const hex = (b: Buffer) => b.toString("hex");
 	const ascii = (b: Buffer) => [...b].map((c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : ".")).join("");
-	const rows = (fn: (row: Buffer, offset: number) => string) =>
-		Array.from({ length: Math.ceil(bytes.length / 16) }, (_, k) =>
-			fn(bytes.subarray(k * 16, k * 16 + 16), k * 16),
+	const rows = (fn: (row: Buffer, offset: number) => string, width = 16) =>
+		Array.from({ length: Math.ceil(bytes.length / width) }, (_, k) =>
+			fn(bytes.subarray(k * width, k * width + width), k * width),
 		).join("\n");
 	const pairs = (b: Buffer, size: number, swap = false) =>
 		(hex(b).match(new RegExp(`.{1,${size * 2}}`, "g")) ?? []).map((g) =>
@@ -171,6 +177,12 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 		hexdump: rows((b, o) => `${o.toString(16).padStart(7, "0")} ${pairs(b, 2, true).join(" ")}`),
 		"hexdump -C": rows((b, o) => `${o.toString(16).padStart(8, "0")}  ${pairs(b, 1).join(" ")}  |${ascii(b)}|`),
 		"od -A x -t x1z": rows((b, o) => `${o.toString(16).padStart(6, "0")} ${pairs(b, 1).join(" ")}  >${ascii(b)}<`),
+		"od -An -tx1": rows((b) => ` ${pairs(b, 1).join(" ")}`),
+		"xxd -g 8": rows((b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 8).join(" ").padEnd(33)}  ${ascii(b)}`),
+		"xxd -c 32 -g1": rows(
+			(b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 1).join(" ").padEnd(95)}  ${ascii(b)}`,
+			32,
+		),
 	};
 	for (const [tool, dump] of Object.entries(dumps)) {
 		const out = r().redact(`$ ${tool} build.bin\n${dump}\n`).text;
@@ -375,6 +387,11 @@ test("a long finding ends at an escape, so escaped JSON around it still parses",
 test("terminal colours and entities around a value don't hide it", () => {
 	hidden("export AWS=\x1b[1mAKI\x41QZGOQKYPAR27BIHL\x1b[0mxyz", "QZGOQKYPAR27BIHL");
 	hidden("<password>Vq7m&lt;Zp2xK</password>", "Zp2xK");
+	// (JSON in an attribute escaped twice.)
+	hidden(
+		'<div data-config="{&amp;quot;user&amp;quot;:&amp;quot;bob&amp;quot;,&amp;quot;password&amp;quot;:&amp;quot;Xk29fLmq81Zt&amp;quot;}"></div>',
+		"Xk29fLmq81Zt",
+	);
 });
 
 test("values learned one at a time are all found, before and after the index is rebuilt whole", () => {
@@ -456,6 +473,46 @@ test("tag characters and other invisible characters outside the basic plane are 
 	assert.equal(normalize("sk\u{E0041}\u{E0100}-abcㅤd").text, "sk-abcd");
 	// (Nor does an entity decode to NUL, half a surrogate pair, or a character of two UTF-16 units.)
 	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
+});
+
+test("a value written with its quotes' escapes is learned and tagged as the program reads it", () => {
+	const tag = (text: string, hint = {}) => /#(\w+)\]/.exec(r().redact(text, { hint }).text)?.[1];
+	for (const [raw, forms] of [
+		[
+			"Tr0ub4dor'3xK9mQ",
+			[
+				"db_password: 'Tr0ub4dor''3xK9mQ'\n",
+				"CREATE USER app WITH PASSWORD 'Tr0ub4dor''3xK9mQ';\n",
+				"const password = 'Tr0ub4dor\\'3xK9mQ';\n",
+				"export DB_PASSWORD='Tr0ub4dor'\\''3xK9mQ'\n",
+			],
+		],
+		["Tr0ub4dor$3xK9mQ", ['export DB_PASSWORD="Tr0ub4dor\\$3xK9mQ"\nexport PORT=5432\n']],
+		[
+			'Tr0ub4dor"3xK9mQ',
+			['{"password": "Tr0ub4dor\\"3xK9mQ"}', '{"body": "{\\"password\\": \\"Tr0ub4dor\\\\\\"3xK9mQ\\"}"}'],
+		],
+		["Pa$$w0rd x9Kq", ["mysql --password=Pa\\$\\$w0rd\\ x9Kq -u root\n"]],
+	] as const) {
+		const expected = tag(`DB_PASSWORD=${JSON.stringify(raw)}\n`);
+		for (const text of forms) {
+			assert.equal(tag(text, { path: "setup.sh" }), expected, text);
+			const red = r();
+			red.learn(text, { hint: { path: "setup.sh" } });
+			assert.ok(!red.redact(`The login fails with ${raw} again.`).text.includes(raw), text);
+		}
+	}
+	// (A shell's single quotes hold no escapes: its backslash is the value's own.)
+	assert.equal(tag("export DB_PASSWORD='Tr0ub4dor\\3xK9mQ'\n"), tag('DB_PASSWORD="Tr0ub4dor\\\\3xK9mQ"\n'));
+});
+
+test("a known token cut short takes no path before it, only what its value is made of", () => {
+	const red = new Redactor({ fingerprintKey: "t", known: ["ghp_Zq8vK2mX9pLw4RtYabcdefghijKLMN"] });
+	const out = red.redact("see https://api.github.com/repos/o/r/ghp_Zq8vK2mX9pLw4Rt and more").text;
+	assert.ok(out.startsWith("see https://api.github.com/repos/o/r/[REDACTED part of"), out);
+	// (A value with `/` in it goes on through one.)
+	const slash = new Redactor({ fingerprintKey: "t", known: ["Zq8vK2mX9pLw4Rt/YabcdefghijKLMNxyz"] });
+	assert.ok(!slash.redact("see Zq8vK2mX9pLw4Rt/Yabcdefghij and more").text.includes("Yabcdefghij"));
 });
 
 test("a login under a name that says so teaches its password too; a base64 key or a signature is not split", () => {

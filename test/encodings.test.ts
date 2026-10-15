@@ -22,6 +22,26 @@ test("a known value is hidden in its base64, hex and percent-encoded forms", () 
 	}
 });
 
+test("a known value is hidden as each JSON encoder and percent-encoder writes it", () => {
+	for (const [value, text] of [
+		// Python's json.dumps and PHP's json_encode: every character past ASCII as a code (PHP's slashes escaped too).
+		["pässwörd-Zq8vK2mX9", String.raw`{"level":"info","msg":"login with p\u00e4ssw\u00f6rd-Zq8vK2mX9 ok"}`],
+		["Zq8vK2mX9pLw😀R4tY", String.raw`payload: "Zq8vK2mX9pLw\ud83d\ude00R4tY"`],
+		["Zq8v/K2émX9pLw", String.raw`payload: 'Zq8v\/K2\u00E9mX9pLw'`],
+		// A form body (URLSearchParams, Java's URLEncoder), Go's QueryEscape, Python's quote.
+		["Zq8vK2mX~9pLw4R!", "POST body: p=Zq8vK2mX%7E9pLw4R%21"],
+		["Zq8v*K2mX!9pLw4R", "POST body: p=Zq8v*K2mX%219pLw4R"],
+		["Zq8vK2 mX*9pLw4R", "POST body: p=Zq8vK2+mX*9pLw4R&x=1"],
+		["Zq8vK2 mX~9pLw4R", "GET /x?p=Zq8vK2%20mX~9pLw4R HTTP/1.1"],
+		["Abcd1234+Efgh5678/Ijkl9012=", "GET /x?k=Abcd1234%2BEfgh5678/Ijkl9012%3D HTTP/1.1"],
+	]) {
+		const out = new Redactor({ fingerprintKey: "t", known: [value] }).redact(text).text;
+		assert.ok(/\[REDACTED known secret #\w+\]/.test(out) && !out.includes(value.slice(-4)), out);
+	}
+	const out = new Redactor({ known: ["Zq8vK2 mX~9pLw4R"] }).redact("POST body: p=Zq8vK2+mX%7E9pLw4R&x=1").text;
+	assert.ok(out.endsWith("&x=1"), out);
+});
+
 test("terminal escapes (colour codes, OSC, CSI, caret notation) around a name or a value do not hide it", () => {
 	hidden(JSON.stringify({ out: "\u001b[32mSESSION_SALT\u001b[0m=Xq7Lm2Vb9R\n" }), "Xq7Lm2Vb9R");
 	hidden('{"log":"\\u001b[32mAPI_KEY=Zr4Kp9Qx2Lm7Vb3Nw8Ty5Hc\\u001b[0m"}', "Zr4Kp9Qx2Lm7Vb3Nw8Ty5Hc");
@@ -80,6 +100,42 @@ test("a slash, a tab or a Python repr's quote escaped in a one-line literal is u
 	assert.ok(!new Redactor({ guessing: "off" }).redact(sed).text.includes("Kx9mQv2Lp7Rt"));
 	hidden('{"out": "DB_PASSWORD\\tKx9mQv2Lp7Rt"}', "Kx9mQv2Lp7Rt");
 	hidden("{'stdout': 'DB_HOST=db\\nDB_PASSWORD=Kx9m\\'Qv2 Lp7Rt\\n', 'returncode': 0}", "Lp7Rt");
+});
+
+test("a code or a doubled backslash escaped in a one-line literal is undone where JSON stands around it", () => {
+	// Go's json.Marshal writes `&`, `<` and `>` as codes, Python's json.dumps every character past ASCII.
+	for (const text of [
+		String.raw`{"level":"info","msg":"exec: mysql -h db.internal -u root -pQm7v\u0026Tx2LpR9sWd4Nz8K shop"}`,
+		String.raw`{"database_url":"postgres://app:Qm7v\u0026Tx2LpR9sWd4Nz8K@db.internal:5432/shop"}`,
+		`{\n  "name": "DATABASE_URL",\n  "value": "postgres://app:Qm7v\\u0026Tx2LpR9sWd4Nz8K@db.internal:5432/shop"\n}`,
+		String.raw`{"level":"warn","msg":"redis://:Qm7v\u00e9Tx2LpR9sWd4Nz8K@cache.internal:6379/0 refused"}`,
+		String.raw`{"msg":"exec: mysql -u root -pQm7v\\Tx2LpR9sWd4Nz8K shop"}`,
+	])
+		hidden(text, "Tx2LpR9sWd4Nz8K");
+	// (The value alone: the rest of a query string after Go's `\u0026` stays.)
+	const query = String.raw`{"msg":"GET https://api.example.com/v1/items?client_secret=Qm7vTx2LpR9sWd4Nz8KcYb3HfJ6aEg5U\u0026grant_type=client_credentials 200"}`;
+	hidden(query, "Qm7vTx2LpR9sWd4Nz8KcYb3HfJ6aEg5U");
+	kept(query, String.raw`\u0026grant_type=client_credentials 200`);
+	kept(
+		String.raw`{"title":"Caf\u00e9 menu \u0026 prices for the 2024 season"}`,
+		String.raw`Caf\u00e9 menu \u0026 prices`,
+	);
+	kept(String.raw`{"path":"C:\\Users\\deploy\\AppData\\Local\\Temp"}`, String.raw`C:\\Users\\deploy\\AppData`);
+});
+
+test("a base64 value whose slashes JSON escaped is judged whole, and a path's segments apart", () => {
+	const value = String.raw`Zx9Qk2Lm7Vb4Nt8Rs3Wy\/Hd1Ae5Uf0GpJcOiPq4Tz`;
+	for (const text of [
+		String.raw`[2024-10-15 09:12:44] local.INFO: outgoing request {"url":"https:\/\/api.lumen.io\/v1\/me","headers":{"X-Lumen":"${value}"}}`,
+		String.raw`{"headers":{"X-Lumen":"${value}"}}`,
+	]) {
+		hidden(text, "Zx9Qk2Lm7Vb4Nt8Rs3Wy");
+		hidden(text, "Hd1Ae5Uf0GpJcOiPq4Tz");
+	}
+	kept(
+		String.raw`[2024-10-15 09:12:44] local.INFO: {"url":"https:\/\/api.example.com\/v1\/organizations\/members\/invitations"}`,
+		String.raw`\/v1\/organizations\/members\/invitations`,
+	);
 });
 
 test("a guessed token is hidden again inside an escaped literal, where it stands without what made it a guess", () => {
@@ -191,6 +247,9 @@ test("a line that is only base64 of a generated token or a password is hidden, o
 		"e04423e4-7a67-4f9c-b291-99e63c1c2158",
 		"Jane.Doe42@Example.com",
 		"https://api.example.com/v1/Users/42",
+		// (A JWT's header alone, `cut -d. -f1` of a token: JSON, which its quotes and braces give three classes.)
+		'{"alg":"HS256","typ":"JWT"}',
+		'{"typ":"JWT","alg":"RS256","kid":"Key-2024"}',
 	])
 		kept(line(value), b64(value));
 	// (A blob wrapped over lines later in the text leaves the line before it its own.)

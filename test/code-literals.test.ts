@@ -22,6 +22,13 @@ test("adjacent string literals are one value in code, but a log's quoted fields 
 	hidden('x = foo(\n    "ghp\x5f16C7e42F292c69"\n    "12E7710c838347Ae178B4b",\n)', "12E7710c838347Ae178B4b");
 	hidden("token = ('ghp\x5f16C7e42F292c69' '12E7710c838347Ae178B4b')", "12E7710c838347Ae178B4b");
 	kept('200 512 "https://app.example.com/reset?token=Qz8rT2mLx0vB4nW7kP1y" "curl/7.88.1"', '" "curl/7.88.1"');
+	// (A C initializer's next piece is indented under it; a shell line's quoted value ends its line.)
+	hidden('static const char *key =\n    "sk-proj-Ab3De5Fg7"\n    "Hi9Jk1Lm3No5Pq7Rs9Tu";', "Hi9Jk1Lm3No5Pq7Rs9Tu");
+	for (const next of ['"$SCRIPT_DIR/run.sh" --migrate', '"$@"', '"/usr/local/bin/deploy" --prod']) {
+		const script = `export DB_PASSWORD="Xk29fLmq81Zt"\n${next}\n`;
+		hidden(script, "Xk29fLmq81Zt");
+		kept(script, `"\n${next}\n`);
+	}
 });
 
 test("pieces in single quotes join as double-quoted ones do; a string starts with three characters, of token-like pieces", () => {

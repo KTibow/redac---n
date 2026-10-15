@@ -46,6 +46,17 @@ function base64Shifts(value: string): string[] {
 	return out;
 }
 
+/** `value` percent-encoded byte by byte (UTF-8), but for the characters `keep` matches and a space, written `space`. */
+function percentEncoded(value: string, keep: RegExp, space: string): string {
+	let out = "";
+	for (const c of value) {
+		if (c === " ") out += space;
+		else if (keep.test(c)) out += c;
+		else for (const b of new TextEncoder().encode(c)) out += `%${b.toString(16).toUpperCase().padStart(2, "0")}`;
+	}
+	return out;
+}
+
 /** The forms a known value takes in output, besides itself. */
 function variants(value: string): string[] {
 	const out = new Set([value]);
@@ -54,6 +65,14 @@ function variants(value: string): string[] {
 	out.add(json.replace(/\//g, "\\/"));
 	out.add(json.replace(/[&<>']/g, (c) => `\\u00${c.charCodeAt(0).toString(16).padStart(2, "0")}`));
 	out.add(JSON.stringify(json).slice(1, -1)); // twice-escaped: JSON inside a JSON string
+	// Every character past ASCII as a code, as Python's json.dumps and PHP's json_encode write it (PHP's with `\/`).
+	if (/[^\x00-\x7f]/.test(json)) {
+		for (const hex of [(c: string) => c, (c: string) => c.toUpperCase()]) {
+			const ascii = json.replace(/[^\x00-\x7f]/g, (c) => `\\u${hex(c.charCodeAt(0).toString(16).padStart(4, "0"))}`);
+			out.add(ascii);
+			out.add(ascii.replace(/\//g, "\\/"));
+		}
+	}
 	let uri = value;
 	try {
 		uri = encodeURIComponent(value);
@@ -61,6 +80,13 @@ function variants(value: string): string[] {
 	out.add(uri);
 	out.add(uri.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`).replace(/%20/g, "+"));
 	out.add(uri.toLowerCase() === uri ? uri : uri.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()));
+	// The other percent-encoders, by the characters they leave as they are: a form body's (URLSearchParams, Java's
+	// URLEncoder: `*`, a space as `+`), RFC 3986's unreserved ones (Go's QueryEscape, Python's quote_plus: `~`), and
+	// Python's quote, which also leaves `/`.
+	out.add(percentEncoded(value, /[\w*.-]/, "+"));
+	out.add(percentEncoded(value, /[\w.~-]/, "+"));
+	out.add(percentEncoded(value, /[\w.~-]/, "%20"));
+	out.add(percentEncoded(value, /[\w.~/-]/, "%20"));
 	out.add(value.replace(/([^\w\-.,:/@+=%])/g, "\\$1")); // printf %q
 	out.add(value.replace(/(["\\$`])/g, "\\$1")); // inside double quotes
 	out.add(value.replace(/'/g, "'\\''")); // inside single quotes
@@ -189,9 +215,6 @@ interface ShortIndex {
 	forms: ShortForm[];
 }
 
-/** How many short forms are indexed apart from the rest before all are indexed in one again. */
-const RECENT_FORMS = 256;
-
 export class KnownValues {
 	private long = new LiteralIndex();
 	private ends = new LiteralIndex();
@@ -200,10 +223,9 @@ export class KnownValues {
 	private shortB64 = new Map<string, string>();
 	/** Every short form in the order added; `word` if it's matched as a whole word (`short`), else anywhere (`shortB64`). */
 	private shortForms: ShortForm[] = [];
-	/** The short forms indexed: all up to `mainCount` in one index, the rest in a small one (see rebuild). */
-	private main?: ShortIndex;
-	private mainCount = 0;
-	private recent?: ShortIndex;
+	/** The short forms indexed, in indexes of decreasing size (see rebuild), and how many they hold. */
+	private levels: ShortIndex[] = [];
+	private indexed = 0;
 	private labels = new Map<string, string>();
 	/** The value each form was made from: a form found is the value written another way, and tagged as the value. */
 	private origins = new Map<string, string>();
@@ -257,25 +279,24 @@ export class KnownValues {
 	}
 
 	/**
-	 * Indexes the short forms added since the last find. They go in a small index of their own, so learning a value and
-	 * then finding (a session that learns as it goes) costs that small index, not all of them; once it holds more than
-	 * RECENT_FORMS, every form is indexed in one again.
+	 * Indexes the short forms added since the last find. They go in an index of their own, merged with the indexes
+	 * no bigger than it, so each holds at least twice what the next one holds: a session that learns a value and then
+	 * finds, over and over, indexes each form a logarithmic number of times, not every form at every few values, and
+	 * a find reads a logarithmic number of indexes.
 	 */
 	private rebuild() {
-		const indexed = this.mainCount + (this.recent?.forms.length ?? 0);
-		if (indexed === this.shortForms.length) return;
-		const index = (forms: ShortForm[]): ShortIndex => ({
+		if (this.indexed === this.shortForms.length) return;
+		let forms = this.shortForms.slice(this.indexed);
+		while (this.levels.length && this.levels[this.levels.length - 1].forms.length <= forms.length)
+			forms = [...this.levels.pop()!.forms, ...forms];
+		this.levels.push({
 			set: new KeywordSet(
 				forms.map((f) => f.form),
 				true,
 			),
 			forms,
 		});
-		if (this.shortForms.length - this.mainCount > RECENT_FORMS) {
-			this.main = index(this.shortForms.slice());
-			this.mainCount = this.shortForms.length;
-			this.recent = undefined;
-		} else this.recent = index(this.shortForms.slice(this.mainCount));
+		this.indexed = this.shortForms.length;
 	}
 
 	find(text: string): Finding[] {
@@ -291,8 +312,7 @@ export class KnownValues {
 				value: this.origins.get(v),
 			});
 		// Short values whole only (or straight after a flag like `-p`); short base64 pieces anywhere.
-		for (const index of [this.main, this.recent]) {
-			if (!index) continue;
+		for (const index of this.levels) {
 			for (const [at, k] of index.set.matches(text)) {
 				const { form: v, word } = index.forms[k];
 				const dash = v.includes("-");
@@ -321,10 +341,14 @@ export class KnownValues {
 		for (const [at, v] of this.ends.find(text)) {
 			while (fi < full.length && full[fi].start <= at) fullEnd = Math.max(fullEnd, full[fi++].end);
 			if (fullEnd >= at + W || at < lastEnd) continue;
+			// (Over the characters the value has: a token with no `/` cut short after a path, `…/repos/o/r/ghp_Zq8v…`,
+			// takes none of the path with it.)
+			const value = this.origins.get(v) ?? "";
+			const inValue = (c: string) => TOKEN_CHAR.test(c) && (/[A-Za-z0-9]/.test(c) || value.includes(c));
 			let start = at;
 			let end = at + W;
-			while (start > 0 && TOKEN_CHAR.test(text[start - 1])) start--;
-			while (end < text.length && TOKEN_CHAR.test(text[end])) end++;
+			while (start > 0 && inValue(text[start - 1])) start--;
+			while (end < text.length && inValue(text[end])) end++;
 			lastEnd = end;
 			out.push({
 				start,

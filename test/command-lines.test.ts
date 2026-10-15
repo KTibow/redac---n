@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { isCommandKey } from "../src/json.ts";
 import { hidden, kept, r } from "./helpers.ts";
 
 test("a password flag hides its value in option, attached, list and compound forms, and the rest of the line is kept", () => {
@@ -36,6 +37,12 @@ test("a password flag hides its value in option, attached, list and compound for
 		"lftp -u bob,Xk9mQ2pLrT sftp://host",
 	])
 		hidden(line, "Xk9mQ2pLrT");
+});
+
+test("a command line under any key named for one is read as one", () => {
+	for (const key of ["CommandLine", "commandLine", "bash_command", "COMMAND_LINE", "shellCmd"])
+		hidden(`{"${key}":"mysql -u root -pQm7vTx2LpR9sWd4Nz8K shop","Cwd":"/app"}`, "Qm7vTx2LpR9sWd4Nz8K");
+	for (const key of ["subcommand", "description", "commander"]) assert.ok(!isCommandKey(key), key);
 });
 
 test("a program's own password option is read, catalogued or not", () => {
@@ -269,4 +276,11 @@ test("cypher-shell's -p is a password, and a process listing's command is read p
 	hidden(`root     73104  0.0  0.1 pts/0 Ss+ Oct10 0:00 /usr/bin/redis-cli -a ${pw} ping`, pw, { command: "ps aux" });
 	// (A path after a command's own words is its argument: `find` runs, not mysql.)
 	kept(`find /var/lib/mysql -perm ${pw}`, pw);
+});
+
+test("a dash a word processor typed before a flag is the flag's, and prose's dashes stay", () => {
+	hidden("mysql \u2013u root \u2013pXk29fLmq81Zt\n", "Xk29fLmq81Zt");
+	hidden("curl \u2013u admin:Xk29fLmq81Zt https://x.example.com\n", "Xk29fLmq81Zt");
+	hidden("mysql -u root \u2014password Xk29fLmq81Zt\n", "Xk29fLmq81Zt");
+	kept("Run it twice \u2013 once per region \u2014 then compare.", "\u2013 once per region \u2014 then");
 });

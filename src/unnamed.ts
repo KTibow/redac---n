@@ -91,6 +91,9 @@ const CANDIDATE = new RegExp(`^[A-Za-z0-9+/=_-]{${MIN_TOKEN},}$`);
  */
 const PERCENT_RUN = /(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2}){16,}/g;
 
+/** A run of token characters with JSON's escaped slashes in it (PHP's and Laravel's `Zx9…\/Hd1…`). */
+const ESCAPED_SLASH_RUN = /(?:[A-Za-z0-9+=_-]|\\\/){16,}/g;
+
 /**
  * Runs of token characters long enough to be a key. A run that is a path (`/api/v1/<id>/users`) or
  * dotted (`a.b.c`) is split into its segments, each judged alone. A percent-encoded run that decodes to one token is
@@ -111,6 +114,18 @@ export function candidates(text: string): Candidate[] {
 			out.push({ start: m.index, end: m.index + m[0].length, token });
 			encoded.push([m.index, m.index + m[0].length]);
 		}
+	}
+	// A base64 value whose slashes JSON escaped, as PHP's json_encode does every one, is judged whole too, as its
+	// decoded value; a path's (`api.example.io\/v1\/me`) is split as a path is.
+	if (text.includes("\\/")) {
+		for (const m of text.matchAll(ESCAPED_SLASH_RUN)) {
+			if (!m[0].includes("\\/") || backslashesBefore(text, m.index) % 2) continue;
+			const token = m[0].replace(/\\\//g, "/");
+			if (token.length > 256 || !CANDIDATE.test(token) || !isBase64Run(token, text, m.index)) continue;
+			out.push({ start: m.index, end: m.index + m[0].length, token });
+			encoded.push([m.index, m.index + m[0].length]);
+		}
+		encoded.sort((x, y) => x[0] - y[0]);
 	}
 	// (Both in the text's order: the encoded run a token run may be in is the first not ended before it.)
 	let k = 0;
