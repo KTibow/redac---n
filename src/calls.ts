@@ -84,6 +84,8 @@ function matchBrackets(text: string, slashComments: boolean): Int32Array {
 			else i = stop + 1;
 		} else if (c === "'" && isContraction(text, i)) {
 			// (Prose's apostrophe, `don't connect(…) doesn't`, opens nothing.)
+		} else if (c === "`" && text.startsWith("``", i + 1)) {
+			i = fenceEnd(text, i);
 		} else if (c === '"' || c === "'" || c === "`") {
 			// (A string that doesn't close ends every call around it: none of them is closed.)
 			const stop = literalEnd(text, i, { max: MAX_CALL });
@@ -98,6 +100,16 @@ function matchBrackets(text: string, slashComments: boolean): Int32Array {
 		}
 	}
 	return close;
+}
+
+/**
+ * The last backtick of the run of three or more that starts at `at`: a Markdown code fence (or inline code's), which opens
+ * no template literal. Read as one, a fence would hide everything up to the next one, the code it shows included.
+ */
+function fenceEnd(text: string, at: number): number {
+	let i = at;
+	while (text[i + 1] === "`") i++;
+	return i;
 }
 
 /** The arguments between `at` and the bracket at `close` that closes the call: separated by commas outside brackets and strings. */
@@ -135,11 +147,13 @@ function splitArguments(text: string, at: number, close: number, slashComments: 
 		if (first < 0) first = i;
 		// (Each closes before `close`: the pass that matched `close` read them.)
 		const stop =
-			c === '"' || c === "'" || c === "`"
-				? literalEnd(text, i, { max: close - i })
-				: c === "(" || c === "[" || c === "{"
-					? closeOf(text, i, slashComments)
-					: i;
+			c === "`" && text.startsWith("``", i + 1)
+				? fenceEnd(text, i)
+				: c === '"' || c === "'" || c === "`"
+					? literalEnd(text, i, { max: close - i })
+					: c === "(" || c === "[" || c === "{"
+						? closeOf(text, i, slashComments)
+						: i;
 		if (stop < 0) break;
 		i = stop;
 		last = i + 1;

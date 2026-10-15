@@ -325,3 +325,16 @@ test("an interpolated string's holes are code, in the value's own string or the 
 	hidden('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "Xk9mQ2pLrT");
 	kept('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "User Id=sa");
 });
+
+test("a Markdown code fence opens no template literal: the calls inside it are read", () => {
+	const java = 'cfg.setUsername("jenkins");\ncfg.setPassword("Winter1!!");';
+	const php = "<?php\ndefine( 'DB_PASSWORD', 'O9FyDB0k=HtE4' );";
+	for (const [code, secret] of [
+		[java, "Winter1!!"],
+		[php, "O9FyDB0k=HtE4"],
+	]) {
+		hidden("```\n" + code + "\n```", secret);
+		hidden("Here's what it printed:\n\n```java\n" + code + "\n```\n\nAnything look off?", secret);
+		hidden("~~~\n" + code + "\n~~~", secret);
+	}
+});
