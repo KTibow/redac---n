@@ -119,6 +119,14 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	hidden(`127.0.0.1:6379> AUTH ${pw}\nOK`, pw);
 	hidden(`127.0.0.1:6379> CONFIG GET requirepass\n1) "requirepass"\n2) "${pw}"`, pw);
 	hidden(`java -Dspring.datasource.password=${pw} -jar app.jar`, pw);
+	// (A system property's value is a shell word: an escaped blank or a quote inside it doesn't end it.)
+	for (const t of [
+		"java -Dapp.password=Zq8vK3\\ mT9xLw2Rn7 -jar a.jar",
+		'java -Dapp.password=Zq8vK3"mT9 xLw2Rn7" -jar a.jar',
+		"gradle build -PKEYSTORE_PASSWORD=Zq8vK3'mT9 xLw2Rn7'",
+	])
+		hidden(t, "xLw2Rn7");
+	kept('"args":["-Dapp.password=Zq8vK3mT9xLw2Rn7","-Dapp.user=svc_reports"]', "svc_reports");
 	hidden(`echo '${pw}' | sudo -S apt update`, pw);
 	hidden(`echo ${pw} | docker login -u bob --password-stdin`, pw);
 	hidden('printf "%s\\n" "Plum-Harbor-77" | sudo -S apt-get update', "Plum-Harbor-77");

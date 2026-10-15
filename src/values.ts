@@ -1406,10 +1406,11 @@ export function isMadePassword(value: string): boolean {
 
 /**
  * Names of algorithms, encodings and formats that sentences about credentials mention: `password (UTF-8)`, `SHA-256`;
- * and password hashers as libraries name them: Django's `pbkdf2_sha256`, `bcrypt_sha256`, passlib's `sha512_crypt`.
+ * and password hashers as libraries name them: Django's `pbkdf2_sha256`, `bcrypt_sha256`, passlib's `sha512_crypt`;
+ * and the schemes a password is checked or sent by: `scram-sha-256`, `md5crypt`, `WPA2`, `NTLMv2`, `MSCHAPv2`.
  */
 export const ALGORITHM =
-	/^(?:SHA-?(?:1|224|256|384|512)(?:\/\d{3})?|SHA3-\d{3}|AES-?(?:128|192|256)(?:-[A-Z]{2,4})?|RSA-?(?:1024|2048|3072|4096)|MD[245]|3?DES|HMAC-SHA-?(?:1|256|384|512)|PBKDF2(?:[-_](?:HMAC[-_])?SHA-?(?:1|224|256|384|512))?|(?:md5|sha1|sha256|sha512)_crypt|ECDSA|Ed(?:25519|448)|X(?:25519|448|509)|UTF-?(?:8|16|32)(?:LE|BE)?|UCS-?[24]|PKCS#?(?:1|5|7|8|11|12)|IPv[46]|ChaCha20(?:-Poly1305)?|TLSv?1\.[0-3]|SSLv[23]|ISO-8859-\d{1,2}|Windows-125\d|Latin-?\d|CP\d{3,4}|RFC-?\d{3,5}|base(?:32|58|64)(?:url)?|hex|bcrypt(?:_sha256)?|argon2(?:id|i|d)?|scrypt|\d+-(?:stellig|chiffres|caracteres|digits?|characters?))(?:-(?:encoded|decoded|encrypted))?$/i;
+	/^(?:SHA-?(?:1|224|256|384|512)(?:\/\d{3})?|SHA3-\d{3}|AES-?(?:128|192|256)(?:-[A-Z]{2,4})?|RSA-?(?:1024|2048|3072|4096)|MD[245]|3?DES|HMAC-SHA-?(?:1|256|384|512)|PBKDF2(?:[-_](?:HMAC[-_])?SHA-?(?:1|224|256|384|512))?|(?:md5|sha1|sha256|sha512)_?crypt|yescrypt|SCRAM-SHA-(?:1|256)(?:-PLUS)?|WPA[23]?(?:-(?:PSK|SAE|Personal|Enterprise))?|NTLMv[12]|(?:MS-?)?CHAPv2|ECDSA|Ed(?:25519|448)|X(?:25519|448|509)|UTF-?(?:8|16|32)(?:LE|BE)?|UCS-?[24]|PKCS#?(?:1|5|7|8|11|12)|IPv[46]|ChaCha20(?:-Poly1305)?|TLSv?1\.[0-3]|SSLv[23]|ISO-8859-\d{1,2}|Windows-125\d|Latin-?\d|CP\d{3,4}|RFC-?\d{3,5}|base(?:32|58|64)(?:url)?|hex|bcrypt(?:_sha256)?|argon2(?:id|i|d)?|scrypt|\d+-(?:stellig|chiffres|caracteres|digits?|characters?))(?:-(?:encoded|decoded|encrypted))?$/i;
 /** A format string's hole: `%d`, `%1$s`, `{0}`, `{{count}}`, `%{n}`. */
 const FORMAT_HOLE = /%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[sdifuxXc@]|\{\{?\s*\w*\s*\}?\}|%\{\w+\}/;
 
