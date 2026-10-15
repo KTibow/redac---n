@@ -87,7 +87,7 @@ export interface Heredoc {
 export interface ShellGroup {
 	kind: string;
 	redirects: ShellRedirect[];
-	/** The operator after the group: `|` pipes what every command in it prints (`{ cat .env; echo; } | sha256sum`). */
+	/** The operator after the group: `|` pipes what every command in it prints (`{ echo A=1; echo B=2; } | tee .env`). */
 	then?: ShellOperator;
 }
 
