@@ -1375,11 +1375,8 @@ export function isTestValue(value: string): boolean {
  * letters and digits of one length (`VKXQR-8B2MP-7WJ4T`): not names.
  */
 export function isIdentifierShaped(value: string): boolean {
-	// (A Redis key's hash tag, `{team:t1}:window`, and a sentinel's underscores, `__n8n_BLANK_VALUE`, wrap its parts.)
-	const parts = value
-		.replace(/^\{([^{}]+)\}(?=:)/, "$1")
-		.replace(/^_+|_+$/g, "")
-		.split(/[-_.:]/);
+	// (A sentinel's underscores, `__n8n_BLANK_VALUE`, wrap its parts.)
+	const parts = value.replace(/^_+|_+$/g, "").split(/[-_.:]/);
 	if (
 		parts.length < 2 ||
 		!/^[A-Za-z]/.test(parts[0]) ||

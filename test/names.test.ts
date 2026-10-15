@@ -738,14 +738,8 @@ test("a numbered pin is a PIN by its name, so a board's pin under one is kept", 
 	hidden("pin1=7391", "7391");
 });
 
-test("a call on a plural, or on a shell's token, sets no credential; a setter of one does", () => {
-	for (const [line, value] of [
-		['    assertThat(triggers).containsOnlyKeys("3am-every-day");', "3am-every-day"],
-		["    assert _fix_tokens(\"ur'\\\\s\\\\u2603'\", min_version=(3,)) == \"'\\\\\\\\s\\\\u2603'\"", "ur'"],
-		['    assert ninja_helper.shell_token("-DMASK=(1<<3)") == _q("-DMASK=(1<<3)")', "-DMASK=(1<<3)"],
-	])
-		kept(line, value);
-	hidden('cfg.setApiKeys("Kx9mQ2vLp7Rt3Wz8nB5c");', "Kx9mQ2vLp7Rt3Wz8nB5c");
+test("a call on a shell's token sets no credential; a setter of one does", () => {
+	kept('    assert ninja_helper.shell_token("-DMASK=(1<<3)") == _q("-DMASK=(1<<3)")', "-DMASK=(1<<3)");
 	hidden('client.withToken("Kx9mQ2vLp7Rt3Wz8nB5c");', "Kx9mQ2vLp7Rt3Wz8nB5c");
 	hidden('cfg.setPassword("Tr0ub4dor&3x");', "Tr0ub4dor&3x");
 });

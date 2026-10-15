@@ -257,12 +257,9 @@ function isPassInEnglish(before: string): boolean {
 	);
 }
 
-/**
- * Under a bare `pass`, a snake_case identifier: a test's or a rule's name in a verdict list (`- pass: expired_command`),
- * or a Ruby symbol or keyword the verb passes (`pass <tt>:record_timestamps</tt>:` in RDoc), not a password.
- */
+/** Under a bare `pass`, a snake_case identifier: a test's or a rule's name in a verdict list (`- pass: expired_command`), not a password. */
 function isVerdictUnderPass(name: string, value: string): boolean {
-	return /^pass$/i.test(name) && /^:?[a-z][a-z0-9]*(?:_[a-z0-9]+)+:?$/.test(value);
+	return /^pass$/i.test(name) && /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(value);
 }
 
 /** An entity key: `ORDER#2026-09-30#o_4411`, `USER#42`. */
@@ -382,9 +379,6 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 			(/\s/.test(value) || /^[A-Z]{2,}$/.test(value) || /^\d+(?:[/.,]\d+)*%?$/.test(value))
 		)
 			return false;
-		// After another word, `pass` is still what a setting passes through or a step lets by, and a word in capitals its
-		// mode, quoted or not: Django's `SETTING_PASS="BOTH"`, `LAMBDA_PASS`. (A password in capitals has a digit.)
-		if (/(?:^|[-_. ])pass$/i.test(name) && /^[A-Z]{2,}$/.test(value)) return false;
 		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`, a
 		// test's short or word-like name (`PASS: regress1`, `PASS: x86_64`). Random letters and digits of eight or more
 		// are an env file's password (`PASS=zq8lw2mxr5`), as under any other spelling of the name.
@@ -1170,12 +1164,7 @@ function assignments(text: string, out: Finding[]) {
 		if (!isNamedSecret(name, bound ? raw : quoted ? `${q}${raw}${q}` : raw, literal && !bound)) continue;
 		// In an interpolated string, the value's own (`f'user_id={cookie}'`, `$"Pwd={pw}"`) or the one the pair stands in
 		// (`$"Pwd={pw};User={u}"`, `f"host={h} password={pw}xyz"`), the holes are code: the literal part must hold the secret.
-		if (
-			(/[fF$]/.test(prefix) || INTERPOLATED_OPEN.test(before)) &&
-			/\{[^{}]*\}/.test(raw) &&
-			!isNamedSecret(name, `"${raw.replace(/\{[^{}]*\}/g, "")}"`, literal)
-		)
-			continue;
+		if ((/[fF$]/.test(prefix) || INTERPOLATED_OPEN.test(before)) && holesOnly(name, raw, literal)) continue;
 		// (Basic auth's user info is a credential in both halves: Confluent's `basic.auth.user.info=<key>:<secret>`.)
 		const colon = /user[._-]?info|basic/i.test(name) ? -1 : credentialPair(name, raw);
 		namedFinding(out, colon > 0 ? span[0] + colon : span[0], span[1], name, "named:assign");
@@ -2091,25 +2080,20 @@ function setterCalls(text: string, out: Finding[]) {
 		// (`pass` alone is the verb: picobox's `@box.pass_("database_session")`. A hasher's name says what it's given, though
 		// it reads as a hash's: `password_hash`.)
 		if (!hasher && (!isCredentialName(callee) || /^pass_*$/i.test(callee))) continue;
-		// A plural is the collection the call works on, its argument one of its members or the source it splits: AssertJ's
-		// `containsOnlyKeys("3am-every-day")`, a formatter's `_fix_tokens(src)`. (A call that sets them says so,
-		// `setApiKeys("…")`.)
-		if (
-			!hasher &&
-			/(?:keys|tokens|secrets|passwords)_*$/i.test(callee) &&
-			!/^_*(?:[Ss]et|[Ww]ith|[Uu]se|[Aa]dd|[Pp]ut|[Ss]tore|[Ss]ave|[Uu]pdate)(?:_|[A-Z]|$)/.test(
-				callee.split(".").at(-1)!,
-			)
-		)
-			continue;
 		// (A keyword argument named for a credential, `password="…"`, or for the value the call sets, prefect's
 		// `Secret(value="…")`, is the secret's slot, and the positional arguments are then a service's and a user's; a
 		// hasher's first argument is read all the same, `make_password("…", salt="…")`. Other keywords are options:
 		// `set_password("…", commit=True)` is given its secret first.)
 		const slots = args.filter((a) => a.keyword && (isCredentialName(a.keyword) || a.keyword === "value"));
-		for (const a of slots)
-			if (a.literal && !holesOnly(a, hasher ? "password" : callee))
-				namedValue(out, hasher ? "password" : callee, a.literal, "named:setter");
+		const judged = hasher ? "password" : callee;
+		// (An f-string's holes are code, `token=f"test_{uuid4()}"`: its literal part must hold the secret.)
+		const given = (a?: Argument) =>
+			a?.literal &&
+			!(
+				/^(?:[\w$]+[ \t]*[=:][ \t]*)?(?:[rR]?[fF][rR]?|\$@?|@\$)["']/.test(a.text) &&
+				holesOnly(judged, a.literal.value, true)
+			);
+		for (const a of slots) if (given(a)) namedValue(out, judged, a.literal!, "named:setter");
 		if (slots.length && !hasher?.[1]) continue;
 		// The secret is the last argument, after a service and a user (`keyring.set_password("pgcli", key, passwd)` passes
 		// a variable); flags after it don't count (`setPassword("…", true)`). A credentials call takes a user, then the
@@ -2122,21 +2106,13 @@ function setterCalls(text: string, out: Finding[]) {
 		if (hasher?.[1]) secret = positional[0];
 		else if (!hasher && /credentials?$/i.test(callee) && positional.length >= 2) secret = positional[1];
 		// (Judged as the password a hasher is given, whatever its name reads as.)
-		if (secret?.literal && !holesOnly(secret, hasher ? "password" : callee))
-			namedValue(out, hasher ? "password" : callee, secret.literal, "named:setter");
+		if (given(secret)) namedValue(out, judged, secret!.literal!, "named:setter");
 	}
 }
 
-/**
- * An interpolated string argument whose secret, if any, would be in its holes, which are code: `token=f"test_token_{uuid
- * .uuid4().hex[:8]}"`, `$"key-{id}"`. Its literal part alone is judged, as assignments judge one.
- */
-function holesOnly(arg: Argument, name: string): boolean {
-	return (
-		/^(?:[\w$]+[ \t]*[=:][ \t]*)?(?:[rR]?[fF][rR]?|\$@?|@\$)["']/.test(arg.text) &&
-		/\{[^{}]*\}/.test(arg.literal!.value) &&
-		!isNamedSecret(name, `"${arg.literal!.value.replace(/\{[^{}]*\}/g, "")}"`, true)
-	);
+/** An interpolated string's literal part holds no secret, its holes being code: `f"test_token_{uuid4()}"`, `$"key-{id}"`. */
+function holesOnly(name: string, raw: string, literal: boolean): boolean {
+	return /\{[^{}]*\}/.test(raw) && !isNamedSecret(name, `"${raw.replace(/\{[^{}]*\}/g, "")}"`, literal);
 }
 
 /**

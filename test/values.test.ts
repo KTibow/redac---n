@@ -556,21 +556,12 @@ test("names built from short parts are identifiers; a product key's groups and a
 		"py3-gcc-x64",
 		"RHSA-2024:1234",
 		"prod-db01-eu01",
-		// A Redis key with its hash tag; a sentinel in underscores.
-		"{team:team-789}:window",
-		"{end_user:u28551}:requests",
+		// A sentinel in underscores.
 		"__n8n_BLANK_VALUE",
 	])
 		assert.ok(isIdentifierShaped(v), v);
-	for (const v of [
-		"VK7X2-QM4P8-RT9W3-HJ6N2",
-		"VKXQR-QM4P8-RT9W3",
-		"qzxvbK9mWpL2-key",
-		"{team:Kx9mQ2vLp7}:x",
-		"__Kx9mQ2vLp7Rt__",
-	])
+	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key", "__Kx9mQ2vLp7Rt__"])
 		assert.ok(!isIdentifierShaped(v), v);
-	kept('    keys = [\n        "{team:t1}:window",\n        "{end_user:u28551}:requests",\n    ]', "{team:t1}:window");
 	kept("data: { oauthTokenData: '__n8n_BLANK_VALUE' },", "__n8n_BLANK_VALUE");
 	hidden("data: { oauthTokenData: 'Kx9mQ2vLp7Rt3Wz8nB5c' },", "Kx9mQ2vLp7Rt3Wz8nB5c");
 	kept("key_curve: ECDH-brainpoolP384r1", "ECDH-brainpoolP384r1");
