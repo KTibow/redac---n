@@ -265,6 +265,8 @@ const isRefName = (name: string) => /^[A-Za-z_][\w.:-]*$/.test(name) && isNameLi
 function isCommandSubstitution(v: string): boolean {
 	const arithmetic = /^\$\$?\(\(([^()]*)\)\)$/.exec(v);
 	if (arithmetic) return /^[\w\s+*/%$-]+$/.test(arithmetic[1]) && /[A-Za-z_]/.test(arithmetic[1]);
+	// A program a variable names, quoted, cut at its first blank or not: `$("$binpath" write …)`, `$("${VAULT_BIN}")`.
+	if (/^\$\$?\(\s*"\$\{?[A-Za-z_]\w*\}?"(?:\s|\)|$)/.test(v)) return true;
 	const body =
 		/^\$\$?\(([\s\S]*)\)$/.exec(v)?.[1] ??
 		/^`([^`]{0,400})`$/.exec(v)?.[1] ??
@@ -277,7 +279,8 @@ function isCommandSubstitution(v: string): boolean {
 }
 
 /** Shapes the printf family writes; see `printf template` below. */
-const SPEC = /%[-+ #0]{0,3}(?:\d{1,3}|\*)?(?:\.(?:\d{1,3}|\*))?[sdvxfiu]|%\(\w+\)[sd]|\{\d*\}|\{:\w*\}/g;
+// (Java's `%n` is a line break; Python's `{0:04x}` a field with its format.)
+const SPEC = /%[-+ #0]{0,3}(?:\d{1,3}|\*)?(?:\.(?:\d{1,3}|\*))?[sdvxfiun]|%\(\w+\)[sd]|\{\d*(?::\w+)?\}|\{:\w*\}/g;
 
 /**
  * Shapes of values that can't be credentials, by name: constants, paths, references to a value held elsewhere
@@ -469,15 +472,19 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 				((residue.match(/[A-Za-z]/g)?.length ?? 0) <= 4 ||
 					naturalness(residue.replace(/[^A-Za-z]+/g, " ").trim()) > 0) &&
 				residue.split(/[^A-Za-z]+/).every((w) => w.length <= 3 || (naturalness(w) > 0.6 && isNameLike(w))) &&
+				// (Quotes around a field, as a command line's template quotes one: `password='%s'`.)
 				v
+					.replace(/(["'])(%[^%'"\s]{1,8})\1/g, "$2")
 					.replace(SPEC, "")
 					.replace(/\\[nrt]/g, "")
 					.replace(/[\w.\-/: ]/g, "").length <= 1 &&
 				!(/[A-Z]/.test(v) && /\d/.test(v.replace(/%[sdv]/g, ""))) &&
+				// (A line break joins the words around it: `%n%nUsing generated security password: %s%n`.)
 				[...v.matchAll(SPEC)].every(
 					(m) =>
-						(!/[A-Za-z0-9]/.test(v[m.index - 1] ?? "") || !/[A-Za-z0-9]/.test(v[m.index + m[0].length] ?? "")) &&
-						!(m[0][0] === "%" && /[A-Za-z]/.test(v[m.index + m[0].length] ?? "")),
+						m[0] === "%n" ||
+						((!/[A-Za-z0-9]/.test(v[m.index - 1] ?? "") || !/[A-Za-z0-9]/.test(v[m.index + m[0].length] ?? "")) &&
+							!(m[0][0] === "%" && /[A-Za-z]/.test(v[m.index + m[0].length] ?? ""))),
 				)
 			);
 		},
@@ -1041,10 +1048,13 @@ const CODE_SHAPES: [shape: string, test: (v: string, literal: boolean) => boolea
 			);
 		},
 	],
-	// Go's pointer to a qualified type or a slice of one, `*corev1.Secret`, `[]byte`: no password starts so.
+	// Go's pointer to a qualified type or a slice of one, `*corev1.Secret`, `[]byte`, or a slice of the package's own,
+	// a struct field's `TSigKeys []TSigKey`: no password starts so.
 	[
 		"a pointer or slice type",
-		(v) => /^(?:[*&]|\[\])(?:\[\])*[a-z][a-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)?$/.test(v) && readsAsWords(v),
+		(v) =>
+			/^(?:(?:[*&]|\[\])(?:\[\])*[a-z][a-z0-9]*(?:\.[A-Z][A-Za-z0-9]*)?|\[\](?:\[\])*\*?[A-Z][A-Za-z0-9]*)$/.test(v) &&
+			readsAsWords(v),
 	],
 	// `!local.is_replica`, `var.db_password`, `module.db.password`.
 	["a Terraform reference", (v) => /^!?(?:local|var|module|data|each|count|path|terraform)\.[\w.[\]"-]+$/.test(v)],
@@ -1262,6 +1272,11 @@ const PASSWORD_HASHES: [format: string, whole: string][] = [
 		"LDAP",
 		String.raw`\{(?:SSHA\d*|SHA\d*|MD5|SMD5)\}${B64}{16,}={0,2}|\{PBKDF2(?:-SHA\d+)?\}\d+\$${C}+\$${C}{16,}|\{(?:CRYPT|ARGON2|BCRYPT)\}(?:${CRYPT_HASH})`,
 	],
+	// Spring Security's DelegatingPasswordEncoder names the encoder first, `{bcrypt}$2a$10$…`, `{argon2}$argon2id$…`
+	// (not `{noop}`, the password itself); Werkzeug's, its method and parameters, `scrypt:32768:8:1$<salt>$<hex>`,
+	// `pbkdf2:sha256:600000$<salt>$<hex>`.
+	["Spring Security", String.raw`\{(?:bcrypt|argon2)\}(?:${CRYPT_HASH})`],
+	["Werkzeug", String.raw`(?:scrypt:\d+:\d+:\d+|pbkdf2:sha\d+(?::\d+)?)\$[A-Za-z0-9]{1,64}\$[0-9a-f]{40,128}`],
 ];
 const HASH_WHOLE = new RegExp(`^(?:${PASSWORD_HASHES.map(([, whole]) => whole).join("|")})$`);
 
@@ -1286,7 +1301,7 @@ const TEST_WORD =
 	/^(?:hoge|fuga|piyo|hogehoge|fugafuga|piyopiyo|hogera|s3krit|s3cr3t|s3cret|secr3t|p4ss|p@ss|p4ssw0rd|passw0rd|p@ssw0rd|test(?:ing)?|secret|secrets|password|passwd|pass|pw|pwd|token|key|api|apikey|my|your|foo|bar|baz|qux|dummy|fake|sample|example|demo|user|mock|stub|value|bearer|auth|access|client|private|super|top|very|valid|invalid|wrong|bad|good|new|old|default|local|dev|one|two|abc|xyz)$/i;
 /** At least one of these makes a value a stand-in; `admin2024` or `hunter22` alone could be someone's real password. */
 const TEST_MARKER =
-	/^(?:hoge|fuga|piyo|hogehoge|fugafuga|piyopiyo|hogera|test(?:ing)?|dummy|fake|sample|example|demo|mock|stub|foo|bar|baz|qux|invalid|wrong|abc|xyz|secret|password|pass|token|key)$/i;
+	/^(?:hoge|fuga|piyo|hogehoge|fugafuga|piyopiyo|hogera|test(?:ing)?|dummy|fake|sample|example|demo|mock|stub|foo|bar|baz|qux|invalid|wrong|abc|xyz|secret|password|pass|token|key|value)$/i;
 
 /**
  * Digits as a stand-in writes them: one or two, a count (`123`, `1234`, `6789`) or one digit repeated (`000`). A real
@@ -1317,7 +1332,7 @@ export function isTestValue(value: string): boolean {
 		/(?:^|[a-z0-9])(?:Password|Secret|Token|Key)Here$/.test(value)
 	)
 		return true;
-	const parts = value.split(/[-_.: ]+|(?<=[a-z])(?=[A-Z0-9])|(?<=\d)(?=[A-Za-z])/).filter(Boolean);
+	const parts = value.split(/[-_.:,;="' ]+|(?<=[a-z])(?=[A-Z0-9])|(?<=\d)(?=[A-Za-z])/).filter(Boolean);
 	return (
 		parts.length > 0 &&
 		parts.every((p) => TEST_WORD.test(p) || (/^\d{1,4}$/.test(p) && isCountingDigits(p)) || /^[!@#$*]+$/.test(p)) &&
@@ -1334,7 +1349,11 @@ export function isTestValue(value: string): boolean {
  * letters and digits of one length (`VKXQR-8B2MP-7WJ4T`): not names.
  */
 export function isIdentifierShaped(value: string): boolean {
-	const parts = value.split(/[-_.:]/);
+	// (A Redis key's hash tag, `{team:t1}:window`, and a sentinel's underscores, `__n8n_BLANK_VALUE`, wrap its parts.)
+	const parts = value
+		.replace(/^\{([^{}]+)\}(?=:)/, "$1")
+		.replace(/^_+|_+$/g, "")
+		.split(/[-_.:]/);
 	if (
 		parts.length < 2 ||
 		!/^[A-Za-z]/.test(parts[0]) ||
@@ -1772,11 +1791,12 @@ export const COMMON_WORDS = new Set([
 
 /**
  * "Password" in another language, as a form's label (i18n files, string resources): `wachtwoord`, `mot de passe
- * actuel`, run together or plural (`Motdepasse`, `Passwörter`, `Contraseñas`), with a note in words after it
+ * actuel`, run together or plural (`Motdepasse`, `Passwörter`, `Contraseñas`), with a word or two around it
+ * (`Ubah kata sandi`, "change password"; `Kata sandi inisialisasi admin`) or a note in words after it
  * (`Phrase de passe (facultative)`, `Contraseña (opcional)`).
  */
 const PASSWORD_LABEL = new RegExp(
-	String.raw`^(?:${FOREIGN_PASSWORD_SPELLINGS.map((s) => s.replace(/ /g, "\\s*")).join("|")})(?:s|es|er|en|e)?(?:\s+\p{L}+)?(?:\s*\([\p{L} ,.'’/-]{1,30}\))?\*?$`,
+	String.raw`^(?:\p{L}+\s+){0,2}(?:${FOREIGN_PASSWORD_SPELLINGS.map((s) => s.replace(/ /g, "\\s*")).join("|")})(?:s|es|er|en|e)?(?:\s+\p{L}+){0,2}(?:\s*\([\p{L} ,.'’/-]{1,30}\))?\*?$`,
 	"iu",
 );
 const isPasswordLabel = (value: string) => PASSWORD_LABEL.test(value);

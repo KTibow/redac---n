@@ -49,6 +49,11 @@ const PASSWORD_LANGUAGES: [name: string | undefined, spellings: string[]][] = [
 			"parole",
 			"slaptažodis",
 			"fjalëkalimi",
+			"fjalëkalim",
+			"salasõna",
+			"lykilorð",
+			"nenosiri",
+			"zaporka",
 			"kupuhipa",
 			"focal faire",
 			"mật khẩu",
@@ -302,6 +307,7 @@ const NOT_CREDENTIAL_BEFORE = lookup<Set<string>>({
 		"COUNT",
 		"LEXER",
 		"PARSER",
+		"SHELL",
 		"CANCELLATION",
 		"CANCEL",
 		"INPUT",
@@ -585,6 +591,7 @@ const ABOUT_WORDS = new Set([
 	"VALIDATION",
 	"VALIDATOR",
 	"POLICY",
+	"POLICIES",
 	"RULE",
 	"RULES",
 	"ICON",
@@ -1061,7 +1068,8 @@ const PIN_SETTING =
  * named for what it opens (`alarm_code`). namesPasswordOrPin, the name readers and the prose readers all ask this one.
  */
 export function isPinName(name: string): boolean {
-	const w = words(name);
+	// (A numbered one is one too: `pin1`, `door_pin2`.)
+	const w = words(name).map((x) => x.replace(/(?<=^PIN)\d+$/, ""));
 	const at = w.findIndex(
 		(x, i) => (x === "PIN" && !NOT_CREDENTIAL_BEFORE.PIN!.has(w[i - 1] ?? "")) || x === "PINCODE" || x === "PASSCODE",
 	);

@@ -93,6 +93,8 @@ const PERCENT_RUN = /(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2}){16,}/g;
 
 /** A run of token characters with JSON's escaped slashes in it (PHP's and Laravel's `Zx9…\/Hd1…`). */
 const ESCAPED_SLASH_RUN = /(?:[A-Za-z0-9+=_-]|\\\/){16,}/g;
+/** A letter beyond ASCII in an alphabet with cases (Latin's, Greek's, Cyrillic's): `ð`, `é`, `ж`. */
+const NON_ASCII_CASED = /(?![\x00-\x7f])[\p{Lu}\p{Ll}]/u;
 
 /**
  * Runs of token characters long enough to be a key. A run that is a path (`/api/v1/<id>/users`) or
@@ -133,6 +135,10 @@ export function candidates(text: string): Candidate[] {
 		while (k < encoded.length && encoded[k][1] <= runStart) k++;
 		if (k < encoded.length && runStart >= encoded[k][0] && runEnd <= encoded[k][1]) continue;
 		if (runEnd - runStart > 256) continue; // blobs: images, certificates, bundles; longer tokens are caught by format or header
+		// The ASCII part of a word in a cased alphabet, cut at its first letter beyond ASCII: Icelandic's
+		// `Endurheimtulykilorð`, `endurheimtulykilorðið`. (Not after a letter of a script without cases: Chinese writes a
+		// token against its words, `令牌是Xk9…`.)
+		if (NON_ASCII_CASED.test(text[runStart - 1] ?? "") || NON_ASCII_CASED.test(text[runEnd] ?? "")) continue;
 		const run = text.slice(runStart, runEnd);
 		// `name=value` inside a run (query strings, form bodies): split at an `=` that isn't padding.
 		for (const [eqOff, piece] of splitKeep(run, /=(?=[A-Za-z0-9+/_-])/g)) {
@@ -514,6 +520,15 @@ const VETOES: Veto[] = [
 			),
 	],
 	["build-id", (f) => /\bBuildID=\S*$/.test(f.ctx.left)],
+	// The name a declaration gives, an identifier in its letters' case: C++'s `class XiaomiLYWSD03MMC final`, `struct
+	// QMI8658Config {`, `enum`, `interface`.
+	[
+		"declared-name",
+		(f, t) =>
+			/(?:^|[\s;{])(?:class|struct|enum|union|interface|trait|namespace|record)[ \t]+$/.test(f.ctx.left) &&
+			/^[A-Z][A-Za-z0-9_]*$/.test(t) &&
+			/^[ \t]*(?:final\b|[:{<(]|extends\b|implements\b|\r?$)/m.test(f.ctx.right),
+	],
 	["public-id", (f) => inPublicNamespace(f)],
 	// A hashed host in `~/.ssh/known_hosts` (`|1|<salt>|<HMAC-SHA1 of the host name>`, both base64 of 20 bytes): public, as the host names are.
 	// (With the `+` a salt can start with, which the token drops: `|1|+bsj…=|`.)
@@ -797,7 +812,17 @@ const VETOES: Veto[] = [
 	["name-hash", (f) => f.ctx.nameClass === "hash"],
 	["name-public", (f) => f.ctx.nameClass === "public"],
 	["name-identifier", (f) => f.ctx.nameClass === "identifier"],
-	["base64-text", (f, t, cred) => f.decodes === "text" && f.length >= 24 && !cred && decodedIsNatural(t)],
+	// (Shorter, only words or a JWT's header: a tokenizer's vocabulary, `IG5lY2Vzc2FyaWx5` for ` necessarily`;
+	// `eyJhbGciOiJFUzI1NiJ9`, `{"alg":"ES256"}`. A pair, `user:pass`, is a credential's, and other JSON a cookie's,
+	// Laravel's `{"iv":…}`.)
+	[
+		"base64-text",
+		(f, t, cred) =>
+			f.decodes === "text" &&
+			!cred &&
+			decodedIsNatural(t) &&
+			(f.length >= 24 || /^(?:[A-Za-z]+(?: [A-Za-z]+)*|\{"(?:alg|typ)":"[\w-]+"\})$/.test(base64Binary(t)!.trim())),
+	],
 	// Words, and words around a digit or two: package and module names (`qtquick3dphysics`, `oauth2client`).
 	[
 		"words",

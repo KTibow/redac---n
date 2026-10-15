@@ -311,6 +311,33 @@ test("a program's own password option takes its quoted value whole; a bare one e
 	kept("Store the password LastPass generated for you", "LastPass");
 });
 
+test("an option's value names no program: `dvc stage add -n hydra -p` gives a stage its parameters", () => {
+	kept("dvc stage add -n hydra -p 'params.yaml:' 'cat params.yaml'", "params.yaml:");
+	kept("dvc stage add -n medusa -p train.epochs python train.py", "train.epochs");
+	hidden("hydra -l admin -p 'Xk9(mP2vQ7' ssh://t", "Xk9(mP2vQ7");
+	hidden("Brute-force it: hydra -l admin -p Winter2024.", "Winter2024");
+});
+
+test("vault login takes one token: a changelog's sentence and a usage line after it are kept", () => {
+	for (const [line, word] of [
+		[
+			"* auth/alicloud: fix regression in vault login command that caused login to fail [[GH-19005](https://x)]",
+			"command",
+		],
+		["* auth: Fixed erroneous success message when using vault login in case of two-phase MFA", "two-phase"],
+		[
+			"* auth: Fixed missing information from table format when using vault login [[GH-15428](https://x)]",
+			"[[GH-15428]",
+		],
+		["Usage: vault login TOKEN [CONFIG K=V...]", "[CONFIG"],
+		["Usage: vault login -method=aws [CONFIG K=V...]", "[CONFIG"],
+	])
+		kept(line, word);
+	hidden("$ vault login 96ddf4bc-d217-f3ba-f9bd-017055595017", "96ddf4bc-d217-f3ba-f9bd-017055595017");
+	hidden("$ vault login correcthorse", "correcthorse");
+	hidden("$ vault login token=Kx9mQ2vLp7Rt3Wz8 lookup=false", "Kx9mQ2vLp7Rt3Wz8");
+});
+
 test("a command written as a list is read in single quotes and over CRLF and tabs, and keeps its quotes", () => {
 	hidden("subprocess.run(['redis-cli', '-a', 'correct-horse', 'ping'])", "correct-horse");
 	hidden('{\r\n\t"cmd": [\r\n\t\t"redis-cli",\r\n\t\t"-a",\r\n\t\t"correct-horse"\r\n\t]\r\n}', "correct-horse");

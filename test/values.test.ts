@@ -262,8 +262,14 @@ test("a password hash is recognised whole, not by how it starts", () => {
 		"{CRYPT}$6$saltsalt$1tySNNgq6Honi21SstQhFBZIa4TOpuhR6v7fJtbxWwEy6BU3rZRVNtB.144R0..s/NUKKimOuL4AFnrIBJcFA0",
 		"*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19",
 		"md5d41d8cd98f00b204e9800998ecf8427e",
+		// Spring Security's DelegatingPasswordEncoder, the encoder's id first; Werkzeug's, its method and parameters.
+		"{bcrypt}$2a$10$sCBi9fy9814vUPf2ZRbtp.fR5/VgRk2iBFZ.ypu5IyZ28bZgxrVDa",
+		"scrypt:32768:8:1$k3T9vQ2mLpX7rW4n$1d4c0a6e8f2b9d7c5a3e1f0b8d6c4a2e9f7d5b3c1a0e8f6d4b2c0a9e7f5d3b1c8a6e4f2d0b9c7a5e3f1d8b6c4a2e0f9d7b5c3a1e8f6d4b2",
+		"pbkdf2:sha256:600000$Kx9mQ2vR$3f9a1c7e5b2d4f60a8c6e4b2d0f9e7c5a3b1d8f6e4c2a0b9d7f5e3c1a8b6d4f2",
 	])
 		assert.ok(isPasswordHash(hash), hash);
+	// (Spring's `{noop}` stores the password itself.)
+	assert.ok(!isPasswordHash("{noop}Harbor2291x"));
 	for (const password of [
 		"md5$Xk9#mP2vQ!&z",
 		"{SSHA}Xk9#mP2vQ!&z",
@@ -550,10 +556,23 @@ test("names built from short parts are identifiers; a product key's groups and a
 		"py3-gcc-x64",
 		"RHSA-2024:1234",
 		"prod-db01-eu01",
+		// A Redis key with its hash tag; a sentinel in underscores.
+		"{team:team-789}:window",
+		"{end_user:u28551}:requests",
+		"__n8n_BLANK_VALUE",
 	])
 		assert.ok(isIdentifierShaped(v), v);
-	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key"])
+	for (const v of [
+		"VK7X2-QM4P8-RT9W3-HJ6N2",
+		"VKXQR-QM4P8-RT9W3",
+		"qzxvbK9mWpL2-key",
+		"{team:Kx9mQ2vLp7}:x",
+		"__Kx9mQ2vLp7Rt__",
+	])
 		assert.ok(!isIdentifierShaped(v), v);
+	kept('    keys = [\n        "{team:t1}:window",\n        "{end_user:u28551}:requests",\n    ]', "{team:t1}:window");
+	kept("data: { oauthTokenData: '__n8n_BLANK_VALUE' },", "__n8n_BLANK_VALUE");
+	hidden("data: { oauthTokenData: 'Kx9mQ2vLp7Rt3Wz8nB5c' },", "Kx9mQ2vLp7Rt3Wz8nB5c");
 	kept("key_curve: ECDH-brainpoolP384r1", "ECDH-brainpoolP384r1");
 	hidden("api_key: qzxvbK9mWpL2-x7", "qzxvbK9mWpL2");
 	assert.ok(isPodName("ledger-api-58d4f7c9b-rbjl3"));

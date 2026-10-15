@@ -138,6 +138,29 @@ test("pass as an ordinary English word is kept", () => {
 		kept(line, v);
 });
 
+test("a string's escaped line break ends a value in prose, so a short stand-in before it is kept", () => {
+	for (const [line, value] of [
+		['    assert_equal "The secret is bar\\n", content', "bar\\n"],
+		['    assert_equal "The secret is foo\\n", content', "foo\\n"],
+	])
+		kept(line, value);
+	hidden('    assert_equal "The secret is Kx9mQ2vLp7\\n", content', "Kx9mQ2vLp7");
+});
+
+test("pass as a step, a mode or a symbol it passes is kept; a password under it is hidden", () => {
+	for (const line of [
+		"                # 1st pass: check if the value is an exact instance of one of the Union types",
+		"                # 2nd pass: check if the value is an instance of any subclass",
+		'    print("UNEXPECTED PASS: check")',
+		'        with override_settings(SETTING_PASS="BOTH", SETTING_BOTH="BOTH"):',
+		"    #   way or the other, pass <tt>:record_timestamps</tt>:\n    #\n    #     record_timestamps: true",
+	])
+		kept(line, line);
+	hidden('SETTING_PASS="Kx9mQ2vLp"', "Kx9mQ2vLp");
+	hidden("wifi pass: Kx9mQ2vLp7", "Kx9mQ2vLp7");
+	hidden("DB_PASS=sunshine", "sunshine");
+});
+
 test("foreign sentences and algorithm names that mention a password come out unchanged", () => {
 	for (const t of [
 		"Das Passwort ist 8-stellig",
