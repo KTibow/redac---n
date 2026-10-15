@@ -362,6 +362,12 @@ test("password hashes are kept whole by default and hidden whole with hashes: hi
 		strict.redact("GRANT ALL ON *.* TO 'bob'@'%' IDENTIFIED BY '*3F1A9C2E7B5D4F6A8C0E2B4D6F8A0C2E4B6D8F0A';").text,
 		/BY '\[REDACTED password hash #\w+\]';$/,
 	);
+	// A Redis ACL rule's hash, in an ACL file and set in a session.
+	const hex = "a3f5c8e1b2d4967f0a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef";
+	for (const line of [`user bob on #${hex} ~* +@all`, `127.0.0.1:6379> ACL SETUSER bob on #${hex} ~* +@all`]) {
+		kept(line, hex);
+		assert.ok(!strict.redact(line).text.includes(hex), line);
+	}
 });
 
 test("a SCRAM hash is kept by default", () => {

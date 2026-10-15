@@ -145,6 +145,40 @@ test("SQL that sets a password hides the literal and keeps a password hash", () 
 	// A keyword or a stand-in where the password goes is none.
 	kept("CREATE USER 'app'@'%' IDENTIFIED BY RANDOM PASSWORD;", "RANDOM PASSWORD");
 	kept("CREATE USER app WITH PASSWORD 'abcd1234';", "abcd1234");
+	// A literal whose quote is escaped by a backslash (MySQL's default, Postgres' E'…'), whole.
+	for (const line of [
+		"CREATE USER 'app'@'%' IDENTIFIED BY 'Hx7m\\'Q2pL9vRtZk3w';",
+		"ALTER USER 'u'@'h' IDENTIFIED WITH mysql_native_password BY \"Hx7m\\\"Q2pL9vRtZk3w\";",
+		"SET PASSWORD FOR 'u'@'h' = 'Hx7m\\'Q2pL9vRtZk3w';",
+		"CREATE ROLE app LOGIN PASSWORD E'Hx7m\\'Q2pL9vRtZk3w';",
+	])
+		hidden(line, "Q2pL9vRtZk3w");
+	// The quoted form in a statement that makes, changes or grants to a user, over several lines too; prose says what
+	// a record is identified by.
+	hidden("CREATE USER app\n  IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	hidden("GRANT ALL ON *.* TO 'u'@'h' IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	hidden("CREATE DATABASE LINK l CONNECT TO u IDENTIFIED BY \"Hx7mQ2pL9vRtZk3w\" USING 'x';", "Hx7mQ2pL9vRtZk3w");
+	for (const line of [
+		"Each record is identified by 'order_id' in the table.",
+		'The cluster is identified by "prod-eu-1".',
+		"Nodes are identified by 'worker-3'; users by 'email address'.",
+	])
+		assert.equal(r().redact(line).text, line);
+});
+
+test("a common password's stand-in after a config's or a statement's password keyword is kept, as under a password's name", () => {
+	for (const [line, value] of [
+		["ALTER USER app WITH PASSWORD 'hunter2';", "hunter2"],
+		["CREATE USER 'app'@'%' IDENTIFIED BY 'test123';", "test123"],
+		["127.0.0.1:6379> AUTH hunter2", "hunter2"],
+		["userlist L\n  user bob insecure-password hunter2", "hunter2"],
+		['%any : PSK "hunter2"', "hunter2"],
+	])
+		kept(line, value);
+	hidden("ALTER USER app WITH PASSWORD 'Harbor2291x';", "Harbor2291x");
+	// (A command line's option names no password: `-phunter2` is hidden.)
+	hidden("mysql -u root -phunter2 app", "hunter2");
+	hidden("openssl enc -aes256 -pass pass:hunter2 -in a", "hunter2");
 });
 
 test("SQL's own strings are read as strings: N'…', E'…', a character set's, dollar quoting, a cast, a hash's input", () => {

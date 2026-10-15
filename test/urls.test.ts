@@ -75,6 +75,30 @@ test("the URL around a token, and parameters after & and &amp;", () => {
 		[...queryParams("[x](https://a.io/?k=Xk9(mP2)vQ7&y=1) and (https://a.io/?t=abc)")].map((p) => p.value.value),
 		["Xk9(mP2)vQ7", "1", "abc"],
 	);
+	// After `&` as a JSON encoder or JS writes it: `&` (Go's encoding/json), `\x26`.
+	assert.deepEqual(
+		[...queryParams(String.raw`https://x.io/?x=1&password=Xk9mQv2Lp8Zr\x26y=2`)].map((p) => [p.name, p.value.value]),
+		[
+			["x", "1"],
+			["password", "Xk9mQv2Lp8Zr"],
+			["y", "2"],
+		],
+	);
+	for (const name of ["password", "client_secret", "token"]) {
+		hidden(String.raw`{"u":"https://x.io/?x=1&${name}=Xk9mQv2Lp8Zr&y=2"}`, "Xk9mQv2Lp8Zr");
+		kept(String.raw`{"u":"https://x.io/?x=1&${name}=Xk9mQv2Lp8Zr&y=2"}`, String.raw`&y=2"}`);
+	}
+});
+
+test("a query parameter's value ends where the URL reader ends it, at an angle bracket, under any rule", () => {
+	for (const [text, rest] of [
+		["<a href=https://x.io/cb?token=Xk9mQv2Lp8ZrTt7Wq>reset</a>", ">reset</a>"],
+		['Link: <https://api.x.io/items?page=2&access_token=Xk9mQv2Lp8ZrTt7Wq>; rel="next"', '>; rel="next"'],
+		["See <https://x.io/cb?token=Xk9mQv2Lp8ZrTt7Wq>.", ">."],
+	]) {
+		hidden(text, "Xk9mQv2Lp8ZrTt7Wq");
+		kept(text, rest);
+	}
 });
 
 test("a key query parameter is hidden and the service id in the path kept", () => {
@@ -154,6 +178,14 @@ test("a quote in a password is the password's, and a quote that ends a URL isn't
 	assert.equal(password("postgres://app:Kx9m'Qv2@db/x"), "Kx9m'Qv2");
 	assert.equal(password('postgres://app:Kx9m"Qv2@db/x'), 'Kx9m"Qv2');
 	assert.equal(password("mysql://root:#1'Kx9mQv@db/app"), "#1'Kx9mQv");
+	// So are the other characters that end a URL, before the `@` that ends the password.
+	for (const pw of ["Qv2Lp8Zr>Kx9m", "Kx9m<Qv2Lp8Zr", String.raw`Qv2Lp8Zr\Kx9m`, "Qv2Lp8`Zr"]) {
+		assert.equal(password(`DATABASE_URL=postgres://app:${pw}@db/x`), pw);
+		hidden(`DATABASE_URL=postgres://app:${pw}@db/x`, pw.slice(-5));
+	}
+	hidden(String.raw`{"dsn":"postgres://app:Kx9m&Qv2Lp8Zr@db:5432/x"}`, "Qv2Lp8Zr");
+	// (An autolink's `>` with an `@` later in the sentence ends it.)
+	kept("<postgres://app:Qv2Lp8Zr@db/x> or mail ops@x.com", "> or mail ops@x.com");
 	hidden(String.raw`{"stdout": "DB_URL=postgres://app:Kx9m\"Qv2@db/x\nOK"}`, "Qv2");
 	// (Not a placeholder's port, nor pieces joined into a URL.)
 	const code = 'const base = "http://localhost:${PORT}";';

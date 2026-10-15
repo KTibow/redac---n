@@ -301,6 +301,10 @@ test("a one-line file of an address, a path or a published example holds no pass
 	const pgpass = "auth-db.internal:5432:app:app_user:Harbor2291x\n";
 	kept(pgpass, "auth-db.internal:5432:app:app_user:", { path: "~/.pgpass" });
 	hidden(pgpass, "Harbor2291x", { path: "~/.pgpass" });
+	// (A certificate's text dump in a .pem holds lines of hex pairs, no .pgpass line.)
+	const dump =
+		"Certificate:\n    Data:\n                Modulus:\n                    00:a6:64:ac:ae:9b:ad:5a:ca:3e:1f:eb:bb:f3:7b:\n                    f2:36:d0:9e:e7:f3:f4:0d:9f:97:11:f8:28:fb:d6:\n                    d9:08:ae:c7:ca:f4:1a:bb:07:58:c8:59:69:8f:85:\n                Exponent: 65537 (0x10001)\n";
+	assert.equal(r().redact(dump, { hint: { path: "ca.pem" } }).text, dump);
 });
 
 test("bin/rails credentials:show prints secrets", () => {

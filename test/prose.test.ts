@@ -165,6 +165,17 @@ test("sentences about a password policy are kept", () => {
 		assert.equal(r().redact(t).text, t);
 });
 
+test("four 4-letter words after 'app password:' are the sentence going on; Google's random letters are hidden", () => {
+	for (const t of [
+		"You need an app password: this will work with most mail clients",
+		"# Gmail requires an app password: this must come from your account settings.",
+		"SMTP error: app password required: this will work with Gmail",
+	])
+		assert.equal(r().redact(t).text, t);
+	hidden("Your app password for your device: qwhz kfmt vbnr xplo", "qwhz kfmt vbnr xplo");
+	hidden("App password: `kfmt qwhz xplo vbnr`", "kfmt qwhz xplo vbnr");
+});
+
 test("a command's pattern list that names password words is kept", () => {
 	const t = "Please run `config dump --only-changed -t all | grep -Ev 'token|password|client_secret'`.";
 	assert.equal(r().redact(t).text, t);

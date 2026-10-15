@@ -80,6 +80,19 @@ test("a program's own password option is read, catalogued or not", () => {
 	hidden("Use -u admin:Xk9mQ2pL to log in", "Xk9mQ2pL");
 	kept("docker run --rm -u 1000:1000 -p 443:443 img", "1000:1000");
 	hidden("curl -u admin:48213579 https://x.example", "48213579");
+	// A proxy's password, and HTTPie's `-a user:password` in its clone xh and in hey.
+	for (const line of [
+		"curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com",
+		"curl --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"wget --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"xh -a admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"xhs --auth admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"hey -a admin:Hx7mQ2pL9vRt -n 100 https://x.example.com",
+	])
+		hidden(line, "Hx7mQ2pL9vRt");
+	kept("curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com", "proxyuser:");
+	kept("xh -a username:password https://pie.dev/basic-auth", "username:password");
+	kept("hey -n 100 -A application/json https://x.example.com", "application/json");
 });
 
 test("a password in a tool's own syntax is hidden: user%password, user/password@db, +login, -passout pass:, net use, device keys", () => {
@@ -94,6 +107,13 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		"printf '%s' 'qe2sLLGCUeJemSaDuso7oyLTsRv7q478' | podman login -u bob --password-stdin quay.io",
 		"qe2sLLGCUeJemSaDuso7oyLTsRv7q478",
 	);
+	// After a line's own prefix: a workflow's one-line `run:`, a Dockerfile's RUN.
+	for (const line of [
+		"  - run: echo Hx7mQ2pLvRt9 | docker login ghcr.io -u bob --password-stdin",
+		"RUN echo Hx7mQ2pLvRt9 | docker login -u bob --password-stdin",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	kept("RUN echo Hx7mQ2pLvRt9 | wc -c", "Hx7mQ2pLvRt9");
 	for (const [t, v] of [
 		["jdbc:oracle:thin:admin/s3cr3tP4ss@ora.proddb.net:1521:ORCLDB", "s3cr3tP4ss"],
 		["net use Z: \\\\server\\share /user:DOMAIN\\admin P@ssw0rd9", "P@ssw0rd9"],
@@ -106,16 +126,44 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		["net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
 		["net user svc Harbor#2291x /add", S],
 		["winrs -r:srv -u:admin -p:Harbor#2291x ipconfig", S],
+		// After a cmd or PowerShell prompt, whose `>` is no redirect; and schtasks' `/p` for its `/u`.
+		["C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
+		["C:\\>net user svc Harbor#2291x /add", S],
+		["PS C:\\> psexec \\\\srv -u admin -p Harbor#2291x cmd", S],
+		["C:\\Users\\bob> sqlcmd -U sa -P Harbor#2291x", S],
+		["schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup /tr C:\\b.bat /sc daily", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	kept("C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", "C:\\Users\\bob> net use Z:");
+	kept("schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup", "/tn Backup");
 	for (const [t, v, hint] of [
 		["crypto isakmp key Harbor#2291x address 0.0.0.0", S],
 		[" ip ospf message-digest-key 1 md5 Harbor#2291x", S],
+		["crypto isakmp key Harbor#2291x hostname r1.example.com", S],
+		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key local Harbor#2291x", S],
+		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key remote Harbor#2291x", S],
+		["snmp-server community Harbor#2291x view v1 RW", S],
 		["SQL> connect scott/Harbor#2291x@orcl", S],
 		["rman target sys/Harbor#2291x@db", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	for (const line of ["snmp-server community public view v1 RO", "pre-shared-key is set per peer"])
+		assert.equal(r().redact(line).text, line);
+	kept("crypto isakmp key Harbor#2291x hostname r1.example.com", "hostname r1.example.com");
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");
+	// An Oracle login with no `@db`, before the command's next word: an option, a script, a redirect.
+	for (const line of [
+		"expdp system/Hx7mQ2pLvRt9 directory=DP dumpfile=a.dmp",
+		"impdp scott/Hx7mQ2pLvRt9 schemas=HR directory=DP",
+		"sqlldr userid=scott/Hx7mQ2pLvRt9 control=a.ctl",
+		"rman target sys/Hx7mQ2pLvRt9 nocatalog",
+		"sqlplus -S scott/Hx7mQ2pLvRt9 @/opt/run.sql arg1",
+		"sqlplus scott/Hx7mQ2pLvRt9 < run.sql",
+		"sqlplus scott/Hx7mQ2pLvRt9 <<EOF\nselect 1 from dual;\nEOF",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	for (const line of ["Connect input/output ports to the board", "sqlplus input/output files are written here"])
+		assert.equal(r().redact(line).text, line);
 	hidden("::add-mask::correct horse battery staple", "horse battery staple");
 	// (What a workflow masks is secret whatever its shape, a version's included.)
 	hidden('echo "::add-mask::v1.2.3"', "v1.2.3");
@@ -125,6 +173,12 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	const pw = "vbrzzeN7T9J2xk";
 	hidden(`127.0.0.1:6379> AUTH ${pw}\nOK`, pw);
 	hidden(`127.0.0.1:6379> CONFIG GET requirepass\n1) "requirepass"\n2) "${pw}"`, pw);
+	// A Redis ACL rule's password, added or removed, in a session and in an ACL file.
+	hidden(`127.0.0.1:6379> ACL SETUSER bob on >${pw} ~* +@all`, pw);
+	hidden(`ACL SETUSER bob <${pw}`, pw);
+	hidden(`user bob on >${pw} ~* +@all`, pw);
+	kept("user default on nopass ~* +@all", "nopass ~* +@all");
+	kept("user bob is logged in > out.txt", "out.txt");
 	hidden(`java -Dspring.datasource.password=${pw} -jar app.jar`, pw);
 	// (A system property's value is a shell word: an escaped blank or a quote inside it doesn't end it.)
 	for (const t of [

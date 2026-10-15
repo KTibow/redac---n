@@ -329,13 +329,18 @@ const INERT_SHAPES: [name: string, test: (v: string) => boolean][] = [
 	// quote: `$(kubectl get secret … -o jsonpath="`.
 	["command substitution", isCommandSubstitution],
 	// `{{ var }}`, `${{ secrets.X }}`, `<%= pw %>`, `#{var}`, `@VAR@` (Maven, Autoconf): whole, a name inside. (Go's
-	// templates trim blanks with a `-` inside the braces: `{{- .Values.password -}}`, `{{- end }}`.)
+	// templates trim blanks with a `-` inside the braces: `{{- .Values.password -}}`, `{{- end }}`.) And the tokens a
+	// deployment replaces in a config file it ships (Octopus, Azure DevOps' Replace Tokens): `#{DbPassword}#`,
+	// `__DbPassword__`, `@@DbPassword@@`.
 	[
 		"template",
 		(v) => {
-			const m = /^(?:\$?\{\{-?(.{0,200}?)-?\}\}|<%=?([^%]{0,200})%>|#\{([^}]{0,200})\}|@([\w.-]{1,80})@)$/.exec(v);
+			const m =
+				/^(?:\$?\{\{-?(.{0,200}?)-?\}\}|<%=?([^%]{0,200})%>|#\{([^}]{0,200})\}#?|@@?([\w.-]{1,80})@@?|__([A-Za-z][\w.]{0,80}[A-Za-z0-9])__)$/.exec(
+					v,
+				);
 			if (!m) return false;
-			const inner = (m[1] ?? m[2] ?? m[3] ?? m[4]).trim();
+			const inner = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5]).trim();
 			return /^[A-Za-z_@$.]/.test(inner) && isNameLike(inner.split(/[^\w.]/)[0] || "x");
 		},
 	],

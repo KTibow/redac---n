@@ -61,14 +61,15 @@ export function urlEnd(text: string, at: number): number {
 			if (!bracketed.test(text)) break;
 			end = bracketed.lastIndex - 1;
 		} else if (
-			(c === "'" || c === '"') &&
+			/["'<>`\\]/.test(c) &&
 			quoteIsPassword(end + 1) &&
 			colon >= 0 &&
 			colon < end &&
 			end <= userinfoEnd &&
 			!endsInPort(text, end)
 		) {
-			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`, `postgres://app:Kx9m"Qv2@db`.)
+			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`, `postgres://app:Kx9m"Qv2@db`,
+			// `postgres://app:Qv2>Kx9m@db`; a JSON string's escape too, `app:Kx9m\u0026Qv2@db`.)
 		} else if (/[\s"'<>`\\]/.test(c)) break;
 	}
 	while (end > at && /[.,;:!?]/.test(text[end - 1])) end--;
@@ -242,8 +243,11 @@ export interface Param {
 	value: Span;
 }
 
-/** A parameter's start and name: after `?`, `&` (or HTML's `&amp;`) or `#`, a name with PHP's `[]` allowed. */
-export const PARAM_START = String.raw`(?:&amp;|[?&#])`;
+/**
+ * A parameter's start and name: after `?`, `&` (or HTML's `&amp;`, or the `\u0026` and `\x26` that JSON encoders and JS
+ * write for it: Go's encoding/json escapes every `&`) or `#`, a name with PHP's `[]` allowed.
+ */
+export const PARAM_START = String.raw`(?:&amp;|\\u0026|\\x26|[?&#])`;
 export const PARAM_NAME = String.raw`[\w.\[\]-]{1,60}`;
 
 /**

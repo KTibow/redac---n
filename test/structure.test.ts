@@ -78,6 +78,15 @@ test("inJwk reads the object's own kty, and a symmetric key's k stays secret", (
 	assert.ok(inJwk(text, text.indexOf('"k"'), text.indexOf('"k"') + 3));
 	const k = b62(43);
 	hidden(`{"kty":"oct","k":"${k}","alg":"HS256"}`, k);
+	// An RSA-4096 private key's last members, 3,000 characters from its `{`, in a JWKS.
+	const [d, p, q, dp, dq, qi] = [683, 342, 342, 342, 342, 342].map(b62);
+	const jwks = `{"keys":[{"kty":"RSA","n":"${b62(683)}","e":"AQAB","d":"${d}","p":"${p}","q":"${q}","dp":"${dp}","dq":"${dq}","qi":"${qi}"}]}`;
+	for (const v of [d, p, q, dp, dq, qi]) hidden(jwks, v);
+	// In YAML, unquoted, in a mapping with a `kty`; and a `d` in a mapping without one is kept.
+	const modulus = b62(342);
+	const yaml = `jwks:\n  - kty: RSA\n    kid: signing-2026\n    n: ${modulus}\n    e: AQAB\n    d: ${d}\n    p: ${p}\n    qi: ${qi}\n`;
+	for (const v of [d, p, qi]) hidden(yaml, v);
+	kept("dimensions:\n  w: 640\n  d: depthOfFieldSetting\n", "depthOfFieldSetting");
 });
 
 test("string literals are read by their grammar: JSON's, a Python repr's, and only where JSON's syntax stands around them", () => {
@@ -153,13 +162,26 @@ test("a phrase one word per line, deeply indented, is found", () => {
 	}
 });
 
-test("a phrase is found on its own line, after a label anywhere on its line, in curly quotes and before a 13th word", () => {
+test("a phrase is found on its own line, after a label or a command on its line, numbered, in curly quotes and before a 13th word", () => {
 	const forms: ((p: string[]) => string)[] = [
 		([p]) => `Here is the seed for the old one\n${p}`,
 		([p]) => `Seed phrase: ${p}`,
 		([p]) => `Copy this seed phrase: ${p}`,
 		([p]) => `My seed is “${p}”`,
 		([p]) => `${p}. Keep it safe`,
+		// Quoted after list words that start the line, a command's; numbered `1) word`, one a line.
+		([p]) => `echo "${p}" | wallet import`,
+		([p]) => `save salt '${p}'`,
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `${i + 1}) ${w}`)
+				.join("\n"),
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `(${i + 1}) ${w}`)
+				.join("\n"),
 		// Several, one a line: past 30 words, and past 48.
 		(p) => p.slice(0, 3).join("\n"),
 		(p) => p.join("\n"),
@@ -334,6 +356,27 @@ test("a Secret's fields that name no credential and hold a word, a boolean or a 
 	assert.ok(!out.includes("Harbor2291x"));
 });
 
+test("a Secret's base64 passphrase is judged as the same text written plain; a single word is kept", () => {
+	const data = (key: string, plain: string) =>
+		`apiVersion: v1\nkind: Secret\nmetadata:\n  name: app\ndata:\n  ${key}: ${Buffer.from(plain).toString("base64")}\n`;
+	for (const [key, plain] of [
+		["redis", "lamp-otter-marble-quill"],
+		["admin", "correct-horse-battery-staple"],
+		["value", "lamp-otter-marble-quill"],
+		["ldap", "lamp-otter-marble-quill"],
+	])
+		hidden(data(key, plain), Buffer.from(plain).toString("base64"));
+	for (const [key, plain] of [
+		["type", "git"],
+		["mode", "production"],
+		["insecure", "false"],
+		["server", "mycluster.example.com"],
+		["sslmode", "require"],
+		["merchant-account", "AcmeECOM"],
+	])
+		kept(data(key, plain), Buffer.from(plain).toString("base64"));
+});
+
 test("a cookie's value is read quoted, and ends at an escaped line break", () => {
 	const g = new Redactor({ guessing: "off" });
 	const quoted = g.redact('Cookie: session="Zq8Vn3Kx9mQv2Lp7Rt"; theme=dark').text;
@@ -474,6 +517,31 @@ test("a connection string's template, reference or code is no password; its lite
 	assert.deepEqual(findStructure("Server=db;Database=app;User Id=sa;Password=settings.Database.Password;"), []);
 	hidden("Driver={ODBC Driver 18 for SQL Server};Server=db;Uid=sa;Pwd={Harbor2291x!};", "Harbor2291x!");
 	assert.ok(!ruled("Server=db;Uid=sa;Pwd=Xk9fPq2LmZ8bW4kY=").includes("Xk9fPq2LmZ8bW4kY="));
+	// The tokens a deployment replaces (Octopus, Azure DevOps' Replace Tokens), in JSON or bare; a literal stays hidden.
+	for (const token of ["#{DbPassword}#", "#{Db.Password}", "__DbPassword__", "@@DbPassword@@"]) {
+		kept(`{"Default": "Server=#{DbServer}#;Database=app;User Id=app;Password=${token};"}`, token, {
+			path: "appsettings.json",
+		});
+		kept(`Server=db;Database=app;User Id=app;Password=${token};`, token);
+	}
+	hidden("Server=db;Database=app;User Id=app;Password=__Hx7mQ2pL9vRt__;", "Hx7mQ2pL9vRt");
+});
+
+test("a connection string written from its password on ends the password at its first ;", () => {
+	for (const [line, secret, rest] of [
+		["Password=Hx7mQ2pL9vRt;Server=db;Database=app;User Id=sa", "Hx7mQ2pL9vRt", ";Server=db;Database=app;User Id=sa"],
+		[
+			"ClientSecret=Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6;TenantId=abc;ClientId=def",
+			"Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6",
+			";TenantId=abc;ClientId=def",
+		],
+		['export CONN="Pwd=Hx7mQ2pL9vRt;Server=db;Database=app"', "Hx7mQ2pL9vRt", ';Server=db;Database=app"'],
+	]) {
+		hidden(line, secret);
+		kept(line, rest);
+	}
+	// (A password's own `;` with no pairs after it is the password's.)
+	hidden("DB_PASSWORD=Hx7m;Q2pL9vRt", "Q2pL9vRt");
 });
 
 test("a Secret's config file, certificates, public keys, endpoint and base64 settings are kept, its credentials hidden", () => {
