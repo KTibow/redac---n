@@ -223,16 +223,12 @@ function credentialPair(name: string, value: string): number {
 /**
  * Cache keys, object keys, content addresses: a hash with words or paths around it (`linux-deps-<sha>`,
  * `objects/<sha>`, `sha256:<hex>`, `v2-cache-<sha>`). Not a vendor's key, one short prefix and the hex (Firecrawl's
- * `fc-<hex>`), nor a key with its environment's or region's word dotted before it (`staging.<hex>`, `eu.<hex>`; a
- * digest's name before a dot, `sha1.<hex>`, still names a hash), nor a token with a hash beside it (a Rails cookie,
- * `<base64>--<hmac>`): every other part is a number, a short word or one that reads as a name (`fabrikam`,
- * `PaymentApiKey`; random letters score far lower).
+ * `fc-<hex>`), nor a token with a hash beside it (a Rails cookie, `<base64>--<hmac>`): every other part is a number, a
+ * short word or one that reads as a name (`fabrikam`, `PaymentApiKey`; random letters score far lower).
  */
 function isHashWithWords(value: string): boolean {
 	if (!/[0-9a-f]{16,}/i.test(value) || !/[-_/.:|+~]/.test(value) || /^[a-z]{2,4}[-_][0-9a-f]{24,}$/i.test(value))
 		return false;
-	const dotted = /^([a-z][a-z0-9]{1,15})\.[0-9a-f]{24,}$/i.exec(value);
-	if (dotted && nameClass(dotted[1]) !== "hash") return false;
 	return value
 		.replace(/[0-9a-f]{16,}/gi, "")
 		.split(/[-_/.:@()=;?&|+~]+/)
@@ -385,15 +381,12 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 		// After another word, `pass` is still what a setting passes through or a step lets by, and a word in capitals its
 		// mode, quoted or not: Django's `SETTING_PASS="BOTH"`, `LAMBDA_PASS`. (A password in capitals has a digit.)
 		if (/(?:^|[-_. ])pass$/i.test(name) && /^[A-Z]{2,}$/.test(value)) return false;
-		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`, a
-		// test's short or word-like name (`PASS: regress1`, `PASS: x86_64`). Random letters and digits of eight or more
-		// are an env file's password (`PASS=zq8lw2mxr5`), as under any other spelling of the name.
+		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`.
 		if (
 			/^PASS(?:ED)?$/.test(name) &&
 			/^[\w./:\[\]-]+$/.test(value) &&
 			(/test|spec|::|\/[\w-]+\.\w{1,4}$/i.test(value) ||
-				(!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)) &&
-					(value.length < 8 || naturalness(value) > -0.5)))
+				!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
 		)
 			return false;
 		// A compound adjective about the password, not one: a sentence's word among its parts (isSentenceWord: `write-only`,
@@ -1062,20 +1055,9 @@ function assignments(text: string, out: Finding[]) {
 		// A list of strings under the name, on its line or over the lines below (`"api_keys": [` then `"…",` lines,
 		// `passwords:` then `- …` lines): read whole, each item judged under the name (isNamedSecret) and hidden alone
 		// (findNamed). (No pairs inside to read.)
-		const yamlKey = op === ":" && YAML_LINE_START.test(before) ? before : undefined;
-		const list = listValue(text, at, yamlKey);
+		const list = listValue(text, at, op === ":" && YAML_LINE_START.test(before) ? before : undefined);
 		if (list) {
 			ASSIGN.lastIndex = Math.max(ASSIGN.lastIndex, list[1]);
-			// (A YAML flow list of plain scalars, `api_keys: [Zq8k…, Ab3d…]`, which only YAML reads as strings: its items
-			// are hidden here, each alone.)
-			if (!stringListItems(text.slice(list[0], list[1]))) {
-				for (const item of stringListItems(text.slice(list[0], list[1]), { plain: true }) ?? [])
-					if (isNamedSecret(name, `"${item.value}"`, true)) {
-						namedFinding(out, list[0] + item.start, list[0] + item.end, name, "named:assign");
-						out[out.length - 1].literal = true;
-					}
-				continue;
-			}
 			if (isNamedSecret(name, text.slice(list[0], list[1]), true)) {
 				namedFinding(out, list[0], list[1], name, "named:assign");
 				out[out.length - 1].literal = true;
@@ -1332,9 +1314,7 @@ function enclosingCall(text: string, at: number): string | undefined {
 function listValue(text: string, at: number, yamlKey?: string): [number, number] | undefined {
 	if (text[at] === "[") {
 		const close = closingBracket(text, at + 1);
-		return close > 0 && stringListItems(text.slice(at, close + 1), { plain: yamlKey !== undefined })
-			? [at, close + 1]
-			: undefined;
+		return close > 0 && stringListItems(text.slice(at, close + 1)) ? [at, close + 1] : undefined;
 	}
 	const eol = lineEndAt(text, at);
 	if (yamlKey === undefined || text[eol] !== "\n" || !/^[ \t]*(?:#.*)?\r?$/.test(text.slice(at, eol))) return undefined;
@@ -1464,11 +1444,6 @@ const COMMAND_WORDS =
  * are flags, `NAME=`s or tokens. Otherwise the line's words are the value (a dotenv passphrase, `correct horse battery staple`).
  */
 function shellWordValue(text: string, span: [number, number]): [number, number] {
-	// (An operator with no blank before the command it starts: `PGPASSWORD=x;psql …`, `TOKEN=x&&export Y=1`. A password
-	// may hold `;` or `&`, but not one before a command's name.)
-	const joined = /^(\S+?)(?:;|&&|\|\|?)(?=([\w.-]+)(?:\s|$))/.exec(text.slice(span[0], span[1]));
-	if (joined && (COMMAND_WORDS.test(joined[2]) || /^(?:export|cd|unset|set|echo|source)$/.test(joined[2])))
-		return [span[0], span[0] + joined[1].length];
 	const words = [...text.slice(span[0], span[1]).matchAll(/\S+/g)];
 	if (words.length < 2) return span;
 	// (A shell expansion is one word with the blanks inside its brackets: `${DB_PASSWORD:-$(openssl rand -hex 16)}`.)
@@ -1959,16 +1934,15 @@ function jsonValues(text: string, out: Finding[]) {
 	}
 }
 
-/** A plural credential's name over a mapping, a YAML key ending its line, a JSON key opening an object or an INI section: what parentMaps needs in a text. */
-const PARENT_KEY =
-	/(?:words|wds|secrets|credentials|tokens|keys|phrases)(?:[ \t]*:[ \t]*\r?$|"[ \t]*:[ \t]*\{)|^[ \t]*\[[\w.-]*(?:words|secrets|credentials|tokens|keys)\][ \t]*\r?$/im;
+/** A plural credential's name over a mapping, a YAML key ending its line or a JSON key opening an object: what parentMaps needs in a text. */
+const PARENT_KEY = /(?:words|wds|secrets|credentials|tokens|keys|phrases)(?:[ \t]*:[ \t]*\r?$|"[ \t]*:[ \t]*\{)/im;
 
 /** A plural credential's name (`passwords`, `secrets`, `api_keys`): a mapping under it maps names to credentials. */
 const isPluralCredential = (name: string) => /[^s]s$/i.test(name) && isCredentialName(name);
 
 /**
  * Values in a mapping under a plural credential's name, keyed by whose or which they are (`passwords:` over `admin: …`,
- * `grafana: …`; `{"secrets": {"prod": …}}`; an INI `[passwords]` section): each is judged under the parent's name, as a
+ * `grafana: …`; `{"secrets": {"prod": …}}`): each is judged under the parent's name, as a
  * list's items are under the list's. Only when every value in it is a secret under that name: a mapping of settings,
  * `secrets:` over `enabled: true`, `name: app-secrets`, holds other things.
  */
@@ -2029,25 +2003,6 @@ function parentMaps(text: string, out: Finding[]) {
 			};
 			walk(doc);
 		}
-	// INI: the `key = value` lines under a `[passwords]` section, to the next section.
-	for (const m of text.matchAll(/^[ \t]*\[([\w.-]{1,80})\][ \t]*\r?$/gm)) {
-		if (!isPluralCredential(m[1])) continue;
-		const values: Span[] = [];
-		const from = m.index + m[0].length + 1;
-		const body = /^(?:[^[\n][^\n]*\n?|\n)*/.exec(text.slice(from))![0];
-		let ok = true;
-		for (const line of body.matchAll(/^[^\n]*/gm)) {
-			if (/^[ \t]*(?:[#;].*)?\r?$/.test(line[0])) continue;
-			const pair = /^[ \t]*([\w.-]{1,80})[ \t]*[=:][ \t]*(\S(?:[^\n]*\S)?)[ \t]*\r?$/.exec(line[0]);
-			if (!pair) {
-				ok = false;
-				break;
-			}
-			const start = from + line.index + line[0].indexOf(pair[2], pair[1].length);
-			if (!isCredentialName(pair[1])) values.push({ value: pair[2], start, end: start + pair[2].length });
-		}
-		if (ok) hide(m[1], values);
-	}
 }
 
 /** Callees that look a key up, so their literal argument is the key, not a secret: `getToken("github")`. */
@@ -2292,9 +2247,8 @@ function formFills(text: string, out: Finding[]) {
 		const after = /(?:\{[a-z]+\})*$/i.exec(value.value)![0].length;
 		namedFinding(out, value.start + before, value.end - after, name, "named:form-fill");
 	};
-	// (After the text, an options object or a key to press, `{ log: false }`, `{ delay: 100 }`, `Keys.ENTER`, which says
-	// nothing about it.)
-	const extras = (rest: Argument[]) => rest.every((a) => /^\{[\s\S]*\}$|^(?:[\w$]+\.)*Keys\.[A-Z_]+$/.test(a.text));
+	// (After the text, an options object, `{ log: false }`, `{ delay: 100 }`, which says nothing about it.)
+	const extras = (rest: Argument[]) => rest.every((a) => /^\{[\s\S]*\}$/.test(a.text));
 	for (const { args } of calls(text, /\.(?:fill|type)\(/g))
 		if (args.length >= 2 && args[1].literal && extras(args.slice(2))) fill(args[0].literal?.value, args[1].literal);
 	// The selector of the call the value is chained to: its last literal argument, `getByLabel('Password')`,
@@ -2307,14 +2261,8 @@ function formFills(text: string, out: Finding[]) {
 			"g",
 		),
 	)) {
-		if (args.length >= 1 && extras(args.slice(1))) fill(match[2], args[0].literal ?? keysAfter(args[0]));
+		if (args.length >= 1 && extras(args.slice(1))) fill(match[2], args[0].literal);
 	}
-}
-
-/** A literal with a key pressed after it, `"…" + Keys.RETURN` (Selenium): the literal. */
-function keysAfter(arg: Argument): Literal | undefined {
-	const m = /^(["'])((?:(?!\1)[^\\\n]|\\.)*)\1[ \t]*\+[ \t]*(?:[\w$]+\.)*Keys\.[A-Z_]+$/.exec(arg.text);
-	return m ? { value: m[2], start: arg.start + 1, end: arg.start + 1 + m[2].length, quote: m[1] } : undefined;
 }
 
 /**
@@ -4195,10 +4143,9 @@ function passwordShaped(text: string, out: Finding[]) {
 		if (k === 5 && word && isInert(word + value)) continue;
 		// (A bracket is a symbol a password may hold; a tag, a template's hole, a path of names or an escape is markup's,
 		// code's or an encoding's; a pair or a flag with its value, `--pass="$P12Pass"`, or a list's first item,
-		// `["Summer2024!",` or `[Summer2024!,`, the readers' of those.)
+		// `["Summer2024!",`, the readers' of those.)
 		if (
 			!PASSWORD_SHAPE.test(value) ||
-			(/^\[[^\]]*$/.test(value) && text[start + value.length] === ",") ||
 			/:\/\/|^[\w.-]+@|^-{0,2}[A-Za-z_][\w.-]*=|<\/?[A-Za-z][\w:-]*>|\$\{|\{\{|::|\\["'nrt\\]|"\w*"[:,]|^\[["'\x60]/.test(
 				value,
 			)
