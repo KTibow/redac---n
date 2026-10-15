@@ -82,6 +82,42 @@ test("a slash, a tab or a Python repr's quote escaped in a one-line literal is u
 	hidden("{'stdout': 'DB_HOST=db\\nDB_PASSWORD=Kx9m\\'Qv2 Lp7Rt\\n', 'returncode': 0}", "Lp7Rt");
 });
 
+test("a code or a doubled backslash escaped in a one-line literal is undone where JSON stands around it", () => {
+	// Go's json.Marshal writes `&`, `<` and `>` as codes, Python's json.dumps every character past ASCII.
+	for (const text of [
+		String.raw`{"level":"info","msg":"exec: mysql -h db.internal -u root -pQm7v\u0026Tx2LpR9sWd4Nz8K shop"}`,
+		String.raw`{"database_url":"postgres://app:Qm7v\u0026Tx2LpR9sWd4Nz8K@db.internal:5432/shop"}`,
+		`{\n  "name": "DATABASE_URL",\n  "value": "postgres://app:Qm7v\\u0026Tx2LpR9sWd4Nz8K@db.internal:5432/shop"\n}`,
+		String.raw`{"level":"warn","msg":"redis://:Qm7v\u00e9Tx2LpR9sWd4Nz8K@cache.internal:6379/0 refused"}`,
+		String.raw`{"msg":"exec: mysql -u root -pQm7v\\Tx2LpR9sWd4Nz8K shop"}`,
+	])
+		hidden(text, "Tx2LpR9sWd4Nz8K");
+	// (The value alone: the rest of a query string after Go's `\u0026` stays.)
+	const query = String.raw`{"msg":"GET https://api.example.com/v1/items?client_secret=Qm7vTx2LpR9sWd4Nz8KcYb3HfJ6aEg5U\u0026grant_type=client_credentials 200"}`;
+	hidden(query, "Qm7vTx2LpR9sWd4Nz8KcYb3HfJ6aEg5U");
+	kept(query, String.raw`\u0026grant_type=client_credentials 200`);
+	kept(
+		String.raw`{"title":"Caf\u00e9 menu \u0026 prices for the 2024 season"}`,
+		String.raw`Caf\u00e9 menu \u0026 prices`,
+	);
+	kept(String.raw`{"path":"C:\\Users\\deploy\\AppData\\Local\\Temp"}`, String.raw`C:\\Users\\deploy\\AppData`);
+});
+
+test("a base64 value whose slashes JSON escaped is judged whole, and a path's segments apart", () => {
+	const value = String.raw`Zx9Qk2Lm7Vb4Nt8Rs3Wy\/Hd1Ae5Uf0GpJcOiPq4Tz`;
+	for (const text of [
+		String.raw`[2024-10-15 09:12:44] local.INFO: outgoing request {"url":"https:\/\/api.lumen.io\/v1\/me","headers":{"X-Lumen":"${value}"}}`,
+		String.raw`{"headers":{"X-Lumen":"${value}"}}`,
+	]) {
+		hidden(text, "Zx9Qk2Lm7Vb4Nt8Rs3Wy");
+		hidden(text, "Hd1Ae5Uf0GpJcOiPq4Tz");
+	}
+	kept(
+		String.raw`[2024-10-15 09:12:44] local.INFO: {"url":"https:\/\/api.example.com\/v1\/organizations\/members\/invitations"}`,
+		String.raw`\/v1\/organizations\/members\/invitations`,
+	);
+});
+
 test("a guessed token is hidden again inside an escaped literal, where it stands without what made it a guess", () => {
 	for (const json of ['{"items": "id\\nKx9mQv2Lp7RtZz81Xc4V\\n"}', '{"out": "commit Kx9mQv2Lp7RtZz81Xc4V\\nmerged"}']) {
 		const out = r().redact(`using Kx9mQv2Lp7RtZz81Xc4V now\n${json}`).text;

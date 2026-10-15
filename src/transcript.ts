@@ -18,7 +18,14 @@
 import { isSecretFile } from "./commands.ts";
 import { base64Binary } from "./base64.ts";
 import { findFormats } from "./formats.ts";
-import { type JsonNode, parseJson, TOOL_COMMAND_KEYS, TOOL_CONTENT_KEYS, TOOL_PATH_KEYS } from "./json.ts";
+import {
+	isCommandKey,
+	type JsonNode,
+	parseJson,
+	TOOL_COMMAND_KEYS,
+	TOOL_CONTENT_KEYS,
+	TOOL_PATH_KEYS,
+} from "./json.ts";
 import { shellLine } from "./shell.ts";
 import type { Redactor } from "./index.ts";
 import { isLearnable, isNeverSecretShape, loginPassword, merge, secretValue } from "./spans.ts";
@@ -258,7 +265,10 @@ function toolHints(value: unknown): Map<string, Hint> {
 		const i = input as Record<string, unknown>;
 		const asText = (x: unknown) =>
 			typeof x === "string" ? x : Array.isArray(x) && x.every((y) => typeof y === "string") ? shellLine(x) : undefined;
-		const command = TOOL_COMMAND_KEYS.map((k) => asText(i[k])).find((x) => x !== undefined);
+		// (The tool keys first; then any key named for a command line, a `CommandLine` or `bash_command`.)
+		const command = [...TOOL_COMMAND_KEYS, ...Object.keys(i).filter(isCommandKey)]
+			.map((k) => asText(i[k]))
+			.find((x) => x !== undefined);
 		// (A call that writes a file, its content in its input, returns a status line, not the file: no path hint.)
 		const writes = Object.keys(i).some((k) => CONTENT_KEYS.has(k));
 		const path = writes

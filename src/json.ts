@@ -29,13 +29,20 @@ export const TOOL_CONTENT_KEYS = [
 	"edits",
 ];
 
+/**
+ * A key that names a command line by its last word, in any case and joining (`CommandLine`, Windsurf's run_command
+ * input; `commandLine`, `bash_command`, `COMMAND_LINE`, `shellCmd`), or one of the tool keys.
+ */
+const COMMAND_KEY = String.raw`(?:(?:[A-Za-z\d]*[a-z\d](?=[A-Z])|[\w-]*[_-])?(?:command|Command|COMMAND|cmd|Cmd|CMD)(?:[_-]?(?:line|Line|LINE))?|${TOOL_COMMAND_KEYS.join("|")})`;
+/** Whether a tool input's key names the command line it runs: TOOL_COMMAND_KEYS, or a key COMMAND_KEY reads as one. */
+export const isCommandKey = (key: string): boolean => new RegExp(String.raw`^${COMMAND_KEY}$`).test(key);
 /** The keys tools take text under: an editor's `new_string`, a writer's `content`, a shell's `command`, a tool's `input`. */
-const TOOL_TEXT_KEY = String.raw`(?:${[...TOOL_CONTENT_KEYS, ...TOOL_COMMAND_KEYS, "input"].join("|")})`;
+const TOOL_TEXT_KEY = String.raw`(?:${[...TOOL_CONTENT_KEYS, COMMAND_KEY, "input"].join("|")})`;
 const TOOL_TEXT_ARGUMENT = new RegExp(String.raw`"${TOOL_TEXT_KEY}"[ \t]*:[ \t]*"`);
 /** A literal's opening quote right after a tool's text key (`"new_string": "`, escaped any number of times). */
 const AFTER_TOOL_TEXT_KEY = new RegExp(String.raw`(?<![\w$-])${TOOL_TEXT_KEY}\\*"[ \t]*:[ \t]*$`);
 /** A literal's opening quote right after a shell command's key (`"command": "`, `"cmd": "`): a command line, read as one. */
-const AFTER_COMMAND_KEY = new RegExp(String.raw`(?<![\w$-])(?:${TOOL_COMMAND_KEYS.join("|")})\\*"[ \t]*:[ \t]*$`);
+const AFTER_COMMAND_KEY = new RegExp(String.raw`(?<![\w$-])${COMMAND_KEY}\\*"[ \t]*:[ \t]*$`);
 
 /**
  * Whether a text may hold JSON string literals worth decoding: escapes a document's literals carry (a line break,
@@ -182,6 +189,11 @@ export function jsonStringLiterals(text: string): { decoded: string; map: number
 			decoded.length >= 20 &&
 			(isOutputText(decoded) ||
 				decoded.includes('"') ||
+				// (A character escaped as a code or a doubled backslash, Go's `\u0026` for `&`, Python's `\u00e9`, a path's
+				// `\\`: read raw, `-pQm7v\u0026Tx2…` or `postgres://app:Qm7v\u0026Tx2…@db` isn't the value the program saw.
+				// Only where JSON's syntax stands around it, as for the slash: a shell's `"s/\\(token=\\).*/\\1…/"` is no JSON.)
+				(/\\(?:u[0-9a-fA-F]{4}|\\)/.test(text.slice(map[0], map[map.length - 1])) &&
+					isJsonPlaced(text, open, map[map.length - 1])) ||
 				// (An escaped slash, PHP's `"https:\/\/…"`, only where JSON's syntax stands around the literal: in a sed
 				// script in a shell's string, `"s/^DB_PASSWORD=.*/DB_PASSWORD=a\/b/"`, it escapes the script's delimiter.)
 				(decoded.includes("/") &&

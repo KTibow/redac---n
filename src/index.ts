@@ -355,10 +355,16 @@ export class Redactor {
 			);
 		};
 		const decoded = merge(extra);
+		// (Where both passes read a value from the same place, the decoded one says where it ends: read raw, Go's
+		// `client_secret=…\u0026grant_type=…` runs on through the escaped `&`.)
+		const decodedStarts = new Set(extra.map((f) => f.start));
 		return merge([
 			...found.filter(
 				(f) =>
-					isVouched(f.rule) || layerOf(f.rule) === "repeat" || !insideLiteral(f) || overlaps(decoded, f.start, f.end),
+					isVouched(f.rule) ||
+					layerOf(f.rule) === "repeat" ||
+					!insideLiteral(f) ||
+					(overlaps(decoded, f.start, f.end) && !decodedStarts.has(f.start)),
 			),
 			...extra,
 		]);
