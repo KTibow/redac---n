@@ -770,12 +770,15 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 		if (at >= 0 && at + 2 < rest.length && !rest[at + 2].text.startsWith("+")) addWord(rest[at + 2], rest[at + 2].text);
 		return;
 	}
-	// `vault login <token>`, `vault login -method=userpass username=u password=pw`.
+	// `vault login <token>`, `vault login -method=userpass username=u password=pw`. The token is the one word without
+	// `=`: more such words are the sentence a changelog goes on with (`fix regression in vault login command that caused
+	// login to fail`) or a usage line (`vault login TOKEN [CONFIG K=V...]`), and a bracket opens a link or a usage's slot.
 	if (name === "vault" && rest[0]?.text === "login") {
+		const operands = rest.slice(1).filter((w) => !w.text.startsWith("-") && !w.text.includes("="));
+		if (operands.length === 1 && !/^[[<(]/.test(operands[0].text)) addWord(operands[0], operands[0].text);
 		for (const w of rest.slice(1)) {
 			const pair = /^(?:token|password)=(.+)$/.exec(w.text);
 			if (pair) addWord(w, pair[1]);
-			else if (!w.text.startsWith("-") && !w.text.includes("=")) addWord(w, w.text);
 		}
 		return;
 	}
@@ -1084,8 +1087,11 @@ function cliPasswords(text: string, out: Finding[]) {
 		const name = programName(command[0]);
 		const word = /^password/.test(option);
 		// (The program is the command's first word, or a word before the option that names one of these, past prose
-		// the line starts with: `Brute-force it: hydra -l admin -p …`.)
-		const names = command.filter((w, i) => i === 0 || (w.end <= at && !/[/\\]/.test(w.text))).map(programName);
+		// the line starts with: `Brute-force it: hydra -l admin -p …`. Not an option's value, which names something else:
+		// `dvc stage add -n hydra -p params.yaml:` names a stage.)
+		const names = command
+			.filter((w, i) => i === 0 || (w.end <= at && !/[/\\]/.test(w.text) && !command[i - 1].text.startsWith("-")))
+			.map(programName);
 		// (rar's `-p` takes its password attached, `-pPW`; alone it asks for one, and the archive's name follows,
 		// `rar a -p backup.rar`. A password written apart anyway, `-p Summer2024`, is still the one its writer meant.)
 		const takes =
