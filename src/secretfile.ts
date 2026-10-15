@@ -10,6 +10,7 @@ import {
 	holdsOnlySecrets,
 	isConfigFileName,
 	isSecretFile,
+	pipes,
 	printsSecret,
 	printsSecretFile,
 } from "./commands.ts";
@@ -89,6 +90,13 @@ function isBareVendorWord(name: string): boolean {
 	return /^[A-Z][A-Z0-9]{2,30}$/.test(name);
 }
 
+/**
+ * What a setting names in numbers and lower-case words: a platform (`linux/amd64`, `linux/arm64/v8`), a size
+ * (`1920x1080`), a port and its protocol (`8080/tcp`, `5000-5010/udp`).
+ */
+const PLATFORM_OR_MEASURE =
+	/^[a-z][a-z0-9_.-]{0,30}(?:\/[a-z0-9][a-z0-9_.-]{0,30}){1,3}$|^\d+x\d+$|^\d+(?:-\d+)?\/(?:tcp|udp|sctp)$/;
+
 /** A host's name, and its port: `db.internal:5432`, `abc123def456.ngrok.io`. */
 const HOST = /^[\w-]+(?:\.[a-z][\w-]*)+(?::\d+)?$/;
 
@@ -103,6 +111,7 @@ function isSettingShaped(v: string): boolean {
 		isPasswordlessUrl(v) ||
 		/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(v) ||
 		/^v?\d+(?:[.:-]\d+)*$/.test(v) ||
+		PLATFORM_OR_MEASURE.test(v) ||
 		HOST.test(v) ||
 		isWordySetting(v) ||
 		isIdentifierShaped(v) ||
@@ -220,8 +229,10 @@ function isOneValueLine(line: string): boolean {
 	const nameShaped =
 		named !== undefined && /^(?:[a-z_][a-z0-9_.-]*|[A-Z_][A-Z0-9_.-]*|[a-z]+(?:[A-Z][a-z]+)+)$/.test(named);
 	if (line.length > 1000 || /[=:]\s|:\/\//.test(line) || nameShaped) return false;
-	// One token in brackets is the value, brackets and all: `{Kd8pQ2zX9mL}`.
-	if (/^(?:\[[^\s\]]*\]|\{[^\s}]*\}|<[^\s>]*>)$/.test(line) && !/[:,=]/.test(line)) return true;
+	// One token in brackets is the value, brackets and all: `{Kd8pQ2zX9mL}`. (Not an empty document, `{}`, `[]`, nor an
+	// INI file's section, `[default]`, `[core]`: its name reads as a setting's.)
+	if (/^(?:\[[^\s\]]+\]|\{[^\s}]+\}|<[^\s>]+>)$/.test(line) && !/[:,=]/.test(line))
+		return !(line.startsWith("[") && isSettingShaped(line.slice(1, -1)));
 	// (A netrc entry is read by its keywords, spacedKeywords: `machine github.com login x password ${GITHUB_TOKEN}`.)
 	const structured =
 		/^#[ \t!#]|^\[[^\]]*\]$|^\{[\s\S]*\}$|^<[\s\S]*>$|^["{[][\s\S]*[:,]|^(?:machine[ \t]+\S+|default)[ \t]+(?:login|password|account)[ \t]/.test(
@@ -378,10 +389,13 @@ function cookiesTxt(text: string, out: Finding[]) {
 	}
 }
 
-/** htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or `{SSHA}`. (Not `admin:$ADMIN_PASSWORD`: a variable.) */
+/**
+ * htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or an LDAP scheme's (RFC 2307: `{SHA}`, `{SSHA}`,
+ * `{SSHA512}`, `{PBKDF2-SHA256}`). (Not `admin:$ADMIN_PASSWORD`: a variable.)
+ */
 function htpasswd(text: string, out: Finding[]) {
 	for (const m of text.matchAll(
-		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{SSHA\}[\w+/=]{10,200})[ \t]*$/dgm,
+		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{(?:S?SHA(?:256|384|512)?|S?MD5|CRYPT|PBKDF2(?:-SHA\d+)?|ARGON2)\}[\w+/=.$-]{10,300})[ \t]*$/dgm,
 	))
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "password hash", rule: "file:hash", confidence: 1 });
 }
@@ -511,9 +525,10 @@ export function findPrintedSecret(text: string): Finding[] {
 	const out: Finding[] = [];
 	const add = (start: number, end: number) =>
 		out.push({ start, end, kind: "credential", rule: "command:prints-secret", confidence: 1 });
-	// `--output text` rows: SSM's value follows its type, Secrets Manager's is the fourth field.
+	// `--output text` rows: SSM's value follows its type (a `PARAMETER` row, or `get-parameters`' `PARAMETERS`), Secrets
+	// Manager's is the fourth field.
 	for (const m of text.matchAll(
-		/^(?:PARAMETER\t[^\n]*?\t(?:SecureString|String|StringList)\t([^\t\n]+)\t\d+|arn:aws:secretsmanager:[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\t\n]+)(?:\t[^\n]*)?)\r?$/dgm,
+		/^(?:PARAMETERS?\t[^\n]*?\t(?:SecureString|String|StringList)\t([^\t\n]+)\t\d+|arn:aws:secretsmanager:[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\t\n]+)(?:\t[^\n]*)?)\r?$/dgm,
 	)) {
 		const [start, end] = at(m, m[1] !== undefined ? 1 : 2);
 		add(start, end);
@@ -533,9 +548,14 @@ export function findPrintedSecret(text: string): Finding[] {
 	const quote = firstValue === first.value ? 0 : 1;
 	if (firstValue && !notSecret(firstValue) && !/^[{[]$/.test(firstValue) && readsAsValue(firstValue))
 		add(first.start + quote, first.start + first.value.length - quote);
-	for (const m of text.slice(firstEnd).matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
+	// (Up to a blank line: what follows one is no longer the command's output, `Perfect!` from whoever ran it. A markup tag
+	// closes the output too, `</tool_result>`.)
+	const blank = /\n[ \t]*\r?\n/.exec(text.slice(firstEnd));
+	const rest = text.slice(firstEnd, blank ? firstEnd + blank.index : text.length);
+	for (const m of rest.matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
 		const value = jsonString(m[1]) ?? m[1];
 		const q = value === m[1] ? 0 : 1;
+		if (/^<\/?[A-Za-z][\w:.-]*>$/.test(value)) break;
 		// (A message's tokens are not values; `[`/`{` start a JSON document's lines.)
 		if (isMessageToken(value) || /^[{[]/.test(value) || notSecret(value)) continue;
 		add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[1] - q);
@@ -777,7 +797,7 @@ function writtenToSecretFile(commands: CommandRun[]): { sections: FileSection[];
 	for (let k = 0; k < commands.length; k++) {
 		const c = commands[k];
 		pipeline.push(c);
-		if ((c.then === "|" || c.then === "|&") && commands[k + 1]?.host === c.host) continue;
+		if (pipes(c) && commands[k + 1]?.host === c.host) continue;
 		// Where it writes: a redirection's file (`>`, `>>`, `>|`, `&>`, `>&`), its groups' included, and `tee`'s.
 		// (A descriptor, `2>&1`, `>&-`, is no secret file's name.)
 		const targets = pipeline.flatMap((p) => {
@@ -805,9 +825,11 @@ function writtenToSecretFile(commands: CommandRun[]): { sections: FileSection[];
 				}
 				for (const r of p.redirects) if (r.op === "<<<" && r.target) sections.push({ ...wordSpan(r.target), part });
 			}
-			const first = simpleCommand(pipeline[0].words);
-			const program = programName(first[0]);
-			if (program === "echo" || program === "printf") {
+			// (Each of the echoes that start it, a group's several: `{ echo A=1; echo B=2; } | tee .env`.)
+			for (const p of pipeline) {
+				const first = simpleCommand(p.words);
+				const program = programName(first[0]);
+				if (program !== "echo" && program !== "printf") break;
 				const args = first.slice(1).filter((w) => !/^-[neE]+$/.test(w.text));
 				const operands = program === "printf" && args.length > 1 ? args.slice(1) : args;
 				for (const w of operands) if (w.text) sections.push({ ...wordSpan(w), part });

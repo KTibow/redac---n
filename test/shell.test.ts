@@ -296,3 +296,60 @@ test("a heredoc inside a substitution is text: an apostrophe in a commit message
 	}
 	assert.equal(shellCommands("echo \"$(cat <<'EOF'\ndon't\nEOF\n)\"\ncurl -u a:b http://x").length, 2);
 });
+
+test("a prompt is read in the shapes terminals print it, and a comment or a heading is none", () => {
+	const r = new Redactor();
+	const body = "cat .env\nPORT=8080\nACMEPAY=Hx7mQ2pLw9zK\n";
+	for (const prompt of [
+		"bash-5.1$ ",
+		"sh-4.2# ",
+		"[ec2-user@ip-10-0-1-5 app]$ ",
+		"[root@web01 ~]# ",
+		"(venv) user@host:~/app$ ",
+		"(base) $ ",
+		"user@host app % ",
+		"/app # ",
+		"~ # ",
+		"PS> ",
+		"C:\\app>",
+		"C:\\Users\\bob\\app> ",
+	])
+		assert.ok(!r.redact(`${prompt}${body}${prompt}ls\n`).text.includes("Hx7mQ2pLw9zK"), prompt);
+	for (const line of ["# cat .env", "# Setup", "/dist # build output", "C:\\app>"])
+		assert.ok(r.redact(`${line}\nACMEPAY=Hx7mQ2pLw9zK\n`).text.includes("Hx7mQ2pLw9zK"), line);
+	// (cmd's prompt is cmd's line: its backslashes are a path's, and the command after it is read.)
+	assert.ok(!r.redact('C:\\> sqlcmd -S db01 -U sa -P "G4rd3n!23" -Q "select 1"\n').text.includes("G4rd3n!23"));
+	assert.ok(!r.redact("C:\\app>type config\\.env\nACMEPAY=Hx7mQ2pLw9zK\n\nC:\\app>").text.includes("Hx7mQ2pLw9zK"));
+});
+
+test("a heredoc or a here-string given to a wrapper is the stdin of the command it runs", () => {
+	const r = new Redactor();
+	for (const line of [
+		"sudo sh -c 'cat > /etc/app/db_password' <<EOF\nHarbor#2291x\nEOF",
+		"ssh deploy@10.0.0.5 'cat > ~/.vault_pass' <<'EOF'\nHarbor#2291x\nEOF",
+		"docker exec -i app sh -c 'cat > /run/secrets/db_password' <<EOF\nHarbor#2291x\nEOF",
+		"bash -c 'tee .env > /dev/null' <<EOF\nACMEPAY=Harbor#2291x\nEOF",
+		"ssh host 'cat > ~/.vault_pass' <<< 'Harbor#2291x'",
+	])
+		assert.ok(!r.redact(line).text.includes("Harbor#2291x"), line);
+	// (A file that is no secret file keeps what it is given; a heredoc that is the script is read as the script.)
+	assert.ok(r.redact("ssh host 'cat > notes.txt' <<EOF\nACMEPAY=Hx7mQ2pLw9zK\nEOF").text.includes("Hx7mQ2pLw9zK"));
+	assert.ok(r.redact("ssh prod <<'EOF'\ncat > notes.txt\nEOF").text.includes("cat > notes.txt"));
+});
+
+test("a group's pipe takes what every command in it prints", () => {
+	for (const c of [
+		"{ cat .env; echo; } | sha256sum",
+		"ssh host 'cat .env; true' | sha256sum",
+		"(cat .env; echo) | wc -l",
+	])
+		assert.ok(!printsSecretFile(c), c);
+	for (const c of ["{ cat .env; echo; } | tee /dev/null", "{ cat .env; echo; }", "ssh host 'cat .env; true' | nl"])
+		assert.ok(printsSecretFile(c), c);
+	const r = new Redactor();
+	for (const line of [
+		"{ echo A=1; echo 'STRIPE=Harbor#2291x'; } | tee .env",
+		"{ echo 'STRIPE=Harbor#2291x'; echo A=1; } | tee .env",
+	])
+		assert.ok(!r.redact(line).text.includes("Harbor#2291x"), line);
+});

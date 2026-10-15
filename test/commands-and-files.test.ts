@@ -804,3 +804,147 @@ test("a key's bare file is a secret file by its name; a jq filter's key name is 
 	for (const path of [".private_key", "keys.txt", "monkey.txt"]) assert.ok(!isSecretFile(path), path);
 	hidden("curl -sS --proxy-user svc_build:Tz4nQ8vLm2Xe https://registry.npmjs.org/-/ping", "Tz4nQ8vLm2Xe");
 });
+
+const ENV = "APP_NAME=shop\nDEBUG=false\nSALT=k2Lm9Qx\nADMIN_PASS=Zq7vK2mP\n";
+
+test("Windows' commands read a secret file in any case, findstr too, and a backslashed path is a Windows path", () => {
+	for (const command of [
+		"get-content .env",
+		"Get-content .env",
+		"TYPE .env",
+		"Select-string SALT .env",
+		"findstr SALT .env",
+		"findstr /i salt .env",
+		"findstr KEY C:\\app\\.env",
+		"cat apps\\web\\.env.local",
+		"cat config\\secrets.yml",
+		"more backend\\.env.production",
+		"sls KEY apps\\web\\.env.local",
+		"cat %USERPROFILE%\\.ssh\\id_rsa",
+	])
+		hidden(ENV, "k2Lm9Qx", { command });
+	for (const command of [
+		"get-content README.md",
+		"findstr TODO notes.txt",
+		"cat apps\\web\\README.md",
+		"TYPE notes.txt",
+	])
+		kept(ENV, "k2Lm9Qx", { command });
+});
+
+test("xargs and fd hand a secret file to a printer past their options' values", () => {
+	for (const command of [
+		"find . -name '.env*' | xargs -I {} cat {}",
+		"find . -name '.env*' | xargs -n 1 cat",
+		"find . -name .env | xargs -P 4 cat",
+		"find . -name .env | xargs -I {} sh -c 'echo {}; cat {}'",
+		"fd .env -x cat",
+		"xargs -n 1 -a .env echo",
+		"xargs -d '\\n' -a .env echo",
+	])
+		hidden(ENV, "k2Lm9Qx", { command });
+	for (const command of [
+		"find . -name '*.md' | xargs -n 1 cat",
+		"xargs -n 1 -a hosts.txt echo",
+		"find . -name .env | xargs -n 1 wc -l",
+		"find . -name .env | xargs -I {} sh -c 'echo {}; wc -l {}'",
+	])
+		kept(ENV, "k2Lm9Qx", { command });
+});
+
+test("cmd's and PowerShell's variables, environment drive and expressions print a credential", () => {
+	for (const command of [
+		"echo %APP_SECRET%",
+		"cmd /c echo %APP_SECRET%",
+		"echo ${env:APP_SECRET}",
+		"Write-Output $Env:APP_SECRET",
+		"Get-Content Env:APP_SECRET",
+		"(Get-Item Env:APP_SECRET).Value",
+		"$env:DB_PASSWORD",
+		"$cred.GetNetworkCredential().Password",
+		"Get-Secret DbPassword -AsPlainText",
+	])
+		assert.ok(printsSecret(command), command);
+	for (const command of [
+		"echo %PATH%",
+		"Get-Content Env:PATH",
+		"$env:COMPUTERNAME",
+		"$cred.UserName",
+		"(Get-Item Env:PATH).Value",
+		"Get-Secret DbPassword",
+	])
+		assert.ok(!printsSecret(command), command);
+	hidden("PS> $cred.GetNetworkCredential().Password\nC0r4l&96\nPS> ", "C0r4l&96");
+	kept("PS> $env:COMPUTERNAME\nBUILD-AGENT-07\nPS> ", "BUILD-AGENT-07");
+	// (`Get-ChildItem Env:` and `Get-Item Env:NAME` print a table of names and values, read as printenv's listing.)
+	const table = "Name                           Value\n----                           -----\n";
+	for (const command of ["Get-ChildItem Env:", "gci env:", "Get-Item Env:APP_SECRET"]) {
+		const text = `${table}APP_SECRET                     k2Lm9QxZ8\nPATH                           C:\\Windows\n`;
+		hidden(text, "k2Lm9QxZ8", { command });
+		kept(text, "C:\\Windows", { command });
+	}
+});
+
+test("aws ssm get-parameters' PARAMETERS rows hide every row's value", () => {
+	const rows =
+		"PARAMETERS\tarn:aws:ssm:us-east-1:123456789012:parameter/app/db_pw\ttext\t1728900000.0\t/app/db_pw\tSecureString\tHx7mQ2pL9vRt\t3\n" +
+		"PARAMETERS\tarn:aws:ssm:us-east-1:123456789012:parameter/app/api\ttext\t1728900000.0\t/app/api\tSecureString\tZq7Lm2Kx9Pw\t1\n";
+	for (const command of [
+		"aws ssm get-parameters-by-path --path /app --with-decryption --output text",
+		"aws ssm get-parameters --names /app/db_pw /app/api --with-decryption --output text",
+	]) {
+		hidden(`$ ${command}\n${rows}`, "Hx7mQ2pL9vRt");
+		hidden(`$ ${command}\n${rows}`, "Zq7Lm2Kx9Pw");
+		kept(`$ ${command}\n${rows}`, "/app/db_pw");
+	}
+});
+
+test("a credential command's output ends at a blank line or a markup tag", () => {
+	for (const after of ["\n\nPerfect!\n", "\n</tool_result>\n", "\n\nAssistant\nexit_code=0\n"]) {
+		const text = `$ gh auth token\ngho\x5faB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5${after}`;
+		hidden(text, "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5");
+		for (const word of after.trim().split("\n")) kept(text, word);
+	}
+	hidden("$ op read op://v/i/f\nAdmin: bob\nmonkeykingdom\n", "monkeykingdom");
+});
+
+test("a secret file's platforms, sizes and ports are settings, under a bare word too", () => {
+	for (const [line, value] of [
+		["PLATFORM=linux/amd64", "linux/amd64"],
+		["ARCH=linux/arm64/v8", "linux/arm64/v8"],
+		["RESOLUTION=1920x1080", "1920x1080"],
+		["PORTS=8080/tcp", "8080/tcp"],
+		["RANGE=5000-5010/udp", "5000-5010/udp"],
+	])
+		kept(`NODE_ENV=production\n${line}\n`, value, { command: "cat .env" });
+	for (const [line, value] of [
+		["STRIPE=Summer2024!", "Summer2024!"],
+		["OPENAI=Ab3/xY9+kL2m", "Ab3/xY9+kL2m"],
+	])
+		hidden(`NODE_ENV=production\n${line}\n`, value, { command: "cat .env" });
+});
+
+test("an empty document and an INI section are no one-line secret file; one token in brackets is", () => {
+	for (const [text, command] of [
+		["{}\n", "cat ~/.docker/config.json"],
+		["[]\n", "cat secrets.json"],
+		["[default]\n", "head -1 ~/.aws/credentials"],
+		["[profile.prod]\n", "head -1 ~/.aws/credentials"],
+	])
+		kept(text, text.trim(), { command });
+	hidden("{Kd8pQ2zX9mL}\n", "Kd8pQ2zX9mL", { command: "cat ~/.vault_pass" });
+	hidden("[Kd8pQ2zX9mL]\n", "Kd8pQ2zX9mL", { command: "cat ~/.vault_pass" });
+});
+
+test("htpasswd's LDAP-scheme hashes are read as its crypt hashes are", () => {
+	for (const hash of [
+		"{SHA}qUqP5cyxm6YcTAhz05Hph5gvu9M=",
+		"{SSHA}W6ph5Mm5Pz8GgiULbPgzG37mj9gZm9v",
+		"{SSHA512}W6ph5Mm5Pz8GgiULbPgzG37mj9gZm9vW6ph5Mm5Pz8GgiULbPgzG37mj9g",
+		"$apr1$x9Kd2mQ7$abcdefghijklmnopqrstuv",
+	]) {
+		const out = r().redact(`bob:${hash}\ncarol:${hash}\n`, { hint: { path: "/etc/nginx/.htpasswd" } }).text;
+		assert.ok(!out.includes(hash.slice(-12)), out);
+		assert.ok(out.includes("bob:") && out.includes("carol:"), out);
+	}
+});
