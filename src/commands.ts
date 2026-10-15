@@ -604,8 +604,12 @@ function readsSecretFile(c: ShellCommand): boolean {
 	// echo`, `xargs < .env`; `xargs -a hosts.txt ping` prints no file.)
 	const xargs = xargsInput(c, words);
 	if (xargs !== undefined && (program === "xargs" || ECHOES.test(program))) return isSecretFile(xargs);
-	// (PowerShell's `Get-ChildItem Env:` and `Get-Item Env:NAME` print the variables as a table of names and values.)
-	if (/^(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)$/.test(program) && rest.some((t) => /^env:/i.test(t))) return true;
+	// (PowerShell's `Get-ChildItem Env:` and `Get-Item Env:NAME` print the variables as a table of names and values: all
+	// of them, or those a wildcard matches; one variable named in full is judged by its name, `Env:AZURE_TENANT_ID`.)
+	const drive = /^(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)$/.test(program)
+		? rest.find((t) => /^env:/i.test(t))
+		: undefined;
+	if (drive !== undefined) return !/^env:\\?\w+$/i.test(drive) || isCredentialName(drive.replace(/^env:\\?/i, ""));
 	if (!CONTENT_COMMANDS.test(program) || printsNamesOnly(words) || editsInPlace(words)) return false;
 	// (`env` here runs no command: simpleCommand reads past it to the one it runs. `env -0` prints the environment too;
 	// `printenv NAME` prints one variable, judged by its name: printsSecret.)

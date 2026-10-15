@@ -885,6 +885,17 @@ test("cmd's and PowerShell's variables, environment drive and expressions print 
 	// (A member of the drive's items prints that member: `.Name` prints names.)
 	kept("PS /home/user01> (Get-Item -Path Env:hOM[E]).Name\nHOME\n", "HOME");
 	kept("PS> (Get-ChildItem Env:).Name\nAPI_TOKEN\nPATH\n", "API_TOKEN");
+	// (One variable named in full is judged by its name.)
+	kept("72f988bf-86f1-41af-91ab-2d7cd011db47\n", "72f988bf-86f1-41af-91ab-2d7cd011db47", {
+		command: "(Get-Item Env:AZURE_TENANT_ID).Value",
+	});
+	kept(
+		"Name                           Value\n----                           -----\nTEST                           test value\n",
+		"test value",
+		{
+			command: "Get-ChildItem env:TEST",
+		},
+	);
 	// (`Get-ChildItem Env:` and `Get-Item Env:NAME` print a table of names and values, read as printenv's listing.)
 	const table = "Name                           Value\n----                           -----\n";
 	for (const command of ["Get-ChildItem Env:", "gci env:", "Get-Item Env:APP_SECRET"]) {
