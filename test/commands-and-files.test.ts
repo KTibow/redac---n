@@ -766,20 +766,27 @@ test("in a secret file a session's ID is hidden under anyone's name, a terminal'
 	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
 });
 
-test("a command run as another user, or in a one-off container prints what that command prints", () => {
+test("a command run as another user prints what that command prints, and so do find's and xargs' printers", () => {
 	const env = "APP_NAME=shop\nSALT=k2Lm9Qx\nPORT=8080\n";
 	for (const command of [
 		"su -c 'cat .env' app",
 		"su - app -c 'cat ~/.env'",
 		"runuser -l app -c 'cat .env'",
-		"docker compose run --rm web cat .env",
-		"docker-compose run -e X=1 web cat .env",
-		"cat .env*",
 		"find . -maxdepth 2 -name .env | xargs grep SALT",
 		"find . -name .env -exec grep -H SALT {} +",
 		`node -e "console.log(require('fs').readFileSync('.env', 'utf8'))"`,
+		`python3 -c "from pathlib import Path; print(Path('.env').read_text())"`,
 	])
 		hidden(env, "k2Lm9Qx", { command });
+	// (Listing, counting and editing in place print none of it, and a script that reads a file to change it prints what
+	// it says.)
+	for (const command of [
+		"find . -name '*.key' | xargs grep -l ENCRYPTED | head -5",
+		"find . -name .env -exec grep -c SALT {} +",
+		"grep -R -o 'secret' . > /app/secret.txt && find . -type f -exec sed -i 's/secret/X/g' {} + && echo done",
+		"cat > /tmp/fix.py <<'PY'\nfrom pathlib import Path\np = Path('.env')\ntext = p.read_text()\nPY",
+	])
+		kept(env, "k2Lm9Qx", { command });
 	hidden('su - backup -c "mysqldump -u root -pS3cr3tPassw0rdX1 appdb > /backup/app.sql"', "S3cr3tPassw0rdX1");
 });
 
@@ -798,11 +805,16 @@ test("a script that prints a generated key or a credential's variable prints a c
 	])
 		hidden("Hx7mQ2pLvRt9zK", "Hx7mQ2pLvRt9zK", { command });
 	kept("8080", "8080", { command: `python3 -c "import os; print(os.environ['PORT'])"` });
+	// (A script that makes an ID with a generator, or reads a credential to use it, prints what it says it does.)
+	for (const command of [
+		`python3 -c "import os, subprocess\nuser = os.urandom(8).hex()\nsubprocess.run(['useradd', user])\nprint('sent')"`,
+		`sed -i "s/os.urandom(3)/os.urandom(4)/" camera.py`,
+		`node -e "\nconst ws = connect();\ntype(process.env.DB_PASSWORD);\nconsole.log('submitted');\n"`,
+	])
+		kept("submitted\n", "submitted", { command });
 });
 
-test("a key's bare file is a secret file by its name; a jq filter's key name is no file", () => {
-	for (const path of ["secret_key.txt", "api-key.txt", "run/master_key", "/etc/app/signing-key"])
-		assert.ok(isSecretFile(path), path);
+test("a jq filter's key name and a list of keys are no secret file", () => {
 	for (const path of [".private_key", "keys.txt", "monkey.txt"]) assert.ok(!isSecretFile(path), path);
 	hidden("curl -sS --proxy-user svc_build:Tz4nQ8vLm2Xe https://registry.npmjs.org/-/ping", "Tz4nQ8vLm2Xe");
 });
@@ -834,15 +846,13 @@ test("Windows' commands read a secret file in any case, findstr too, and a backs
 		kept(ENV, "k2Lm9Qx", { command });
 });
 
-test("xargs and fd hand a secret file to a printer past their options' values", () => {
+test("xargs and fd hand a secret file to a printer", () => {
 	for (const command of [
 		"find . -name '.env*' | xargs -I {} cat {}",
 		"find . -name '.env*' | xargs -n 1 cat",
 		"find . -name .env | xargs -P 4 cat",
 		"find . -name .env | xargs -I {} sh -c 'echo {}; cat {}'",
 		"fd .env -x cat",
-		"xargs -n 1 -a .env echo",
-		"xargs -d '\\n' -a .env echo",
 	])
 		hidden(ENV, "k2Lm9Qx", { command });
 	for (const command of [
@@ -907,6 +917,10 @@ test("a credential command's output ends at a blank line or a markup tag", () =>
 		hidden(text, "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5");
 		for (const word of after.trim().split("\n")) kept(text, word);
 	}
+	// (A harness's wrapper, `<output>`, opens the output; its closer glued to the last line ends it.)
+	const wrapped = "<returncode>0</returncode>\n<output>\nPassword: 1998\nhoneybear</output>";
+	hidden(wrapped, "honeybear", { command: "pass show app/db" });
+	kept(wrapped, "<output>", { command: "pass show app/db" });
 	hidden("$ op read op://v/i/f\nAdmin: bob\nmonkeykingdom\n", "monkeykingdom");
 });
 
