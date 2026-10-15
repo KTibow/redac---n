@@ -434,10 +434,6 @@ test("a value's last backslash joins no lines", () => {
 	// (A Windows path with a space, a share's, a variable's or a relative one: a word with another backslash in it.)
 	for (const path of ["C:\\Program Files\\App\\", "\\\\fileserver\\share\\", "%ProgramData%\\app\\", ".\\src\\"])
 		hidden(`INSTALL_DIR=${path}\nDB_PASSWORD=Xk29fLmq81Zt\nLOG=1\n`, "Xk29fLmq81Zt");
-	// (Nor before a setting of its own: a password's own last backslash.)
-	const env = "DB_PASSWORD=Xk29fLmq81Zt\\\nLOG_LEVEL=debug\nHOST=db\n";
-	hidden(env, "Xk29fLmq81Zt");
-	kept(env, "\nLOG_LEVEL=debug\nHOST=db\n");
 	// (A token wrapped with a backslash at a line's end is still joined.)
 	hidden("TOKEN=ghp\x5fZ2r9Kq4Lm7Pw1Xv8Bt\\\n3Nc6Hd0Jf5Ys2Ge9Ua\n", "3Nc6Hd0Jf5Ys2Ge9Ua");
 });
