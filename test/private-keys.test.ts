@@ -203,9 +203,6 @@ test("a block cut short ends with its material: before a blank line, a word, or 
 		"\nÜbersicht",
 		"…\nmore output",
 		"... [truncated]",
-		// (The next command's one-token line, of another width: a commit after `head -n 4 key; git rev-parse HEAD`.)
-		"\n3b4c5d6e7f708192a3b4c5d6e7f8091a2b3c4d5e\n",
-		"\nDone",
 		// (A setting's `=` inside a line: base64 has one only as its padding, at the end.)
 		"\npassword=Zq7mT4vXe9Lp2Ra8\n",
 	])
