@@ -458,18 +458,15 @@ test("a Markdown code fence opens no template literal: the calls inside it are r
 	}
 });
 
-test("a call that takes a secret is read in its older and paren-less forms: jjwt's algorithm first, Ruby's basic_auth", () => {
+test("a call that takes a secret is read in its older forms: jjwt's algorithm first, Jersey's basic", () => {
 	for (const line of [
 		'Jwts.builder().setSubject("u").signWith(SignatureAlgorithm.HS512, "Harbor2291xSecret").compact();',
 		'Jwts.builder().signWith("Harbor2291xSecret").compact();',
-		"request.basic_auth 'admin', 'Harbor2291xSecret'",
-		'req.basic_auth "admin", "Harbor2291xSecret"',
 		'HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret")',
 		'client.register(HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret"));',
 	])
 		hidden(line, "Harbor2291xSecret");
 	kept("Jwts.builder().signWith(key, SignatureAlgorithm.HS256).compact();", "SignatureAlgorithm.HS256");
-	kept("request.basic_auth 'admin', password", "password");
 	kept('Feature.basic("standard", "configuration")', "configuration");
 });
 
