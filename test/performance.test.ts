@@ -129,3 +129,13 @@ test("a value repeated on many lines costs no more than as many different values
 	const different = time(lines((i) => String.fromCharCode(33 + (i % 90)).repeat(1000)));
 	assert.ok(same < 3 * Math.max(different, 20), `${same.toFixed(0)} ms repeated, ${different.toFixed(0)} ms different`);
 });
+
+test("a line of URLs with no blank between them costs linear time", () => {
+	// (Each URL's reader reads, as one URL, to the line's end: asked whether a URL reaches a token, it stops once it does.)
+	for (const separator of [",", ";", "|"])
+		assertLinear(
+			`URLs joined by ${separator}`,
+			(n) => r().redact(`http://elasticsearch-node-01.prod.example.com:9200${separator}`.repeat(n)),
+			300,
+		);
+});

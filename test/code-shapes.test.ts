@@ -790,3 +790,15 @@ test("a format string's fields are no secret: printf's with Java's %n, Python's 
 	hidden('    client = Client(token=f"Kx9mQ2vLp7Rt3Wz8{suffix}")', "Kx9mQ2vLp7Rt3Wz8");
 	hidden('password = "x7%dK2!vQ"', "x7%dK2!vQ");
 });
+
+test("a bundler's annotation after `=` is a comment, not a value", () => {
+	for (const [text, value] of [
+		['const API_KEYS = /*#__PURE__*/ new Set(["a", "b"]);', "/*#__PURE__*/ new Set"],
+		["var Token = /*#__PURE__*/function () {};", "/*#__PURE__*/function"],
+		["const jwtKeys = /* @__PURE__ */ createKeys();", "/* @__PURE__ */ createKeys"],
+		["const API_KEY = /** @type {string} */ (process.env.API_KEY);", "/** @type {string} */"],
+	])
+		kept(text, value);
+	// The value after a comment is judged as ever.
+	hidden('const API_KEY = /* prod */ "Xk9mQ2vLp7RtN3wY8cBd";', "Xk9mQ2vLp7RtN3wY8cBd");
+});

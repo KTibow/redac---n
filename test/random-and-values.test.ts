@@ -488,3 +488,22 @@ test("a query parameter's credential words are its own: a key's parameter doesn'
 		true,
 	);
 });
+
+test("a base64 digest is kept where its line names the digest: HTTP's digest fields, a label's bracketed algorithm", () => {
+	for (const bytes of [32, 48, 64]) {
+		const digest = randomBytes(bytes).toString("base64");
+		for (const text of [
+			`Content-Digest: sha-256=:${digest}:`,
+			`Repr-Digest: sha-512=:${digest}:`,
+			`Digest: sha-256=${digest}`,
+			`Hash (sha256): ${digest}`,
+			`Checksum (base64): ${digest}`,
+			`SHA256 (app.tar.gz) = ${digest}`,
+		])
+			kept(text, digest);
+	}
+	// A credential's label with an encoding in brackets is still a credential's.
+	const secret = randomBytes(32).toString("base64");
+	hidden(`Secret (base64): ${secret}`, secret);
+	hidden("api_key (prod): Xk9mQ2vLp7RtN3wY8cBdZq4T", "Xk9mQ2vLp7RtN3wY8cBdZq4T");
+});

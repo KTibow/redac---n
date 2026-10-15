@@ -251,8 +251,18 @@ const CALL = new RegExp(
 const PROSE =
 	/\b([A-Za-z][\w-]{0,30})(?:[ \t]{1,3}(?:is|was|=|:)[ \t]{0,3}|:[ \t]{1,3}|[ \t]{1,3}(?:of|for)[ \t][^:]{0,40}:[ \t]{0,3})["'`*]{0,2}$/;
 const TABLE = /^[ \t│|]{0,10}([A-Za-z_][\w.-]{0,80})(?:[ \t]{2,80}|[ \t]{0,80}[│|][ \t]{0,10})$/;
-const HASH_PREFIX =
-	/(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:sha(?:1|224|256|384|512)|md5|blake2b?|blake3|crc32|h1|integrity|xxh\d*)[:=\-][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$/i;
+/** A hash algorithm's name: `sha256`, `sha-256` (HTTP's), `md5`, `blake3`. */
+const HASH_ALGORITHM = String.raw`(?:sha-?(?:1|224|256|384|512)|md5|blake2b?|blake3|crc32|xxh\d*)`;
+/**
+ * A hash's or a digest's name right before the token. (HTTP's digest fields, RFC 9530, write the digest as a structured
+ * field's byte sequence, `Content-Digest: sha-256=:<base64>:`; tools write the algorithm or the encoding in brackets
+ * after a label, `Hash (sha256): `, `Checksum (base64): `; BSD's checksum tools the file's name after the algorithm,
+ * `SHA256 (app.tar.gz) = `.)
+ */
+const HASH_PREFIX = new RegExp(
+	String.raw`(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:${HASH_ALGORITHM}|h1|integrity)[:=\-]:?[ \t]?$|(?<![A-Za-z0-9])(?:hash|checksum|digest)[ \t]*\([\w -]{1,20}\)[ \t]?[:=][ \t]?$|(?<![A-Za-z0-9])${HASH_ALGORITHM}[ \t]*\([^()\n]{1,100}\)[ \t]?[:=][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$`,
+	"i",
+);
 
 /** The text before the last `name` in `left` (none when the name came from elsewhere, a sibling or a header). */
 function textBefore(left: string, name: string): string {

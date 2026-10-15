@@ -389,19 +389,18 @@ const isUserinfo = (f: Features) => /^[^\s"'<>@?#/]*@[\w-]+(?:\.[\w-]+)+/.test(f
 /**
  * A URL path segment that names an object: under a collection (`/v1/predictions/<id>`), or anywhere when its shape
  * says ID (a file name, `<key>~noop.jpeg`, `<id>.png`; short; one case). A mixed-case random run of 20 or more is a
- * token whatever path it's in, unless the host serves media (`inews.gtimg.com`) or a content word is its parent
- * (`/article/<id>`). Never a hook's URL, the user part before an `@`, or a secret file's value.
+ * token whatever path it's in (24 or more under a collection: `/integrations/<token>`, `/endpoints/<token>`), unless
+ * the host serves media (`inews.gtimg.com`) or a content word is its parent (`/article/<id>`). Never a hook's URL, the
+ * user part before an `@`, or a secret file's value.
  */
 function urlPathId(f: Features): string | undefined {
 	if (f.ctx.syntax !== "path" || f.secretFile || isHookUrl(f) || isUserinfo(f)) return undefined;
 	// (A collection is a plural, or a resource's name in words, `/v1/text-to-speech/<voice id>`; not a credential's.)
-	if (
+	const collection =
 		(/^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) ||
 			(/^[a-z]{3,}(?:-[a-z]+)+$/.test(f.ctx.pathParent) && !/key|token|secret|auth|pass/.test(f.ctx.pathParent))) &&
-		!isHookSegment(f.ctx.pathParent)
-	)
-		return "collection-id";
-	if (f.ctx.nameClass === "credential") return undefined;
+		!isHookSegment(f.ctx.pathParent);
+	if (f.ctx.nameClass === "credential" && !collection) return undefined;
 	const mediaHost =
 		/:\/\/(?:[\w-]+\.)*[\w-]*(?:img|image|images|cdn|static|media|pic|pics|photo|photos|thumb|thumbs|resiz|assets?)[\w-]*\.[\w.-]+\/[^\s"']*$/i.test(
 			f.ctx.left,
@@ -413,7 +412,19 @@ function urlPathId(f: Features): string | undefined {
 	const t = f.token;
 	const tokenShaped =
 		t.length >= 20 && /[a-z]/.test(t) && /[A-Z]/.test(t) && /\d/.test(t) && !mediaHost && !contentParent;
-	return /^[~.][A-Za-z0-9]{2,6}\b|^~|^=[swhc]\d+/.test(f.ctx.right) || !tokenShaped ? "url-path-id" : undefined;
+	// (Under a collection, longer than the IDs services generate in that alphabet: Firestore's 20, nanoid's 21, Spotify's
+	// 22, ElevenLabs' voice 20.)
+	if (collection) return tokenShaped && t.length >= 24 ? undefined : "collection-id";
+	// (A file name: an image's or a page asset's, named by its ID on any host, `<key>~noop.jpeg`, `<id>.png`, an image
+	// server's sizing, `<id>=s1200`. Not a feed, a calendar or a download, which a private link names by its token:
+	// `/subscribe/<token>.ics`, `/feeds/<token>.rss`.)
+	if (
+		/^~|^=[swhc]\d+|^\.(?:jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?|heic|mp[34]|webm|mov|m4[av]|ogg|wav|m3u8|ts|js|mjs|css|map|woff2?|ttf|html?)\b/i.test(
+			f.ctx.right,
+		)
+	)
+		return "url-path-id";
+	return tokenShaped ? undefined : "url-path-id";
 }
 
 /**
@@ -751,7 +762,12 @@ const VETOES: Veto[] = [
 			!cred &&
 			!keyPlace(f),
 	],
-	["filename", (f, _, cred) => f.ctx.fileish && !cred],
+	// (A web link's path segment is read by urlPathId, which knows a private feed's or download's link from a file's
+	// name; a `file://` URL's are a file's path.)
+	[
+		"filename",
+		(f, _, cred) => f.ctx.fileish && !cred && (f.ctx.syntax !== "path" || /file:\/\/[^\s"']*$/i.test(f.ctx.left)),
+	],
 	// (Elsewhere a UUID is hex in groups: hexVeto.)
 	["uuid", (f, t, cred) => cred && UUID.test(t) && /session[_-]?id$|sessionId$/i.test(f.ctx.name)],
 	// (A ULID's and a cuid's own timestamp says ID wherever it stands; a key's random characters rarely make one.)
