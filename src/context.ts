@@ -7,7 +7,7 @@ import { lastText, lowerBound } from "./lines.ts";
 import { isGenericName, mentionsCredential, nameClass, type NameClass, phraseBefore, readPhrase } from "./names.ts";
 import { inJwk } from "./json.ts";
 import { publicBlocks } from "./publickeys.ts";
-import { insertCells, type SqlCell } from "./sql.ts";
+import { sqlCells, type SqlCell } from "./sql.ts";
 import {
 	backslashesBefore,
 	delimitedCells,
@@ -105,11 +105,11 @@ export class Doc {
 		return k >= 0 && at < this.armor.ends[k];
 	}
 
-	/** The cell of an SQL `INSERT` row whose value holds `[start, end)`, read as sql.ts reads rows. */
+	/** The cell of an SQL row (`INSERT`, `COPY`) whose value holds `[start, end)`, read as sql.ts reads rows. */
 	sqlCell(start: number, end: number): SqlCell | undefined {
 		if (!this.cells) {
 			// (Values in the order they appear, so their starts are sorted.)
-			this.cells = [...insertCells(this.text)].sort((a, b) => a.value.start - b.value.start);
+			this.cells = [...sqlCells(this.text)].sort((a, b) => a.value.start - b.value.start);
 			this.cellStarts = this.cells.map((c) => c.value.start);
 		}
 		const cell = this.cells[lowerBound(this.cellStarts!, start + 1) - 1];

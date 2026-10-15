@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
 import { bip39 } from "../src/named.ts";
 import { isPinName, isSettingName, isVendorClient, nameClass, phraseBefore, readPhrase } from "../src/names.ts";
-import { insertCells } from "../src/sql.ts";
+import { sqlCells } from "../src/sql.ts";
 import {
 	attributes,
 	continuesToken,
@@ -171,7 +171,7 @@ test("a cell is judged as what it holds, and a row of backticks is read once", (
 		delimitedCells('a,"b,c",d', ",").map((c) => c.text),
 		["a", "b,c", "d"],
 	);
-	const [row1] = [...insertCells(`INSERT INTO t ("a,b", password) VALUES ('x', 'y');`)];
+	const [row1] = [...sqlCells(`INSERT INTO t ("a,b", password) VALUES ('x', 'y');`)];
 	assert.equal(row1.column, "a,b");
 });
 
@@ -183,7 +183,7 @@ test("attribute keys, contractions, astral letters and long lines", () => {
 });
 
 test("rows after a comment between rows are read", () => {
-	const rows = (t: string) => [...insertCells(t)].map((c) => c.value.text);
+	const rows = (t: string) => [...sqlCells(t)].map((c) => c.value.text);
 	assert.deepEqual(rows("INSERT INTO u (name, pw) VALUES ('b', 'p1'), -- next\n ('al', 'p2');"), [
 		"'b'",
 		"'p1'",
@@ -201,7 +201,7 @@ test("rows after a comment between rows are read", () => {
 test("a dump cut short inside a row has the rows before it read", () => {
 	const cut = "INSERT INTO users (name, password) VALUES ('alice', 'Kx9mQ2pLrTvB7nWz'), ('bob', 'Tq8v";
 	assert.deepEqual(
-		[...insertCells(cut)].map((c) => c.value.text),
+		[...sqlCells(cut)].map((c) => c.value.text),
 		["'alice'", "'Kx9mQ2pLrTvB7nWz'"],
 	);
 	hidden(cut, "Kx9mQ2pLrTvB7nWz");
@@ -542,6 +542,28 @@ test("an Android string resource is hidden under a secret name and kept under a 
 	);
 });
 
+test("a value named by a form's nested field, a properties file's entry key or a sibling `text` is hidden", () => {
+	const v = "Zk8mQ2pL9vRt4Hx";
+	for (const t of [
+		`<input type="text" name="user[password]" value="${v}">`,
+		`<input name="data[User][password]" value="${v}">`,
+		`user%5Bemail%5D=a%40b.io&user%5Bpassword%5D=${v}&commit=Sign+in`,
+		`GET /login?next=%2Fhome&user%5bpassword%5d=${v} HTTP/1.1`,
+		`<properties>\n<entry key="db.password">${v}</entry>\n<entry key="db.user">app</entry>\n</properties>`,
+		`<entry key='smtp.password'>${v}</entry>`,
+		`--data '{"name":"API_TOKEN","text":"${v}","type":"secret_text"}'`,
+	])
+		hidden(t, v);
+	// (A field's label is no value; a name that only ends with a bracket is no form's field.)
+	kept('{"name": "password", "text": "Enter your password", "type": "password"}', "Enter your password");
+	kept('{"name":"API_TOKEN","type":"plain_text","text":"production"}', "production");
+	kept('<entry key="db.url">jdbc:postgresql://db/app</entry>', "jdbc:postgresql://db/app");
+	kept(
+		"auth_token [env: TAP_GITHUB_AUTH_TOKEN] x\nrepos [env: TAP_GITHUB_REPOSITORIES] current value: ['acme/dbt', 'acme/dags']",
+		"['acme/dbt', 'acme/dags']",
+	);
+});
+
 test("a keystore password in a path-like name is hidden", () => {
 	hidden('keystore/release_password="spring.kilo2389"', "spring.kilo2389");
 });
@@ -784,7 +806,7 @@ test("a reference's default is read after its operator", () => {
 });
 
 test("every dialect's insert statement is read as rows", () => {
-	const rows = (t: string) => [...insertCells(t)].map((c) => `${c.table}.${c.column}=${c.value.text}`);
+	const rows = (t: string) => [...sqlCells(t)].map((c) => `${c.table}.${c.column}=${c.value.text}`);
 	assert.deepEqual(rows('INSERT IGNORE INTO users (name, password) VALUES ("a", "p1");'), [
 		'users.name="a"',
 		'users.password="p1"',
@@ -793,6 +815,21 @@ test("every dialect's insert statement is read as rows", () => {
 	assert.deepEqual(rows("REPLACE INTO `app`.`users` (password) VALUES (3)"), ["users.password=3"]);
 	assert.deepEqual(rows('INSERT INTO "my t" (password) VALUES (4)'), ["my t.password=4"]);
 	assert.deepEqual(rows("insert into [dbo].[Users] ([Password]) values (5)"), ["Users.Password=5"]);
+	assert.deepEqual(rows("COPY public.users (id, password) FROM stdin;\n1\tKx9\n2\t\\N\n\\.\n"), [
+		"users.id=1",
+		"users.password=Kx9",
+		"users.id=2",
+		"users.password=\\N",
+	]);
+	// (The string a value gives its column, through SQL's prefixes, dollar quotes, casts and functions.)
+	const literals = (t: string) => [...sqlCells(t)].map((c) => c.value.literal?.value);
+	assert.deepEqual(literals("INSERT INTO t (a, b, c, d) VALUES (N'x1', $q$x2$q$, 'x3'::text, md5('x4'))"), [
+		"x1",
+		"x2",
+		"x3",
+		"x4",
+	]);
+	assert.deepEqual(literals("INSERT INTO t (a, b) VALUES (now(), 'x'||'y')"), [undefined, undefined]);
 });
 
 test("a reference, a lookup's name or a stand-in under a password's name is no password", () => {

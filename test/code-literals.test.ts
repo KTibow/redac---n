@@ -140,6 +140,84 @@ test("SQL that sets a password hides the literal and keeps a password hash", () 
 	kept("CREATE USER app WITH PASSWORD 'abcd1234';", "abcd1234");
 });
 
+test("SQL's own strings are read as strings: N'…', E'…', a character set's, dollar quoting, a cast, a hash's input", () => {
+	const pw = "Harbor2291!x";
+	for (const t of [
+		`INSERT INTO Users (Id, Email, Password) VALUES (1, N'a@b.com', N'${pw}');`,
+		`UPDATE Users SET Password = N'${pw}' WHERE Id = 1;`,
+		`CREATE LOGIN app WITH PASSWORD = N'${pw}', CHECK_POLICY = OFF;`,
+		`ALTER LOGIN sa WITH PASSWORD=N'${pw}'`,
+		`CREATE USER app IDENTIFIED BY N'${pw}';`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', E'${pw}');`,
+		`INSERT INTO users (name, password) VALUES (_utf8mb4'ann', _utf8mb4'${pw}');`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', $$${pw}$$);`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', $pw$${pw}$pw$::text);`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', '${pw}'::character varying(64));`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', CAST('${pw}' AS varchar(64)));`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', crypt('${pw}', gen_salt('bf')));`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', encode(digest('${pw}', 'sha256'), 'hex'));`,
+		`UPDATE users SET password = MD5('${pw}') WHERE id = 2;`,
+		`UPDATE users SET password = SHA2('${pw}', 256) WHERE id = 2;`,
+		`$password = md5("${pw}");`,
+		`wchar_t *password = L"${pw}";`,
+	])
+		hidden(t, pw);
+	// (A prefix is SQL's before SQL's quote only: a password may start `N"`. Prose's `N's` and `E'll` open nothing.)
+	hidden('level=info user=admin password=N"4jVkMdXAoCDB! host=db', 'N"4jVkMdXAoCDB!');
+	kept("SELECT N'Don''t panic' AS msg FROM t; It's N's turn, and E'll go.", "N'Don''t panic' AS msg");
+	kept("INSERT INTO users (email, password) VALUES ('ann@x.io', crypt(:pw, gen_salt('bf')));", "gen_salt('bf')");
+	kept("INSERT INTO users (email, created) VALUES ('ann@x.io', '2024-01-01'::timestamp);", "'2024-01-01'::timestamp");
+});
+
+test("a key/value table's value is named by its row, and pg_dump's COPY rows by their columns", () => {
+	for (const [t, v] of [
+		["INSERT INTO wp_options (option_name, option_value) VALUES ('smtp_password', 'Harbor2291!x');", "Harbor2291!x"],
+		["INSERT INTO settings (name, value) VALUES ('site', 'x'), ('api_key', 'Winter2024pass');", "Winter2024pass"],
+		[
+			"INSERT INTO `wp_usermeta` (`user_id`, `meta_key`, `meta_value`) VALUES (1, 'stripe_secret', 'Hx7mQ2pL9vRt');",
+			"Hx7mQ2pL9vRt",
+		],
+		["INSERT INTO config (setting_key, setting_value) VALUES ('mail.password', 'Hx7mQ2pL9vRt');", "Hx7mQ2pL9vRt"],
+		[
+			"COPY public.users (id, email, password) FROM stdin;\n1\tann@x.io\tHarbor2291!x\n2\tbob@x.io\tWinter2024pass\n\\.\n",
+			"Winter2024pass",
+		],
+		["COPY public.users (id, email, password) FROM stdin;\r\n1\tann@x.io\tHarbor2291!x\r\n\\.\r\n", "Harbor2291!x"],
+	])
+		hidden(t, v);
+	kept(
+		"INSERT INTO settings (name, value) VALUES ('smtp_host', 'mail.x.io'), ('api_key', 'Winter2024pass');",
+		"mail.x.io",
+	);
+	kept("INSERT INTO settings (name, value) VALUES ('blogname', 'Harbor Tales');", "Harbor Tales");
+	kept("COPY public.users (id, email, password) FROM stdin;\n1\tann@x.io\t\\N\n\\.\nSELECT 1;", "ann@x.io");
+});
+
+test("a literal converted before it's passed, or given to a converter, is still the value", () => {
+	const pw = "lamp-otter-91Qx-blue";
+	for (const t of [
+		`return new PasswordAuthentication("deploy", "${pw}".toCharArray());`,
+		`mgr.setPassword("${pw}".getBytes(StandardCharsets.UTF_8));`,
+		`sig = hmac.new("${pw}".encode("utf-8"), body, hashlib.sha256).hexdigest()`,
+		`client.setPassword("${pw}".trim().toCharArray());`,
+		`const token = jwt.sign(payload, new TextEncoder().encode("${pw}"));`,
+		`config.setPassword(Secret::new("${pw}".to_string()));`,
+		`config.set_password(SecretString::from("${pw}"));`,
+		`token = jwt.sign(payload, Buffer.from("${pw}", "utf8"))`,
+		`jwtKey := []byte("${pw}")`,
+	])
+		hidden(t, pw);
+	// (A method that combines the literal with a variable makes another value; a lookup takes a name.)
+	kept('client.setPassword("lamp-otter-{}".format(suffix));', "lamp-otter-{}");
+	kept('client.setPassword(getSecret("prod-db-password"));', "prod-db-password");
+	kept('client.setPassword(Secret.load("prod-db-password").get());', "prod-db-password");
+	// (A declaration whose type is named for a password declares a variable: the literal is the value, not the line.)
+	const out = r().redact(`PasswordAuthentication auth = new PasswordAuthentication("deploy", "${pw}");`).text;
+	assert.ok(out.includes('auth = new PasswordAuthentication("deploy", "') && !out.includes(pw), out);
+	kept("PasswordEncoder encoder = new BCryptPasswordEncoder();", "encoder = new BCryptPasswordEncoder();");
+	hidden("requirepass Kx9mQ2vLp7Rt", "Kx9mQ2vLp7Rt");
+});
+
 test("call arguments and object fields that take a secret are hidden: setters, constructors, connect calls, basic auth, JWT and HMAC keys", () => {
 	for (const [t, v] of [
 		['os.Setenv("STRIPE_API_KEY", "3f7a2c9e1b4d4e8f9a6c2d5b8e1f0a3c")', "3f7a2c9e1b4d4e8f9a6c2d5b8e1f0a3c"],

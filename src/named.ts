@@ -14,6 +14,7 @@ import {
 	callArguments,
 	calls,
 	closingBracket,
+	convertedLiteral,
 	type Literal,
 	literalEnd,
 	literalAt,
@@ -42,7 +43,7 @@ import {
 } from "./syntax.ts";
 import { lineEnd as lineEndAt, lineStart as lineStartAt, lowerBound, splitLines } from "./lines.ts";
 import { BIP39_WORDS } from "./bip39-data.ts";
-import { insertCells } from "./sql.ts";
+import { sqlCells } from "./sql.ts";
 import { isUrl, queryParams, urls } from "./urls.ts";
 import { blockExtent, isBlockIndicator, yamlLines } from "./yaml.ts";
 import { naturalness } from "./charlm.ts";
@@ -94,9 +95,10 @@ import {
 const NAME = String.raw`((?=[\p{L}\p{N}_.$@-]{0,80}?(?:${CREDENTIAL_WORD}))[\p{L}_$@][\p{L}\p{N}_.$@-]{0,80})`;
 // A name doesn't start inside a word or right after a backslash, except an escape before it in a JSON string (`\n`,
 // `\r`, `\t`: a line of an encoded file).
-// (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line.)
+// (`keystore/release_password="…"` in a Godot preset: a `section/name` key at the start of a line. A form body's key
+// in brackets, percent-encoded as browsers and HTTP clients send one: `user%5Bpassword%5D=…`.)
 const ASSIGN = new RegExp(
-	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\])?\]?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
+	String.raw`(?:(?<=\\[nrt])|(?<=(?:^|\n)[ \t]*[\w.-]{1,60}\/)|(?<=%5B)|(?<![\p{L}\p{N}_.$@/-]|\$\{|\\))(\\?["'${"`"}]?)${NAME}\1(?:\[\]|%5B%5D)?(?:\]|%5D)?[ \t]{0,40}(=>|:=|\?=|\|\|=|===?|=|:(?!:))[ \t]{0,40}`,
 	"dgiu",
 );
 const FLAG = /(?:^|[\s"'`(]|(?<=\\[nrt]))(--?[A-Za-z][\w-]{0,60})(?:[ \t]{1,4}|=)(?=[^\s-])/g;
@@ -628,9 +630,6 @@ function namedValue(
 	namedFinding(out, value.start, value.end, name, rule, confidence);
 }
 
-/** An encoding's name, which a converter takes beside the value it converts: `Buffer.from(key, "base64")`. */
-const ENCODING = /^(?:utf-?8|utf-?16(?:le|be)?|latin-?1|ascii|iso-?8859-?\d+|cp\d+|base64|hex|binary|ucs-?2)$/i;
-
 /** The rules, each a reader of one syntax; findNamed runs them all. */
 const RULES: ((text: string, out: Finding[]) => void)[] = [
 	assignments,
@@ -749,14 +748,38 @@ function urlTokens(text: string, f: Finding): Finding[] {
 }
 
 /**
- * SQL rows, each value under its column's name: `INSERT INTO users (email, password) VALUES ('ann@x.io', 'V'), (…)`.
- * (`UPDATE … SET password = 'V'` is an assignment; a psql grid, a table.)
+ * SQL rows, each value under its column's name: `INSERT INTO users (email, password) VALUES ('ann@x.io', 'V'), (…)`,
+ * and pg_dump's `COPY users (email, password) FROM stdin;` rows. A key/value table's value is under the name its row
+ * gives it, as a JSON object's `{"name": …, "value": …}` is: `INSERT INTO wp_options (option_name, option_value) VALUES
+ * ('smtp_password', 'V')` (keyValueName). (`UPDATE … SET password = 'V'` is an assignment; a psql grid, a table.)
  */
 function sqlRows(text: string, out: Finding[]) {
-	for (const { column, value } of insertCells(text, (_, columns) => columns.some(isCredentialName))) {
-		if (value.literal && isCredentialName(column) && isNamedSecret(column, `'${value.literal.value}'`, true))
-			namedFinding(out, value.literal.start, value.literal.end, column, "named:sql-row");
+	for (const { column, value, columns, row } of sqlCells(
+		text,
+		(_, columns) => columns.some(isCredentialName) || columns.some((c) => keyColumnOf(c, columns) >= 0),
+	)) {
+		if (!value.literal) continue;
+		const keyColumn = isCredentialName(column) ? -1 : keyColumnOf(column, columns);
+		const name = keyColumn >= 0 ? row[keyColumn]?.literal?.value : column;
+		if (
+			name &&
+			/^[\w.:/-]{1,100}$/.test(name) &&
+			isCredentialName(name) &&
+			isNamedSecret(name, `'${value.literal.value}'`, true)
+		)
+			namedFinding(out, value.literal.start, value.literal.end, name, "named:sql-row");
 	}
+}
+
+/**
+ * The column that names a key/value table's value column: `value` is named by `name`, `key` or another PAIR_NAME,
+ * `option_value` by `option_name`, `meta_value` by `meta_key`, `setting_value` by `setting_key`. -1 for none, and for a
+ * column that holds no value.
+ */
+function keyColumnOf(column: string, columns: readonly string[]): number {
+	const stem = /^(.*?)[_.]?(?:value|val)$/i.exec(column)?.[1];
+	if (stem === undefined || !(stem || PAIR_VALUE.test(column))) return -1;
+	return columns.findIndex((c) => (stem ? new RegExp(`^${stem}[_.]?(?:name|key)$`, "i").test(c) : PAIR_NAME.test(c)));
 }
 
 /** An INI or TOML section header line: `[database]`, `[profile "prod"]`. */
@@ -1229,22 +1252,6 @@ function assignedValue(
 	return span;
 }
 
-/**
- * The literal a converter at `at` is given, the value it makes: `hexStringToUint8Array("…")`, `SecretStr("…")`,
- * `bytes.fromhex("…")`, `SecureString("…")`. (Not a lookup's argument, a secret's name: Prefect's
- * `Secret.load("db-password")`, `SecretStr.get(…)`; nor an encoding's name.)
- */
-function convertedLiteral(text: string, at: number): Span | undefined {
-	const converter =
-		/^[\w.]{0,60}(?:hex|Hex|b64|base64|Base64|decode|Decode|fromhex|unhexlify|Buffer\.from|SecretStr|Secret|SecureString|getBytes|encode|bytes|String|str|Uint8Array|parse|Parse)[\w.]{0,40}\(/.exec(
-			text.slice(at, at + 120),
-		);
-	if (!converter || /\.(?:load|get|fetch|read|lookup|retrieve|resolve|access)\w*\($/i.test(converter[0]))
-		return undefined;
-	const literal = callArguments(text, at + converter[0].length)?.[0]?.literal;
-	return literal && literal.value.length >= 4 && !ENCODING.test(literal.value) ? literal : undefined;
-}
-
 /** Inside a `--set` argument (helm, helmfile), after a key and its `=`: the pairs before it, then this one's key. */
 const SET_LIST = /--set(?:-string|-file|-json|-literal)?[ \t=]+["']?(?:[^\s"',]*,)*[^\s"',=]+=$/;
 
@@ -1428,6 +1435,9 @@ function spacedPairs(text: string, out: Finding[]) {
 		if (/^[\w-]+:\s/.test(raw)) continue; // `PSK identity: None`: a label, then its own value
 		if (/^--?[A-Za-z]|^(?:&&|\|\||[|;>&])/.test(raw)) continue; // `htpasswd -nb admin pw`, `pwd && ls`: a command line
 		if (/^(?:->|=>|::|\?\.|<-)/.test(raw)) continue; // `LoginField.PASSWORD -> input.text`: a `when` arm, an operator
+		// A declaration, the name its type's: `PasswordAuthentication auth = new PasswordAuthentication(…);`. (The variable's
+		// value is the assignment's to read.)
+		if (/^[A-Za-z_$][\w$]*(?:[ \t]+=[ \t]|[ \t]*=(?!=).*;[ \t]*$)/.test(raw)) continue;
 		// A note or a type in brackets first (`password (optional)`, `token [required]`, a docstring's `password (str|None):`),
 		// a member (`.field`), code in braces (`{ get; set; }`). (A value in parentheses and nothing else, `password (12:30)`,
 		// is the prose rule's, which reads one: `the passwd (M34d0w)`.)
@@ -1564,17 +1574,20 @@ function conditionalBranches(text: string, out: Finding[]) {
 	}
 }
 
-/** Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`. */
+/**
+ * Android resources and similar: `<string name="api_secret">…</string>`, `<setting name="X"><value>…</value>`, and
+ * Java's XML properties, `<entry key="db.password">…</entry>`.
+ */
 function xmlNamedValues(text: string, out: Finding[]) {
-	if (!text.includes('name="')) return;
+	if (!/\b(?:name|key)=["']/.test(text)) return;
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`<(string|item|setting|entry|add)\b[^>\n]{0,100}?\bname="([\w.-]{1,80})"[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
+			String.raw`<(string|item|setting|entry|add)\b[^>\n]{0,100}?\b(?:name|key)=(["'])([\w.-]{1,80})\2[^>\n]{0,200}>[ \t\r\n]{0,40}(?:<value>)?${XML_TEXT(4)}(?:<\/value>)?[ \t\r\n]{0,40}<\/\1>`,
 			"dg",
 		),
 	)) {
-		const value = trimmed(elementText(m, 3));
-		if (value) namedValue(out, m[2], value, "named:xml-name");
+		const value = trimmed(elementText(m, 4));
+		if (value) namedValue(out, m[3], value, "named:xml-name");
 	}
 }
 
@@ -2659,8 +2672,9 @@ function javaProperties(text: string, out: Finding[]) {
  * Pairs whose name is a sibling attribute of the value, not its key: Kubernetes env (`- name: DB_PASSWORD` /
  * `value: …`), HCL (`name = "/prod/db/password"` … `value = "…"`), JSON and CloudFormation (`{"Name": "API_KEY",
  * "Value": "…"}`), HTML (`<input name="password" value="…">`). Siblings sit on one line, or in one block: later lines
- * indented at least as far, with nothing between them that closes the block. A name that is a path or a dotted key
- * names its value by its last part (`/prod/db/password`). (One reader for every syntax, so a value's name is found
+ * indented at least as far, with nothing between them that closes the block. A name that is a path, a dotted key or
+ * a form's nested field names its value by its last part (`/prod/db/password`, Rails' and PHP's `user[password]`).
+ * (One reader for every syntax, so a value's name is found
  * the same way wherever it is written.)
  */
 function siblingPairs(text: string, out: Finding[]) {
@@ -2706,9 +2720,12 @@ function siblingPairs(text: string, out: Finding[]) {
 		if (!PAIR_NAME.test(named.key) && !passwordInput) continue;
 		const credential = passwordInput
 			? "password"
-			: [named.value, named.value.split(/[/.:]/).filter(Boolean).at(-1) ?? ""].find(
-					(n) => /^[A-Za-z_][\w.\/:-]{0,100}$/.test(n) && isCredentialName(n),
-				);
+			: [
+					named.value,
+					/^[A-Za-z_][\w-]*(?:\[[\w-]*\])*\[([\w-]+)\]$/.exec(named.value)?.[1] ??
+						named.value.split(/[/.:]/).filter(Boolean).at(-1) ??
+						"",
+				].find((n) => /^[A-Za-z_][\w.\/:-]{0,100}$/.test(n) && isCredentialName(n));
 		if (!credential) continue;
 		// The value attribute nearest it, before or after, in the same block.
 		for (const j of [i + 1, i - 1, i + 2, i - 2, i + 3]) {

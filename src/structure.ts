@@ -1435,20 +1435,20 @@ function netrcLike(text: string, out: Finding[]) {
 
 /**
  * Passwords in SQL statements: MySQL/Oracle `IDENTIFIED [WITH plugin] BY '…'`, `SET PASSWORD [FOR u] = '…'`,
- * Postgres `[WITH] PASSWORD '…'`, T-SQL `WITH PASSWORD = '…'`.
+ * Postgres `[WITH] PASSWORD '…'`, T-SQL `WITH PASSWORD = '…'` (or `N'…'`, the Unicode string SSMS scripts write).
  */
 function sqlPasswords(text: string, out: Finding[]) {
 	if (!/IDENTIFIED|PASSWORD/i.test(text)) return;
 	const forms = [
-		/\bIDENTIFIED\s+(?:WITH\s+['"`]?\w+['"`]?\s+)?BY\s+(?!PASSWORD\b)(?:'((?:[^'\n]|'')+)'|"([^"\n]+)")/gi,
+		/\bIDENTIFIED\s+(?:WITH\s+['"`]?\w+['"`]?\s+)?BY\s+(?!PASSWORD\b)(?:N?'((?:[^'\n]|'')+)'|"([^"\n]+)")/gi,
 		// Unquoted (Oracle) only in a statement that creates or changes a user: prose says "identified by" too. (Up to a
 		// statement's end, or a quote that closes the string a program holds it in: `"CREATE USER app IDENTIFIED BY …"`.
 		// Not MySQL's `IDENTIFIED BY RANDOM PASSWORD`, which makes one.)
 		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE)\b[^;\n]{0,200}?\bIDENTIFIED\s+BY\s+(?!PASSWORD\b|VALUES\b|RANDOM\s+PASSWORD\b)([A-Za-z0-9_$#!@%^&*+=.-]{4,128})(?=\s*(?:[;"'`]|$|\s))/gim,
-		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?'((?:[^'\n]|'')+)'/gi,
-		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*'((?:[^'\n]|'')+)'/gi,
+		/\bSET\s+PASSWORD\s+(?:FOR\s+\S+\s*)?=\s*(?:PASSWORD\s*\(\s*)?N?'((?:[^'\n]|'')+)'/gi,
+		/\b(?:CREATE|ALTER)\s+(?:USER|ROLE|LOGIN)\b[^;\n]{0,200}?\bPASSWORD\s*=?\s*N?'((?:[^'\n]|'')+)'/gi,
 		// MySQL's current password, which a password change authenticates with: `IDENTIFIED BY 'new' REPLACE 'old'`.
-		/\bIDENTIFIED\s+BY\s+'(?:[^'\n]|'')+'\s+REPLACE\s+'((?:[^'\n]|'')+)'/gi,
+		/\bIDENTIFIED\s+BY\s+'(?:[^'\n]|'')+'\s+REPLACE\s+N?'((?:[^'\n]|'')+)'/gi,
 	];
 	for (const re of forms) {
 		for (const m of text.matchAll(re)) {
