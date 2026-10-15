@@ -247,6 +247,9 @@ test("a line that is only base64 of a generated token or a password is hidden, o
 		"e04423e4-7a67-4f9c-b291-99e63c1c2158",
 		"Jane.Doe42@Example.com",
 		"https://api.example.com/v1/Users/42",
+		// (A JWT's header alone, `cut -d. -f1` of a token: JSON, which its quotes and braces give three classes.)
+		'{"alg":"HS256","typ":"JWT"}',
+		'{"typ":"JWT","alg":"RS256","kid":"Key-2024"}',
 	])
 		kept(line(value), b64(value));
 	// (A blob wrapped over lines later in the text leaves the line before it its own.)

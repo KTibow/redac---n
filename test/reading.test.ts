@@ -145,9 +145,9 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 	const bytes = Buffer.from(`API_KEY=${key}\nDEBUG=1\n`);
 	const hex = (b: Buffer) => b.toString("hex");
 	const ascii = (b: Buffer) => [...b].map((c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : ".")).join("");
-	const rows = (fn: (row: Buffer, offset: number) => string) =>
-		Array.from({ length: Math.ceil(bytes.length / 16) }, (_, k) =>
-			fn(bytes.subarray(k * 16, k * 16 + 16), k * 16),
+	const rows = (fn: (row: Buffer, offset: number) => string, width = 16) =>
+		Array.from({ length: Math.ceil(bytes.length / width) }, (_, k) =>
+			fn(bytes.subarray(k * width, k * width + width), k * width),
 		).join("\n");
 	const pairs = (b: Buffer, size: number, swap = false) =>
 		(hex(b).match(new RegExp(`.{1,${size * 2}}`, "g")) ?? []).map((g) =>
@@ -161,6 +161,12 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 		hexdump: rows((b, o) => `${o.toString(16).padStart(7, "0")} ${pairs(b, 2, true).join(" ")}`),
 		"hexdump -C": rows((b, o) => `${o.toString(16).padStart(8, "0")}  ${pairs(b, 1).join(" ")}  |${ascii(b)}|`),
 		"od -A x -t x1z": rows((b, o) => `${o.toString(16).padStart(6, "0")} ${pairs(b, 1).join(" ")}  >${ascii(b)}<`),
+		"od -An -tx1": rows((b) => ` ${pairs(b, 1).join(" ")}`),
+		"xxd -g 8": rows((b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 8).join(" ").padEnd(33)}  ${ascii(b)}`),
+		"xxd -c 32 -g1": rows(
+			(b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 1).join(" ").padEnd(95)}  ${ascii(b)}`,
+			32,
+		),
 	};
 	for (const [tool, dump] of Object.entries(dumps)) {
 		const out = r().redact(`$ ${tool} build.bin\n${dump}\n`).text;
