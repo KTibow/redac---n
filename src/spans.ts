@@ -157,8 +157,32 @@ function preferNarrower(findings: Finding[]): Finding[] {
 	});
 }
 
+/**
+ * A token's character, where a format that stops before it may have been cut and its tail is still secret: a
+ * percent-encoded one too (a session token's `%2B` in a URL); a dot only inside a token (`hvs.…`), not a sentence's
+ * full stop.
+ */
+const TOKEN_CHAR = /^(?:[\w+/=~-]|\.\w|%[0-9A-Fa-f])/;
+
+/**
+ * Whether `f`, starting with or inside a format's token `token`, runs past it only by reading on into what follows it
+ * (`ghp_…;git push`, `ghp_…&q=foo`, `ghp_…#top`): an unquoted value read to the next blank. The format's regex bounds
+ * the token, so the rest is the text after it, not more of the secret. (A finding that starts before the token, a
+ * quote or a prefix, or a token that stops before a token character, may have been cut: those widen.)
+ */
+function runsPastToken(text: string | undefined, token: Finding, f: Finding): boolean {
+	return (
+		text !== undefined &&
+		layerOf(token.rule) === "format" &&
+		token.confidence > f.confidence &&
+		f.start >= token.start &&
+		f.end > token.end &&
+		!TOKEN_CHAR.test(text.slice(token.end, token.end + 3))
+	);
+}
+
 /** Overlapping findings as one span each, every field but the span the most confident one's. */
-function union(findings: Finding[]): Finding[] {
+function union(findings: Finding[], text?: string): Finding[] {
 	const sorted = [...findings].sort((a, b) => a.start - b.start || b.end - a.end);
 	const out: Finding[] = [];
 	for (const f of sorted) {
@@ -166,6 +190,11 @@ function union(findings: Finding[]): Finding[] {
 		const last = out.at(-1);
 		if (!last || f.start >= last.end) {
 			out.push({ ...f });
+			continue;
+		}
+		if (runsPastToken(text, last, f)) continue;
+		if (runsPastToken(text, f, last) && f.start === last.start) {
+			out[out.length - 1] = { ...f };
 			continue;
 		}
 		const end = Math.max(last.end, f.end);
@@ -228,12 +257,41 @@ export function trimmedToValue(text: string, f: Finding): Finding {
 	}
 	if (end - start > 1 && /[,;]/.test(text[end - 1]) && /^[ \t]+[A-Za-z_][\w.-]*=/.test(text.slice(end, end + 80)))
 		end--;
+	else if (layerOf(f.rule) === "named" && !/["'`]/.test(q ?? "")) end = start + nextSetting(text.slice(start, end));
 	return start === f.start && end === f.end ? f : { ...f, start, end };
+}
+
+/**
+ * Settings that end an unquoted value read to the next blank: `;`, `,` or `&`, a name of a word's shape (lower case,
+ * upper case or camel case, at least two letters), `=` and a plain value, to the end (`;username=bob`,
+ * `,DB_HOST=db,DB_PORT=5432`, `&page=2&sort=desc`). A password's own punctuation seldom reads that way to its end
+ * (`86)68/C{,C=wyhJH9`, `Nakp&nDiqWJ-K=nW`).
+ */
+const SETTINGS_AFTER =
+	/[;,&](?=[\w.-]*[A-Za-z][\w.-]*[A-Za-z])(?:[a-z][a-z0-9]*(?:[_.-][a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*|[a-z]+(?:[A-Z][a-z0-9]+)+)=[\w.:/@+-]*(?=[;,&]|$)/y;
+
+/**
+ * Where an unquoted value read to the next blank ends at the settings after it of a list it is in, with no blank
+ * between (`password=Kx9…;username=bob`, `A=…,B=db`): the value's length up to there, or all of it. Not in a value that
+ * is itself a list of settings or a URL (an `=` or `?` before), whose own separators these are (`DSN=host=db;password=…`),
+ * and not after a value too short to be one.
+ */
+function nextSetting(value: string): number {
+	const list = value.search(/=+[^=;,&]|\?|:\/\//);
+	const separators = /[;,&]/g;
+	for (let m; (m = separators.exec(value)) && (list < 0 || m.index < list);) {
+		if (m.index < 6) continue;
+		let at = m.index;
+		SETTINGS_AFTER.lastIndex = at;
+		while (at < value.length && SETTINGS_AFTER.test(value)) at = SETTINGS_AFTER.lastIndex;
+		if (at === value.length) return m.index;
+	}
+	return value.length;
 }
 
 /** Findings merged into one span each, sorted; with `text`, kept off escape sequences. (The inputs aren't changed.) */
 export function merge(findings: Finding[], text?: string): Finding[] {
-	return union(preferNarrower(text ? findings.map((f) => onEscapes(text, f)) : findings));
+	return union(preferNarrower(text ? findings.map((f) => onEscapes(text, f)) : findings), text);
 }
 
 /** The first of `sorted` (merged, sorted by start) that ends after `start`, by binary search. */

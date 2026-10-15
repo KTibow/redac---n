@@ -9,7 +9,16 @@
  * (transcript.ts): the shell command a tool runs, the path it reads or writes, and the text it writes there.
  */
 export const TOOL_COMMAND_KEYS = ["command", "cmd", "script", "shell_command", "run"];
-export const TOOL_PATH_KEYS = ["file_path", "path", "filePath", "filename", "file", "target_file", "notebook_path"];
+export const TOOL_PATH_KEYS = [
+	"file_path",
+	"path",
+	"filePath",
+	"absolute_path",
+	"filename",
+	"file",
+	"target_file",
+	"notebook_path",
+];
 export const TOOL_CONTENT_KEYS = [
 	"content",
 	"contents",

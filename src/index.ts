@@ -463,7 +463,7 @@ export class Redactor {
 					: this.detectNormalized(decoded, { guessing: "off", encoded: encoded + 1 }, 0).some((f) => !isGuess(f.rule));
 			found.push(...findEncoded(text, inner), ...findHexDumps(text, inner));
 		}
-		found = merge(wrapped(text, found));
+		found = merge(wrapped(text, found), text);
 		if (on.has("random")) {
 			// (Guessing as asked, but in a secret file, the hint's or one written inside the text, always: there the model
 			// isn't guessing whether secrets are present, it tells the file's generated values from its settings.)
