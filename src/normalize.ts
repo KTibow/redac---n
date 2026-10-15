@@ -6,7 +6,7 @@
  * 2. What a tool puts in front of lines: a file viewer's line numbers (`     12→`, `cat -n`), `grep -n`'s
  *    `path:12:`, a diff hunk's markers.
  * 3. What spells a character or a string another way: shell line continuations (`--password \` then the value on
- *    the next line), HTML entities (`&quot;`, `&#35;`), full-width punctuation and spaces of other widths, and a
+ *    the next line), HTML entities (`&quot;`, `&#35;`), full-width punctuation, typographic quotes and spaces of other widths, and a
  *    string literal split in pieces (`"xoxb-12ab" "34cd"`, `'sk-' + '…'`), joined.
  *
  * Each pass sees the lines the one before it leaves (a coloured diff's `ESC[32m+API_TOKEN=…` starts with its `+`;
@@ -152,7 +152,7 @@ const NEEDS_PASS_TWO = (text: string) =>
 	HAS_LINE_NUMBER.test(text) || PREFIXED.test(text) || LINE_END_MARK_TEST.test(text);
 const NEEDS_PASS_THREE = (text: string) =>
 	INLINE_TAG_TEST.test(text) ||
-	/[\u00a0\u2000-\u200a\u202f\u3000\uff1a\uff1d]|\\\r?\n/.test(text) ||
+	/[\u00a0\u2000-\u200a\u2018\u2019\u201c-\u201e\u202f\u3000\uff1a\uff1d]|\\\r?\n/.test(text) ||
 	ENTITY.test(text) ||
 	JOINT.test(text);
 
@@ -487,6 +487,13 @@ function unspell(text: string): Normalized {
 		// Full-width colon and equals sign.
 		if (c === 0xff1a || c === 0xff1d) {
 			w.emit(c === 0xff1a ? ":" : "=", i, i + 1);
+			i++;
+			continue;
+		}
+		// Typographic quotes, as a word processor's or a chat app's autocorrect writes them in pasted JSON and config
+		// (`“password”: “…”`, German `„…“`): the straight quotes the syntax means.
+		if (c === 0x2018 || c === 0x2019 || (c >= 0x201c && c <= 0x201e)) {
+			w.emit(c <= 0x2019 ? "'" : '"', i, i + 1);
 			i++;
 			continue;
 		}

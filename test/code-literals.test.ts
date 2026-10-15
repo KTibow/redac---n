@@ -325,3 +325,51 @@ test("an interpolated string's holes are code, in the value's own string or the 
 	hidden('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "Xk9mQ2pLrT");
 	kept('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "User Id=sa");
 });
+
+test("a form fill's options, a key pressed after it and calls between the field and the fill leave the value its", () => {
+	for (const text of [
+		"cy.get('#password').type('Xq7#Lm2vRt9Kp4Wz', { log: false })",
+		"await page.fill('#password', 'Xq7#Lm2vRt9Kp4Wz', { timeout: 5000 })",
+		"await page.type('#password', 'Xq7#Lm2vRt9Kp4Wz', { delay: 100 })",
+		'driver.find_element(By.ID, "password").send_keys("Xq7#Lm2vRt9Kp4Wz", Keys.ENTER)',
+		'driver.findElement(By.id("password")).sendKeys("Xq7#Lm2vRt9Kp4Wz" + Keys.RETURN);',
+		"await page.getByLabel('Password', { exact: true }).fill('Xq7#Lm2vRt9Kp4Wz')",
+		"await page.locator('#password').first().fill('Xq7#Lm2vRt9Kp4Wz')",
+		"cy.get('[name=\"password\"]').clear().type('Xq7#Lm2vRt9Kp4Wz')",
+		"await page.getByLabel('Password').fill('Xq7#Lm2vRt9Kp4Wz', { force: true })",
+	]) {
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+		kept(text, /\{ \w+: \w+ \}|Keys\.\w+|\.(?:first|clear)\(\)|getBy\w+\('Password'/.exec(text)?.[0] ?? "Xq7#");
+	}
+	kept("cy.get('#search').type('Xq7#Lm2vRt9Kp4Wz', { log: false })", "Xq7#Lm2vRt9Kp4Wz");
+	kept("await page.getByLabel('Username', { exact: true }).fill('qa-user-7Xk2Lm9')", "qa-user-7Xk2Lm9");
+});
+
+test("a literal converted where it's given, `.toCharArray()`, `.trim()`, `String.valueOf(…)`, is the value", () => {
+	for (const text of [
+		'cfg.setPassword("Xq7#Lm2vRt9Kp4Wz".toCharArray());',
+		'new PasswordAuthentication("bob", "Xq7#Lm2vRt9Kp4Wz".toCharArray());',
+		'cfg.setPassword(String.valueOf("Xq7#Lm2vRt9Kp4Wz"));',
+		'cfg.setPassword("Xq7#Lm2vRt9Kp4Wz".trim());',
+		'client.setPassword(Buffer.from("Xq7#Lm2vRt9Kp4Wz"));',
+	]) {
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+		kept(text, /\.toCharArray\(\)|\.trim\(\)|String\.valueOf\("|Buffer\.from\("/.exec(text)![0]);
+	}
+	kept('cfg.setUsername("deploy-user".toCharArray());', "deploy-user");
+});
+
+test("a credential asserted equal to a literal, in either order or chained, is that literal", () => {
+	for (const text of [
+		'assertEquals(config.getPassword(), "Xq7#Lm2vRt9Kp4Wz");',
+		'self.assertEqual(cfg.password, "Xq7#Lm2vRt9Kp4Wz")',
+		'assert_eq!(cfg.password, "Xq7#Lm2vRt9Kp4Wz");',
+		'Assert.AreEqual("Xq7#Lm2vRt9Kp4Wz", cfg.Password);',
+		'assertThat(cfg.getPassword()).isEqualTo("Xq7#Lm2vRt9Kp4Wz");',
+		"expect(cfg.password).toEqual('Xq7#Lm2vRt9Kp4Wz')",
+	])
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+	kept('assertEquals(config.getUsername(), "deploy-user");', "deploy-user");
+	kept('self.assertEqual(cfg.password_hash_scheme, "pbkdf2_sha256")', "pbkdf2_sha256");
+	kept("expect(cfg.passwordMinLength).toBe(12)", "toBe(12)");
+});

@@ -123,6 +123,16 @@ test("spaces of other widths, full-width signs and line continuations, and backs
 	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
 });
 
+test("typographic quotes, as autocorrect writes pasted JSON and config, are read as the straight ones", () => {
+	assert.equal(normalize("“password”: ‘x’ „y“").text, `"password": 'x' "y"`);
+	hidden("{\n  “username”: “bob”,\n  “password”: “Winter2024!kz”\n}", "Winter2024!kz");
+	hidden("“api_key” = “Kx9mQ2pLrT7vW4nB”", "Kx9mQ2pLrT7vW4nB");
+	hidden("DB_PASSWORD=‘Tr0ub4dor&3xQ’", "Tr0ub4dor&3xQ");
+	// (The quotes themselves stay as written around the placeholder, and prose keeps its apostrophes.)
+	kept("{“password”: “Winter2024!kz”}", "“password”: “");
+	kept("The password’s rules don’t change: “at least 12 characters”.", "“at least 12 characters”");
+});
+
 test("wrapped base64 with a prefix on the first line and a suffix on the last", () => {
 	const secret = "aws_access_key_id = AKI\x41J7QX3MZP5RTWV2KA\n# padding padding padding padding\n";
 	const folded = Buffer.from(secret)
