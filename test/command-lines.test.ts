@@ -132,8 +132,18 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		["PS C:\\> psexec \\\\srv -u admin -p Harbor#2291x cmd", S],
 		["C:\\Users\\bob> sqlcmd -U sa -P Harbor#2291x", S],
 		["schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup /tr C:\\b.bat /sc daily", S],
+		// The remote user's `/u … /p pw` that schtasks shares with setx, taskkill, systeminfo and their kin.
+		["setx /s computer1 /u CORP\\alice /p Harbor#2291x MYPATH %PATH%", S],
+		["taskkill /s srv /u CORP\\alice /p Harbor#2291x /im app.exe", S],
+		["getmac /s srv /u CORP\\alice /p Harbor#2291x", S],
+		['schtasks /run /u "CORP\\alice" /p "Harbor#2291x" /tn Backup', S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	// (Not past an operator, nor a syntax's placeholder.)
+	kept("SCHTASKS /Query /FO csv /v /s srv /U CORP\\alice /P  | ConvertFrom-Csv", "ConvertFrom-Csv");
+	kept("schtasks /run /tn TaskName [/s computer [/u [domain\\]user /p [password]]] /?", "[password]]]");
+	kept("you do not need /s /u /p; you already gave them", "you already");
+	kept("tasklist /s srv /u CORP\\alice /p <password>", "<password>");
 	kept("C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", "C:\\Users\\bob> net use Z:");
 	kept("schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup", "/tn Backup");
 	for (const [t, v, hint] of [

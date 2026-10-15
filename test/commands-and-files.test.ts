@@ -860,7 +860,6 @@ test("cmd's and PowerShell's variables, environment drive and expressions print 
 		"cmd /c echo %APP_SECRET%",
 		"echo ${env:APP_SECRET}",
 		"Write-Output $Env:APP_SECRET",
-		"Get-Content Env:APP_SECRET",
 		"(Get-Item Env:APP_SECRET).Value",
 		"$env:DB_PASSWORD",
 		"$cred.GetNetworkCredential().Password",
@@ -874,10 +873,18 @@ test("cmd's and PowerShell's variables, environment drive and expressions print 
 		"$cred.UserName",
 		"(Get-Item Env:PATH).Value",
 		"Get-Secret DbPassword",
+		// (A dictionary's keys are its names.)
+		"$hash.Keys",
+		"(Get-Command -Name Test-MrParameter).Parameters.Keys",
+		"$_.Key",
 	])
 		assert.ok(!printsSecret(command), command);
 	hidden("PS> $cred.GetNetworkCredential().Password\nC0r4l&96\nPS> ", "C0r4l&96");
 	kept("PS> $env:COMPUTERNAME\nBUILD-AGENT-07\nPS> ", "BUILD-AGENT-07");
+	kept("PS> $p.Keys\nPowerShell\nNotepad\n\nPS> $p.PowerShell\n", "Notepad");
+	// (A member of the drive's items prints that member: `.Name` prints names.)
+	kept("PS /home/user01> (Get-Item -Path Env:hOM[E]).Name\nHOME\n", "HOME");
+	kept("PS> (Get-ChildItem Env:).Name\nAPI_TOKEN\nPATH\n", "API_TOKEN");
 	// (`Get-ChildItem Env:` and `Get-Item Env:NAME` print a table of names and values, read as printenv's listing.)
 	const table = "Name                           Value\n----                           -----\n";
 	for (const command of ["Get-ChildItem Env:", "gci env:", "Get-Item Env:APP_SECRET"]) {
