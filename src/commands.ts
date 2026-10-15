@@ -37,8 +37,6 @@ const SECRET_FILE = [
 	// Password and PIN files: Ansible's vault_pass, `db_password.txt`, `~/.pin`, Docker and Compose secret files, pppd's.
 	/^\.?vault[_-]?pass(?:word)?(?:\.txt)?$/i,
 	/(?:^|[_.-])(?:pass(?:word|wd|phrase|code)?|secret|token|pin(?:[_-]?code)?)(?:\.txt)?$/i,
-	// (A key's file, `secret_key.txt`, `api-key`; not a jq filter's `.private_key`.)
-	/^(?:\w[\w-]*[_-])?(?:secret|api|private|access|auth|master|signing|encryption)[_-]?key(?:\.txt)?$/i,
 	/^(?:pap|chap)-secrets(?:[-_.][\w-]+)?$/,
 	/^(_netrc|rclone\.conf|cookies\.txt|keystore\.properties|wp-config\.php|\.?htpasswd|redis\.conf|sentinel\.conf|users\.acl|keyfile|userlist\.txt)$/i,
 	/(^|[-_.])secrets?(\.[\w-]{1,40})?\.(json|ya?ml|toml|env|ini|properties)$/i,
@@ -156,7 +154,14 @@ const SECRET_TOOLS = new RegExp(
 );
 /** What a command reads or calls that is a secret, wherever it sits in the command: a random device, a language's generator. */
 const SECRET_SOURCES =
-	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto(?:["']\))?\.randomBytes|os\.urandom\(|\brandom_bytes\(|openssl_random_pseudo_bytes/;
+	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto(?:["']\))?\.randomBytes/;
+/**
+ * Byte generators that make IDs, salts and test data as often as keys (`user = os.urandom(8).hex()`, a patch that
+ * changes `os.urandom(3)`): a secret only printed as made, `print(os.urandom(32).hex())`, `echo
+ * bin2hex(random_bytes(32));`.
+ */
+const PRINTED_SOURCE =
+	/\b(?:print|puts|echo)\b[ \t(]*(?:[\w.]+\()*(?:os\.urandom\(|random_bytes\(|openssl_random_pseudo_bytes\()/;
 
 /** A shell's name: `bash`, `sh`, `zsh`. */
 export const SHELL = /^(?:ba|z|da|k)?sh$/;
@@ -226,17 +231,6 @@ export function commandsRun(
 		const wrapper: ShellGroup = { kind: programName(simpleCommand(c.words)[0]), redirects: c.redirects, then: c.then };
 		for (const r of run) r.groups = [...r.groups, wrapper, ...c.groups];
 		run[run.length - 1].then = c.then;
-		// A heredoc or a here-string the wrapper is given, when it isn't the script it runs, is the stdin of the command it
-		// runs: `sudo sh -c 'cat > /etc/app/db_password' <<EOF`, `ssh host 'cat > ~/.vault_pass' <<<"…"`.
-		const script = (start: number, end: number) => inner!.at(0) >= start && inner!.at(0) < end;
-		const heredocs = c.heredocs.filter((h) => !script(h.start, h.end));
-		const herestrings = c.redirects.filter((r) => r.op === "<<<" && r.target && !script(r.target.start, r.target.end));
-		if (heredocs.length || herestrings.length)
-			run[0] = {
-				...run[0],
-				heredocs: [...run[0].heredocs, ...heredocs],
-				redirects: [...run[0].redirects, ...herestrings],
-			};
 		out.push(...run);
 	}
 	return out;
@@ -419,9 +413,6 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 					: sub
 				: undefined;
 	if (exec?.[0]?.text === "exec") return from(exec, afterOptions(exec, 1, VALUE_OPTIONS["docker exec"]) + 1);
-	// `docker compose run [options] SERVICE [COMMAND…]`, a one-off container of the service.
-	if (exec?.[0]?.text === "run" && exec !== sub)
-		return from(exec, afterOptions(exec, 1, VALUE_OPTIONS["docker run"]) + 1);
 	// `docker run [options] IMAGE [COMMAND…]`, `kubectl run NAME --image=IMAGE [--command] -- …`: the command after the
 	// image; with none, the arguments go to the image's entrypoint, a tool's for a tool's image (`curlimages/curl -b …`).
 	if (/^(?:docker|podman|nerdctl)$/.test(program) && sub[0]?.text === "run") {
@@ -505,7 +496,7 @@ export function printsSecretFile(command: string): boolean {
  * variable or a substitution (`cat "$f"`, `cat $(find …)`, `echo "$line"`), a script's `open(…).read()`.
  */
 const PRINTER =
-	/(?:-exec|\bxargs\b[^|&\n]*?|\bfd(?:find)?\b[^|;&\n]*[ \t]-[xX])[ \t'"]+(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\(/;
+	/(?:-exec|\bxargs\b[^|&\n]*?|\bfd(?:find)?\b[^|;&\n]*[ \t]-[xX])[ \t'"]+(?:cat|tac|head|tail|less|more|bat|nl|sort|strings|awk|(?:e?grep|rg)\b(?![^;|&\n]*[ \t]-[A-Za-z]*[lLcq])|sed\b(?![^;|&\n]*[ \t]-(?:[A-Za-z]*i|-in-place)))\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|\b(?:print|puts|console\.log|echo)\b[^;\n]{0,80}?(?:readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\()/;
 
 /**
  * A secret file printed by a route the pipeline reader doesn't follow: named to `find … -exec cat {}`, `xargs cat`, a
@@ -623,8 +614,7 @@ function readsSecretFile(c: ShellCommand): boolean {
 	const files = /^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
 		? searchedFiles(args)
 		: args.filter((t) => !t.startsWith("-"));
-	// (A glob's trailing wildcard, `cat .env*`, takes in the file it starts with.)
-	return files.some((t) => isSecretFile(t.replace(/[*?]+$/, "")));
+	return files.some((t) => isSecretFile(t));
 }
 
 /**
@@ -651,12 +641,8 @@ function searchedFiles(rest: string[]): string[] {
 function xargsInput(c: ShellCommand, words: ShellWord[]): string | undefined {
 	const k = c.words.findIndex((w) => programName(w) === "xargs");
 	if (k < 0 || k > c.words.length - words.length) return undefined;
-	// (Its options and their values run up to the command it runs, which simpleCommand found past them: `xargs -n 1 -a
-	// .env echo`, `xargs -d '\n' -a .env`.)
-	const end = words.length && programName(words[0]) !== "xargs" ? c.words.length - words.length : c.words.length;
-	for (let i = k + 1; i < end; i++) {
+	for (let i = k + 1; i < c.words.length && c.words[i].text.startsWith("-"); i++) {
 		const w = c.words[i].text;
-		if (!w.startsWith("-") || w === "--") continue;
 		if (w === "-a" || w === "--arg-file") return c.words[i + 1]?.text;
 		if (w.startsWith("--arg-file=")) return w.slice(11);
 		if (w.startsWith("-a")) return w.slice(2);
@@ -848,14 +834,14 @@ function printsCredential(c: ShellCommand): boolean {
 	const words = simpleCommand(c.words);
 	// (Read from the program's own name on: `/usr/bin/gh auth token` is `gh auth token`.)
 	const line = [programName(words[0]), ...words.slice(1).map((w) => w.text)].join(" ").slice(0, MAX_TOOL_LINE);
-	if (SECRET_TOOLS.test(line) || SECRET_SOURCES.test(line)) return true;
+	if (SECRET_TOOLS.test(line) || SECRET_SOURCES.test(line) || PRINTED_SOURCE.test(line)) return true;
 	const program = programName(words[0]);
 	const args = words.slice(1);
 	if (program === "printenv") return args.length === 1 && isCredentialName(args[0].text);
 	// (A script given on the command line that prints a credential's variable: `python3 -c "print(os.environ['TOKEN'])"`,
 	// `node -e "console.log(process.env.TOKEN)"`.)
-	if (INTERPRETER.test(program) && PRINTS.test(line))
-		return [...line.matchAll(ENV_READ)].some((m) => isCredentialName(m[1] ?? m[2]));
+	if (INTERPRETER.test(program))
+		return [...line.matchAll(PRINTED_ENV_READ)].some((m) => isCredentialName(m[1] ?? m[2]));
 	// (PowerShell's environment drive read as a file prints the variable's value: `Get-Content Env:TOKEN`.)
 	if (/^(?:Get-Content|gc|cat|type)$/.test(program))
 		return args.length === 1 && /^env:\w+$/i.test(args[0].text) && variablesIn(args[0].text).some(isCredentialName);
@@ -875,11 +861,13 @@ function printsCredential(c: ShellCommand): boolean {
 
 /** Interpreters that run a script given on their command line. */
 const INTERPRETER = /^(?:python[\d.]*|node|deno|bun|ruby|perl|php)$/;
-/** What prints in those scripts. */
-const PRINTS = /\b(?:print|puts|console\.log|echo|say|process\.stdout\.write)\b/;
-/** A read of an environment variable in those scripts, by its name. */
-const ENV_READ =
-	/(?:os\.environ(?:\.get)?|os\.getenv|\bENV(?:\.fetch)?|\bgetenv|\$_ENV|\$ENV)\s*[[({]\s*["']([A-Za-z_]\w*)["']|process\.env\.([A-Za-z_]\w*)/g;
+/**
+ * A read of an environment variable in those scripts, by its name, that their print takes: `print(os.environ['TOKEN'])`,
+ * `console.log("token", process.env.TOKEN)`. (A script that reads one to use it prints what it does with it: a login
+ * script's `type(process.env.PW)` and its `console.log("submitted")`.)
+ */
+const PRINTED_ENV_READ =
+	/\b(?:print|puts|console\.log|echo|say|process\.stdout\.write)\b[^;\n]{0,80}?(?:(?:os\.environ(?:\.get)?|os\.getenv|\bENV(?:\.fetch)?|\bgetenv|\$_ENV|\$ENV)\s*[[({]\s*["']([A-Za-z_]\w*)["']|process\.env\.([A-Za-z_]\w*))/g;
 
 /** How a command-line tool takes a password. */
 export interface ToolSpec {

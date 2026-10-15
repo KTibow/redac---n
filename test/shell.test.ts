@@ -327,21 +327,6 @@ test("a prompt is read in the shapes terminals print it, and a comment or a head
 	assert.ok(!r.redact("C:\\app>type config\\.env\nACMEPAY=Hx7mQ2pLw9zK\n\nC:\\app>").text.includes("Hx7mQ2pLw9zK"));
 });
 
-test("a heredoc or a here-string given to a wrapper is the stdin of the command it runs", () => {
-	const r = new Redactor();
-	for (const line of [
-		"sudo sh -c 'cat > /etc/app/db_password' <<EOF\nHarbor#2291x\nEOF",
-		"ssh deploy@10.0.0.5 'cat > ~/.vault_pass' <<'EOF'\nHarbor#2291x\nEOF",
-		"docker exec -i app sh -c 'cat > /run/secrets/db_password' <<EOF\nHarbor#2291x\nEOF",
-		"bash -c 'tee .env > /dev/null' <<EOF\nACMEPAY=Harbor#2291x\nEOF",
-		"ssh host 'cat > ~/.vault_pass' <<< 'Harbor#2291x'",
-	])
-		assert.ok(!r.redact(line).text.includes("Harbor#2291x"), line);
-	// (A file that is no secret file keeps what it is given; a heredoc that is the script is read as the script.)
-	assert.ok(r.redact("ssh host 'cat > notes.txt' <<EOF\nACMEPAY=Hx7mQ2pLw9zK\nEOF").text.includes("Hx7mQ2pLw9zK"));
-	assert.ok(r.redact("ssh prod <<'EOF'\ncat > notes.txt\nEOF").text.includes("cat > notes.txt"));
-});
-
 test("a group's pipe takes what every command in it prints", () => {
 	const r = new Redactor();
 	for (const line of [

@@ -553,17 +553,21 @@ export function findPrintedSecret(text: string): Finding[] {
 	const quote = firstValue === first.value ? 0 : 1;
 	if (firstValue && !notSecret(firstValue) && !/^[{[]$/.test(firstValue) && readsAsValue(firstValue))
 		add(first.start + quote, first.start + first.value.length - quote);
-	// (Up to a blank line: what follows one is no longer the command's output, `Perfect!` from whoever ran it. A markup tag
-	// closes the output too, `</tool_result>`.)
+	// (Up to a blank line: what follows one is no longer the command's output, `Perfect!` from whoever ran it. A markup
+	// tag's closer ends the output too, `</tool_result>`, on its own line or after the last one, `honeybear</output>`; an
+	// opener, `<output>`, is the harness's wrapper, not a value.)
 	const blank = /\n[ \t]*\r?\n/.exec(text.slice(firstEnd));
 	const rest = text.slice(firstEnd, blank ? firstEnd + blank.index : text.length);
 	for (const m of rest.matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
-		const value = jsonString(m[1]) ?? m[1];
-		const q = value === m[1] ? 0 : 1;
-		if (/^<\/?[A-Za-z][\w:.-]*>$/.test(value)) break;
+		const closed = /<\/[A-Za-z][\w:.-]*>$/.exec(m[1]);
+		const token = closed ? m[1].slice(0, closed.index) : m[1];
+		if (/^<[A-Za-z][\w:.-]*>$/.test(token)) continue;
+		const value = jsonString(token) ?? token;
+		const q = value === token ? 0 : 1;
 		// (A message's tokens are not values; `[`/`{` start a JSON document's lines.)
-		if (isMessageToken(value) || /^[{[]/.test(value) || notSecret(value)) continue;
-		add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[1] - q);
+		if (value.length >= 6 && !isMessageToken(value) && !/^[{[]/.test(value) && !notSecret(value))
+			add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[0] + token.length - q);
+		if (closed) break;
 	}
 	return out;
 }
