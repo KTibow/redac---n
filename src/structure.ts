@@ -1015,15 +1015,16 @@ function windowsPasswords(text: string, add: AddPassword) {
 
 /**
  * Network devices' configuration lines that end in a key: Cisco IOS (`enable secret pw`, `username u privilege 15 secret 0 pw`,
- * `crypto isakmp key pw address 0.0.0.0`, `tacacs-server key pw`, `ip ospf authentication-key pw`,
- * `ip ospf message-digest-key 1 md5 pw`, `snmp-server community s RW`) and Junos (`… authentication-key "pw"`,
+ * `crypto isakmp key pw address 0.0.0.0` or `… hostname h`, an IKEv2 keyring's `pre-shared-key local pw`,
+ * `tacacs-server key pw`, `ip ospf authentication-key pw`, `ip ospf message-digest-key 1 md5 pw`,
+ * `snmp-server community s view v RW`) and Junos (`… authentication-key "pw"`,
  * `plain-text-password-value pw`). The keyword may carry an encryption type: 0 and 7 are readable, 5, 8 and 9 are
  * hashes, kept as hashes are.
  */
 function networkConfigKeys(text: string, add: AddPassword) {
 	if (!/\b(?:secret|password|key|key-string|community|plain-text-password-value|psk)\b/.test(text)) return;
 	const IOS =
-		/^[ \t]*(?:set[ \t]+)?(?:(?:enable|username|crypto|tacacs-server|radius-server|ip|ipv6|ntp|key-string|neighbor|ppp|standby|vrrp|router|aaa|snmp-server|system|protocols|security|interfaces)\b[^\n]*?[ \t](?:secret|password|key|key-string|pre-shared-key|authentication-key|md5|community|plain-text-password-value|psk)|wpa-psk|key-string)[ \t]+(?:(?:ascii-text|hexadecimal|ascii|hex)[ \t]+)?(?:(\d)[ \t]+)?(?:"([^"\n]{3,200})"|(\S{3,200}))((?:[ \t]+(?:address|level|RO|RW|ro|rw)\b[^\n]*)?)[ \t]*;?\r?$/gm;
+		/^[ \t]*(?:set[ \t]+)?(?:(?:enable|username|crypto|tacacs-server|radius-server|ip|ipv6|ntp|key-string|neighbor|ppp|standby|vrrp|router|aaa|snmp-server|system|protocols|security|interfaces)\b[^\n]*?[ \t](?:secret|password|key|key-string|pre-shared-key|authentication-key|md5|community|plain-text-password-value|psk)|wpa-psk|key-string|pre-shared-key)[ \t]+(?:(?:local|remote)[ \t]+)?(?:(?:ascii-text|hexadecimal|ascii|hex)[ \t]+)?(?:(\d)[ \t]+)?(?:"([^"\n]{3,200})"|(\S{3,200}))((?:[ \t]+(?:address|hostname|view|level|RO|RW|ro|rw)\b[^\n]*)?)[ \t]*;?\r?$/gm;
 	for (const m of text.matchAll(IOS)) {
 		if (m[1] && /[589]/.test(m[1])) continue;
 		const pw = m[2] ?? m[3];
