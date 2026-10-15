@@ -605,3 +605,35 @@ test("a ConfigMap listed beside a Secret keeps its values, in YAML and in JSON",
 		assert.ok(out.includes(value) && !out.includes(secret), out);
 	}
 });
+
+test("an Authorization value is hidden inside its brackets and quotes, the same whichever wrap it", () => {
+	// Go prints a header as `Authorization:[<value>]`, Markdown as Authorization: `<value>`.
+	const token = "Zq8mK2vXp4Rt7NwY3cLd9HsB";
+	const tags = new Set<string>();
+	for (const [before, after] of [
+		["map[Accept:[*/*] Authorization:[", "] User-Agent:[curl/8.4.0]]"],
+		["Authorization: `", "`"],
+		["Authorization: (", ")"],
+		["Authorization: '", "'"],
+		["Authorization: ", ""],
+	]) {
+		const text = `${before}${token}${after}`;
+		const spans = findStructure(text).filter((f) => f.rule === "structure:authorization");
+		assert.deepEqual(
+			spans.map((f) => text.slice(f.start, f.end)),
+			[token],
+			text,
+		);
+		const out = r().redact(text).text;
+		assert.ok(out.startsWith(`${before}[REDACTED`) && out.endsWith(`]${after}`), out);
+		tags.add(/#\w+/.exec(out)![0]);
+	}
+	assert.equal(tags.size, 1);
+});
+
+test("a URL password that starts with $ is a password unless the name after it reads as a variable's", () => {
+	for (const pw of ["$Zq8mK2vXp4", "$uperS3cretPw", "$Tr0ng9ass"])
+		hidden(`DATABASE_URL=postgres://admin:${pw}@db.internal.example.com:5432/app`, pw);
+	for (const reference of ["$DB_PASSWORD", "$dbPassword", "$pass", "$MYSQL_ROOT_PASSWORD"])
+		kept(`DATABASE_URL=postgres://admin:${reference}@db.internal.example.com:5432/app`, reference);
+});

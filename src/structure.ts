@@ -184,12 +184,13 @@ export function isLiteralPassword(value: string, quoted = false): boolean {
 	// A hole of an interpolated string, whole: `{quote_plus(password)}`, Swift's `\(password)`, `{Uri.EscapeDataString(pw)}`.
 	if (/^\{[^{}\n]{1,200}\}$|^\\\([^()\n]{1,200}\)$/.test(value) && /[A-Za-z_]/.test(value)) return false;
 	// `$DB_PASSWORD`-style names, a letter in each part, not all-caps passwords like `WINTER2024PASS`, `SUMMER_2024`
-	// or `WINTERPASS` (a placeholder word in capitals is read below). (Templates with holes, `${DB_PASS}`, `{{ pw }}`,
-	// `<password>`, are placeholders above when nothing secret is around their holes.) A `$(…)` even in single quotes:
-	// a Makefile's `-p'$(DB_PASSWORD)'` is make's variable, expanded before the shell runs.
+	// or `WINTERPASS` (a placeholder word in capitals is read below). A `$` and a name is a variable when the name reads
+	// as one (`$dbPassword`), not a generated password that starts with a symbol (`$Zq8mK2vXp4`). (Templates with holes,
+	// `${DB_PASS}`, `{{ pw }}`, `<password>`, are placeholders above when nothing secret is around their holes.) A
+	// `$(…)` even in single quotes: a Makefile's `-p'$(DB_PASSWORD)'` is make's variable, expanded before the shell runs.
 	if (
 		/^[A-Z]+(?:_[A-Z0-9]*[A-Z][A-Z0-9]*)+$|^_[A-Z0-9_]+$/.test(value) ||
-		(!quoted && /^\$[A-Za-z_]\w*$/.test(value)) ||
+		(!quoted && /^\$[A-Za-z_]\w*$/.test(value) && isNameLike(value.slice(1))) ||
 		/^\$\(.*\)$/.test(value) ||
 		(/^[a-z_][A-Za-z_]{2,}\(.*\)$/.test(value) && readsAsWords(value.slice(0, value.indexOf("("))))
 	)
@@ -327,9 +328,11 @@ function authorization(text: string, out: Finding[]) {
 		)
 			continue;
 		if (/^aws4-hmac/i.test(scheme ?? "")) continue; // handled by the Signature= rule
-		// Closing quotes, brackets and sentence punctuation aren't part of the value.
-		let value = m[2].replace(/[`'")\].,;:]+$/, "");
-		let start = m.indices![2]![0];
+		// Quotes and brackets around it and sentence punctuation after it aren't part of the value, as the judge above
+		// reads it: Go prints a header as `Authorization:[<value>]`, Markdown as Authorization: `<value>`.
+		const opening = /^[`'"(\[]*/.exec(m[2])![0].length;
+		let value = m[2].slice(opening).replace(/[`'")\].,;:]+$/, "");
+		let start = m.indices![2]![0] + opening;
 		if (/^basic$/i.test(scheme ?? "") && isPlaceholderBasic(value)) continue;
 		// Azure's `SharedKey <account>:<signature>`: the account is a name.
 		const account = /^SharedKey(?:Lite)?$/i.test(scheme ?? "") ? /^[\w-]{1,64}:/.exec(value)?.[0] : undefined;
