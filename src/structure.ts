@@ -946,7 +946,10 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 		commands.forEach((c, k) => {
 			const herestring = c.redirects.find((r) => r.op === "<<<")?.target;
 			if (herestring) out.push({ value: herestring, reader: c });
-			const words = simpleCommand(c.words);
+			// (The echo may come after a line's own prefix, which a shell doesn't run: a workflow's `- run: echo …`, a
+			// Dockerfile's `RUN echo …`.)
+			const all = simpleCommand(c.words);
+			const words = all.slice(Math.max(0, all.findIndex((w) => /^(?:echo|printf)$/.test(programName(w)))));
 			const program = programName(words[0]);
 			if (c.then !== "|" || !/^(?:echo|printf)$/.test(program) || !commands[k + 1]) return;
 			// (A format alone with `%s` in it prints no value. Nor its options: echo's `-n`, printf's `--` before its format.)

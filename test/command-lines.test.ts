@@ -100,6 +100,13 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		"printf '%s' 'qe2sLLGCUeJemSaDuso7oyLTsRv7q478' | podman login -u bob --password-stdin quay.io",
 		"qe2sLLGCUeJemSaDuso7oyLTsRv7q478",
 	);
+	// After a line's own prefix: a workflow's one-line `run:`, a Dockerfile's RUN.
+	for (const line of [
+		"  - run: echo Hx7mQ2pLvRt9 | docker login ghcr.io -u bob --password-stdin",
+		"RUN echo Hx7mQ2pLvRt9 | docker login -u bob --password-stdin",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	kept("RUN echo Hx7mQ2pLvRt9 | wc -c", "Hx7mQ2pLvRt9");
 	for (const [t, v] of [
 		["jdbc:oracle:thin:admin/s3cr3tP4ss@ora.proddb.net:1521:ORCLDB", "s3cr3tP4ss"],
 		["net use Z: \\\\server\\share /user:DOMAIN\\admin P@ssw0rd9", "P@ssw0rd9"],
