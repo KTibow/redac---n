@@ -325,3 +325,51 @@ test("an interpolated string's holes are code, in the value's own string or the 
 	hidden('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "Xk9mQ2pLrT");
 	kept('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "User Id=sa");
 });
+
+test("a call that takes a secret is read in its older and paren-less forms: jjwt's algorithm first, Ruby's basic_auth", () => {
+	for (const line of [
+		'Jwts.builder().setSubject("u").signWith(SignatureAlgorithm.HS512, "Harbor2291xSecret").compact();',
+		'Jwts.builder().signWith("Harbor2291xSecret").compact();',
+		"request.basic_auth 'admin', 'Harbor2291xSecret'",
+		'req.basic_auth "admin", "Harbor2291xSecret"',
+		'HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret")',
+		'client.register(HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret"));',
+	])
+		hidden(line, "Harbor2291xSecret");
+	kept("Jwts.builder().signWith(key, SignatureAlgorithm.HS256).compact();", "SignatureAlgorithm.HS256");
+	kept("request.basic_auth 'admin', password", "password");
+	kept('Feature.basic("standard", "configuration")', "configuration");
+});
+
+test("a command that sets a variable takes its options before the name: setx /M, fish's long options", () => {
+	for (const line of [
+		"setx /M DB_PASSWORD Harbor2291!x",
+		"setx DB_PASSWORD Harbor2291!x /M",
+		"set --export DB_PASSWORD Harbor2291!x",
+		"set -gx --path DB_PASSWORD Harbor2291!x",
+		"set --global --export DB_PASSWORD Harbor2291!x",
+	])
+		hidden(line, "Harbor2291!x");
+	kept("setx /M PATH C:\\tools\\bin", "C:\\tools\\bin");
+	kept("set --export EDITOR vim", "vim");
+});
+
+test("an expression beside a credential's name in HCL is code; a literal there is the value", () => {
+	for (const ref of [
+		"random_password.db.result",
+		"aws_secretsmanager_secret_version.db.secret_string",
+		"var.db_password",
+	])
+		kept(
+			`resource "aws_ssm_parameter" "db" {\n  name  = "db_password"\n  type  = "SecureString"\n  value = ${ref}\n}\n`,
+			ref,
+			{ path: "ssm.tf" },
+		);
+	hidden(
+		'resource "aws_ssm_parameter" "db" {\n  name  = "db_password"\n  type  = "SecureString"\n  value = "Harbor2291!x"\n}\n',
+		"Harbor2291!x",
+		{ path: "ssm.tf" },
+	);
+	hidden("- name: DB_PASSWORD\n  value: Harbor2291x\n", "Harbor2291x");
+	hidden("<input name=password value=Harbor2291x>", "Harbor2291x");
+});

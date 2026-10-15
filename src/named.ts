@@ -2014,18 +2014,27 @@ function pipeTables(text: string, out: Finding[]) {
 			// The name is the column's header, or a credential's name in the cell before, unless the column describes the
 			// value or (with no header) a sentence sits there with more cells after it.
 			const prose = /\s/.test(cell.text) && cells.length > k + 1 && !header;
+			// (Or a label in another language, judged as the word means: `| Contraseña | … |`, `| Usuario | Mot de passe |`.)
+			const credentialName = (n: string) =>
+				isCredentialName(n) ? n : FOREIGN_WORDS.test(n) ? foreignName(n) : undefined;
 			const rowName =
 				before !== undefined &&
-				/^[A-Za-z_][\w.-]{1,80}$/.test(before) &&
-				isCredentialName(before) &&
+				(/^[A-Za-z_][\w.-]{1,80}$/.test(before) || FOREIGN_WORDS.test(before)) &&
 				!describes(column) &&
-				!prose;
-			const name = column && isCredentialName(column) ? column : rowName ? before : undefined;
+				!prose
+					? credentialName(before)
+					: undefined;
+			const name = (column && credentialName(column)) || rowName;
 			// (A bare `key`, `secret` or `token` naming a row of settings is the setting's name, not a cache's or an object's
 			// key: its value is judged as a credential's, `| key | <64 hex> |`. Another generic name keeps a generic
 			// name's judgment: `| auth | <md5 hex> |` is a digest.)
 			const judgedAs = name === before && /^(?:key|secret|token)$/i.test(name ?? "") ? `api_${name}` : name;
 			if (!name || !isNamedSecret(judgedAs!, `"${cell.text}"`, true)) continue;
+			// (Under a label in another language, a word of that language is a form's, `| Contraseña | requerida |`: a value
+			// has a digit or a symbol, as foreignLabels reads one.)
+			const label = column && credentialName(column) ? column : before!;
+			const foreign = !/^password$/i.test(label) && FOREIGN_WORDS.test(label);
+			if (foreign && !/[\d\p{P}\p{S}]/u.test(cell.text)) continue;
 			namedFinding(out, cell.start, cell.end, name, "named:table-cell");
 		}
 	}
@@ -2105,10 +2114,14 @@ const COPULA_LABELS = ["password", ...FOREIGN_PASSWORD_SPELLINGS, "ключ", "�
 /** The scripts a sentence in another language runs on into without a blank: a value ends at one. */
 const CJK_SCRIPTS = String.raw`[\p{sc=Han}\p{sc=Hiragana}\p{sc=Katakana}\p{sc=Hangul}]`;
 
-/** Credential labels in other languages: 密码, パスワード, 비밀번호, пароль, contraseña, mot de passe, Passwort, … */
+/**
+ * Credential labels in other languages: 密码, パスワード, 비밀번호, пароль, contraseña, mot de passe, Passwort, … and the
+ * words that say whose it is, before the label (`root密码`) or after it, up to three (`Mot de passe root :`,
+ * `contraseña de root:`, `пароль от базы:`).
+ */
 // Labels in alphabets written with spaces start a word (`enclave` isn't `clave`); CJK labels follow other characters directly.
 const FOREIGN = new RegExp(
-	String.raw`(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？（）]`, 4, String.raw`[\s"'」，。、；！？（）]|${CJK_SCRIPTS}|$`)}`,
+	String.raw`(?:(?<![\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{N}_])|(?=${CJK_SCRIPTS}))(${[...FOREIGN_PASSWORD_SPELLINGS, ...FOREIGN_KEY_WORDS].join("|")})((?:[ \t]+[\p{L}][\p{L}'-]{0,20}){0,3}?)[ \t]*[:：=][ \t]*["'「]?${unquotedValue(String.raw`[^\s"'」，。、；！？（）]`, 4, String.raw`[\s"'」，。、；！？（）]|${CJK_SCRIPTS}|$`)}`,
 	"dgiu",
 );
 /**
@@ -2151,9 +2164,13 @@ function foreignLabels(text: string, out: Finding[]) {
 	// (The labels' words, or a copula after an English name: what FOREIGN and FOREIGN_COPULA need to match at all.)
 	if (!FOREIGN_PREFILTER.test(text)) return;
 	for (const m of text.matchAll(FOREIGN)) {
-		const value = withoutUnopenedClosers(m[2]);
-		const start = m.indices![2]![0];
+		const value = withoutUnopenedClosers(m[3]);
+		const start = m.indices![3]![0];
+		// (After words that qualify the label, the colon may end a sentence's clause, `Пароль для входа: введите его`: a
+		// value is one with a digit or a symbol, and no link.)
+		const qualified = m[2] !== "";
 		if (
+			(qualified && (!/[\d\p{P}\p{S}]/u.test(value) || /:\/\//.test(value))) ||
 			!isProseValue(value) ||
 			isCode(value, true) ||
 			/^\d+(?:-\d+)?$/.test(value) ||
@@ -2162,15 +2179,19 @@ function foreignLabels(text: string, out: Finding[]) {
 			continue;
 		namedFinding(out, start, start + value.length, foreignName(m[1]), "named:foreign-label", 0.9);
 	}
-	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`.
+	// A key's row in a table labelled in another language: `| REST API 키 | … |`, `| 密钥 | … |`, and with the words that
+	// qualify it after the word for "key", as those languages put them: `| Clé API | … |`, `| Chave de API | … |`,
+	// `| Clé secrète | … |`. (Not a database's keys, `| Clé primaire | id |`.)
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`[│|][ \t]*([^│|\n]{0,40}?(?:키|密钥|秘钥|キー|ключ|clé|schlüssel|chave|clave))[ \t]*[│|][ \t]*([^\s│|]{8,${MAX_VALUE}})[ \t]*[│|]`,
-			"dgi",
+			String.raw`[│|][ \t]*([^│|\n]{0,40}?(?:키|密钥|秘钥|キー|(?<!\p{L})(?:ключ|clé|schlüssel|chave|clave)(?!\p{L}))[^│|\n]{0,30}?)[ \t]*[│|][ \t]*([^\s│|]{8,${MAX_VALUE}})[ \t]*[│|]`,
+			"dgiu",
 		),
 	)) {
 		if (
-			/p[uú]blic|공개|公开|公開|öffentlich|публичн|javascript|js\b|native|네이티브|client/i.test(m[1]) ||
+			/p[uú]bli[cq]|공개|公开|公開|öffentlich|публичн|javascript|js\b|native|네이티브|client|prim[aáä]r|étrang|extranjer|estrangeir|fremd|внешн|первичн/i.test(
+				m[1],
+			) ||
 			!isNamedSecret("api_key", `"${m[2]}"`, true)
 		)
 			continue;
@@ -2245,7 +2266,7 @@ function wrappedValues(text: string, out: Finding[]) {
  * `Dim password As String = "…"` (and `Private Shared …`), T-SQL's `DECLARE @password NVARCHAR(100) = N'…'`, C++'s
  * `std::string password{"…"}` and `auto password = std::string{"…"}`, CMake's `set(DB_PASSWORD "…")`, AppleScript's
  * `set thePassword to "…"`, R's `password <- "…"`; and a name and its value as two words of a command that sets one
- * (`setx DB_PASSWORD …`, fish's `set -gx`, `launchctl setenv`, `npm config set`, `dotnet user-secrets set`, `wp config
+ * (`setx DB_PASSWORD …` and `setx /M …`, fish's `set -gx` and `set --export`, `launchctl setenv`, `npm config set`, `dotnet user-secrets set`, `wp config
  * set`, `aws configure set`, `reg add … /v Password /d …`).
  */
 const DECLARATION_FORMS: [gate: RegExp, form: string][] = [
@@ -2264,7 +2285,7 @@ const DECLARATION_FORMS: [gate: RegExp, form: string][] = [
 	[/<<?-[ \t]*["']/, String.raw`\b(\w+)[ \t]*<<?-[ \t]*(?=["'])`],
 	[
 		/\bset(?:x|env)?\b/i,
-		String.raw`(?:^|[;&|][ \t]*|\$[ \t]+)(?:setx|set(?:[ \t]+-[a-zA-Z]+)+|launchctl[ \t]+setenv|aws[ \t]+configure[ \t]+set|(?:npm|yarn|pnpm|git|wp|dotnet[ \t]+user-secrets|heroku)[ \t]+(?:config[ \t]+)?set)[ \t]+["']?([\w.:/@-]+?)["']?[ \t]+(?=\S)`,
+		String.raw`(?:^|[;&|][ \t]*|\$[ \t]+)(?:setx(?:[ \t]+\/[A-Za-z]+)*|set(?:[ \t]+--?[a-zA-Z][a-zA-Z-]*)+|launchctl[ \t]+setenv|aws[ \t]+configure[ \t]+set|(?:npm|yarn|pnpm|git|wp|dotnet[ \t]+user-secrets|heroku)[ \t]+(?:config[ \t]+)?set)[ \t]+["']?([\w.:/@-]+?)["']?[ \t]+(?=\S)`,
 	],
 	[
 		/\breg(?:\.exe)?[ \t]+add[ \t]/i,
@@ -2286,32 +2307,48 @@ function declarationRegex(text: string): RegExp | undefined {
 	return re;
 }
 /**
- * Calls whose signature takes a secret, with no credential word in the callee: the argument at its place, judged as
- * what it is. Basic auth's password (Go's `req.SetBasicAuth(user, pw)`, Ruby's and Rust's `basic_auth(user, pw)`,
- * OkHttp's `Credentials.basic(user, pw)`, Python's `HTTPBasicAuth(user, pw)`), a JWT's signing secret
- * (`jwt.sign(payload, secret)`, `jwt.encode(payload, key, …)`), an HMAC's key (`hmac.new(key, …)`,
- * `crypto.createHmac("sha256", key)`, `OpenSSL::HMAC.hexdigest("SHA256", key, data)`).
+ * Calls whose signature takes a secret, with no credential word in the callee: the argument at its place (the first
+ * literal of the places listed), judged as what it is. Basic auth's password (Go's `req.SetBasicAuth(user, pw)`, Ruby's
+ * and Rust's `basic_auth(user, pw)`, OkHttp's `Credentials.basic(user, pw)`, Jersey's
+ * `HttpAuthenticationFeature.basic(user, pw)`, Python's `HTTPBasicAuth(user, pw)`), a JWT's signing secret
+ * (`jwt.sign(payload, secret)`, `jwt.encode(payload, key, …)`, jjwt's `signWith(key)` and its older
+ * `signWith(SignatureAlgorithm.HS512, secret)`), an HMAC's key (`hmac.new(key, …)`, `crypto.createHmac("sha256", key)`,
+ * `OpenSSL::HMAC.hexdigest("SHA256", key, data)`).
  */
-const SECRET_ARGUMENTS: [callee: RegExp, key: number, judgedAs: string][] = [
-	[/(?:SetBasicAuth|basic_auth|BasicAuth|HTTPBasicAuth|HttpBasicAuth|Credentials\.basic|basicAuth)$/, 1, "password"],
-	[/\bjwt\.(?:sign|encode|verify|decode)$|\bJWT\.(?:encode|decode)$|\bJwts?\.(?:sign|encode)$/i, 1, "secret_key"],
-	[/\bsignWith$/, 0, "secret_key"],
+const SECRET_ARGUMENTS: [callee: RegExp, places: number[], judgedAs: string][] = [
+	[
+		/(?:SetBasicAuth|basic_auth|BasicAuth|HTTPBasicAuth|HttpBasicAuth|(?:Credentials|[A-Za-z]*Auth[A-Za-z]*)\.basic|basicAuth)$/,
+		[1],
+		"password",
+	],
+	[/\bjwt\.(?:sign|encode|verify|decode)$|\bJWT\.(?:encode|decode)$|\bJwts?\.(?:sign|encode)$/i, [1], "secret_key"],
+	// (jjwt's `signWith(key)`, and before 0.10 `signWith(SignatureAlgorithm.HS512, secret)`: the algorithm first.)
+	[/\bsignWith$/, [0, 1], "secret_key"],
 	// (An HMAC's key: first in Python's `hmac.new(key, msg, sha256)` and `hmac.digest(key, msg, "sha256")`, pycryptodome's
 	// `HMAC.new(key, msg)` and Ruby's `OpenSSL::HMAC.new(key, digest)`; second after the algorithm in `createHmac(alg, key)`
 	// and Ruby's `HMAC.hexdigest(alg, key, data)`.)
-	[/\bhmac\.(?:new|digest|HMAC)$|\bHMAC\.new$/, 0, "secret_key"],
-	[/\bcreateHmac$|\bHMAC\.(?:hexdigest|digest)$/, 1, "secret_key"],
+	[/\bhmac\.(?:new|digest|HMAC)$|\bHMAC\.new$/, [0], "secret_key"],
+	[/\bcreateHmac$|\bHMAC\.(?:hexdigest|digest)$/, [1], "secret_key"],
 ];
 const SECRET_ARGUMENT_CALL =
 	/(?<![\w$])((?:[A-Za-z_$][\w$]*\.){0,3}(?:SetBasicAuth|basic_auth|BasicAuth|HTTPBasicAuth|HttpBasicAuth|basic|basicAuth|sign|signWith|encode|decode|verify|new|createHmac|hexdigest|digest|HMAC))[ \t]*\(/g;
+/** Ruby's call without parentheses, `req.basic_auth 'user', 'pw'`: its two literals, apart by a comma. */
+const BARE_BASIC_AUTH = /(?<![\w$])(?:[A-Za-z_$][\w$]*\.){0,3}basic_auth[ \t]+(?=["'])/g;
 function secretArguments(text: string, out: Finding[]) {
 	if (!/basic|jwt|hmac|signWith/i.test(text)) return;
 	for (const { match, args } of calls(text, SECRET_ARGUMENT_CALL)) {
 		const callee = match[1];
 		const rule = SECRET_ARGUMENTS.find(([pattern]) => pattern.test(callee));
 		if (!rule) continue;
-		const literal = args[rule[1]]?.literal;
+		const literal = rule[1].map((k) => args[k]?.literal).find((l) => l);
 		if (literal) namedValue(out, rule[2], literal, "named:secret-argument", { judgedAs: rule[2] });
+	}
+	if (!text.includes("basic_auth")) return;
+	for (const m of text.matchAll(BARE_BASIC_AUTH)) {
+		const user = literalAt(text, m.index + m[0].length);
+		const comma = user && /^[ \t]*,/.exec(text.slice(user.end + 1, user.end + 40));
+		const password = comma && literalAt(text, user.end + 1 + comma[0].length);
+		if (password) namedValue(out, "password", password, "named:secret-argument");
 	}
 }
 
@@ -2417,18 +2454,21 @@ function userPassProse(text: string, out: Finding[]) {
 	}
 	for (const m of text.matchAll(
 		new RegExp(
-			String.raw`(?<![/\w-])(?:creds?|credentials|login|logins|wifi|wi-fi|account|user\/pass|u\/p)[ \t]{0,3}[:=-]?[ \t]{1,3}[\x60'"]?([\w.@+-]{1,60})[\x60'"]?[ \t]{0,3}\/[ \t]{0,3}[\x60'"]?${unquotedValue(String.raw`[^\s\x60'"/]`, 4, String.raw`[\x60'"]?(?=[.,;!)]*(?:\s|$))`)}[\x60'"]?`,
+			String.raw`(?<![/\w-])(creds?|credentials|login|logins|wifi|wi-fi|account|user\/pass|u\/p)[ \t]{0,3}[:=-]?[ \t]{1,3}[\x60'"]?([\w.@+-]{1,60})[\x60'"]?[ \t]{0,3}\/[ \t]{0,3}[\x60'"]?${unquotedValue(String.raw`[^\s\x60'"/]`, 4, String.raw`[\x60'"]?(?=[.,;!)]*(?:\s|$))`)}[\x60'"]?`,
 			"dgi",
 		),
 	)) {
-		const pw = m[2];
+		const pw = m[3];
 		// (A module path's segment and its version, go.sum's `…/credentials v1.20.6/go.mod`, are no user and password.)
-		if (!isProseValue(pw) || /^\d+$/.test(pw) || /^(?:https?|www)\b/.test(pw) || /^v?\d+(?:\.\d+)+/.test(m[1]))
+		if (!isProseValue(pw) || /^\d+$/.test(pw) || /^(?:https?|www)\b/.test(pw) || /^v?\d+(?:\.\d+)+/.test(m[2]))
 			continue;
 		// `login page / dashboard`, `account settings/billing`: words, not a password. (Read in one case: each break of
 		// `QwZxKvBnMp` would score as a camelCase word's start.)
 		if (/^\p{L}+$/u.test(pw) && naturalness(pw.toLowerCase()) > 0) continue;
-		namedFinding(out, m.indices![2]![0], m.indices![2]![1], "password", "named:prose-pair", 0.85);
+		// An account's or a login's path names an organization's service, `account: acme/payments-api`, `login:
+		// dev/staging-env`; a pair given as credentials or a wifi's may be a passphrase of such words.
+		if (/^(?:account|logins?)$/i.test(m[1]) && /^[a-z]+(?:[-_.][a-z]+)+$/.test(pw)) continue;
+		namedFinding(out, m.indices![3]![0], m.indices![3]![1], "password", "named:prose-pair", 0.85);
 	}
 }
 
@@ -2650,8 +2690,17 @@ function javaProperties(text: string, out: Finding[]) {
 		/(?:^|[\s"'=])-[DP]([A-Za-z_][\w.-]{0,120})=(?:"([^"\n]+)"|'([^'\n]+)'|([^\s"']{1,4096}))/dg,
 	)) {
 		const k = m[2] !== undefined ? 2 : m[3] !== undefined ? 3 : 4;
-		if (isCredentialName(m[1]) && isNamedSecret(m[1], k < 4 ? `"${m[k]}"` : m[k], true))
-			namedFinding(out, m.indices![k]![0], m.indices![k]![1], m[1], "named:java-property");
+		let [start, end] = m.indices![k]!;
+		let value = k < 4 ? `"${m[k]}"` : m[k];
+		// (A bare value is a shell word, read on past an escaped blank or a quote inside it, `-Dp=Zq8vK3\ mT9x`,
+		// `-Dp=ab"cd ef"`, as an environment assignment's is: when the flag starts a word of a command line, not inside a
+		// string, `"-Dp=x","…"`.)
+		if (k === 4 && /^\s?-/.test(m[0]) && /[\\"']/.test(text.slice(end - 1, end + 1))) {
+			const word = shellWordAt(text, start);
+			if (word.end > end) [end, value] = [word.end, `"${word.text}"`];
+		}
+		if (isCredentialName(m[1]) && isNamedSecret(m[1], value, true))
+			namedFinding(out, start, end, m[1], "named:java-property");
 	}
 }
 
@@ -2665,7 +2714,17 @@ function javaProperties(text: string, out: Finding[]) {
  */
 function siblingPairs(text: string, out: Finding[]) {
 	if (!PAIR_VALUE_WORD.test(text)) return;
-	type Attr = { key: string; value: string; start: number; quoted: boolean; line: number; indent: number };
+	// (`literal`: whether a bare value is a literal, as YAML's plain scalars and a tag's `value=x` are, or an expression,
+	// HCL's `value = random_password.db.result`, which names other code and is judged as code is.)
+	type Attr = {
+		key: string;
+		value: string;
+		start: number;
+		quoted: boolean;
+		literal: boolean;
+		line: number;
+		indent: number;
+	};
 	const attrs: Attr[] = [];
 	let line = 0;
 	let lineAt = 0;
@@ -2679,7 +2738,15 @@ function siblingPairs(text: string, out: Finding[]) {
 	yaml.forEach((l, i) => {
 		if (!l.key || !l.value || (!PAIR_NAME.test(l.key) && !PAIR_VALUE.test(l.key))) return;
 		mapping.add(l.start);
-		attrs.push({ key: l.key, value: l.value.value, start: l.value.start, quoted: l.quoted, line: i, indent: l.indent });
+		attrs.push({
+			key: l.key,
+			value: l.value.value,
+			start: l.value.start,
+			quoted: l.quoted,
+			literal: true,
+			line: i,
+			indent: l.indent,
+		});
 	});
 	for (const a of attributes(text)) {
 		if (
@@ -2695,7 +2762,16 @@ function siblingPairs(text: string, out: Finding[]) {
 		}
 		if (indent < 0) for (indent = 0; lineAt + indent < a.start && /[ \t-]/.test(text[lineAt + indent]); indent++);
 		if (lineAt + indent === a.start && mapping.has(lineAt)) continue;
-		attrs.push({ key: a.key, value: a.value.value, start: a.value.start, quoted: a.quoted, line, indent });
+		const expression = a.operator === "=" && !a.quoted && /[ \t]/.test(text[a.value.start - 1]);
+		attrs.push({
+			key: a.key,
+			value: a.value.value,
+			start: a.value.start,
+			quoted: a.quoted,
+			literal: !expression,
+			line,
+			indent,
+		});
 	}
 	attrs.sort((a, b) => a.start - b.start);
 	for (let i = 0; i < attrs.length; i++) {
@@ -2722,7 +2798,7 @@ function siblingPairs(text: string, out: Finding[]) {
 				(second.line > first.line && second.indent < first.indent)
 			)
 				continue;
-			if (!v.value || !isNamedSecret(credential, v.quoted ? `"${v.value}"` : v.value, true)) break;
+			if (!v.value || !isNamedSecret(credential, v.quoted ? `"${v.value}"` : v.value, v.literal)) break;
 			namedFinding(out, v.start, v.start + v.value.length, credential, "named:sibling-pair");
 			break;
 		}
@@ -2993,6 +3069,16 @@ function prose(text: string, out: Finding[]) {
 			if (/^[a-z]+(-[a-z]+)+$/.test(value) || isLabel(value, name) || isSettingOrSelfName(name, value)) continue;
 			// (`pass: 12/12`, `Pass: 98.5%`: a test count.)
 			if (/^pass$/i.test(name) && /^\d+(?:[/.,]\d+)*%?[,;]?$/.test(value)) continue;
+			// (A label in another language with English's `is`, Dutch `wachtwoord is vereist`, goes on in that language: a word
+			// of it with no digit or symbol is the sentence's, as foreignLabels judges one.)
+			if (
+				!m[3] &&
+				/^[ \t]+(?:is|was)\b/.test(m[2]) &&
+				!/^password$/i.test(words.at(-1)!) &&
+				FOREIGN_WORDS.test(words.at(-1)!) &&
+				!/\d|[^\p{L}\p{N}_]/u.test(bare)
+			)
+				continue;
 			const after = text.slice(start + value.length, start + value.length + 40);
 			// (A digit or a symbol makes it one; a letter outside ASCII doesn't: `confirm_password: Potwierdź moje konto`.)
 			// (Or the object around it closes after it, `{user: svc, password: acez}`, and it's no test word or ordinary word.)
