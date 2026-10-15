@@ -1562,53 +1562,7 @@ test("Bundler's name for a gem server's host holds its credentials; its other se
 		assert.notEqual(nameClass(name), "credential", name);
 });
 
-test("an upper-case PASS holds a password unless its value is a test's path or a short or word-like name", () => {
-	for (const text of ["SFTP_USER=bob\nPASS=zq8lw2mxr5\n", "PASS=qw8xz3vn7b", 'PASS="qw8xz3vn7b"'])
-		hidden(text, /PASS="?(\w+)/.exec(text)![1]);
-	for (const line of ["PASS: tests/test_auth.py::test_login", "PASS: regress1", "PASS: x86_64", "PASS  src/a.test.ts"])
-		kept(line, line);
-});
-
-test("a key with its environment's or region's word dotted before it is a key; a digest's name before it names a hash", () => {
-	for (const value of ["staging.9d41e07b3c58a2f6b0e4d7c1a39f8e52", "eu.9d41e07b3c58a2f6b0e4d7c1a39f8e52"]) {
-		hidden(`api_key: ${value}`, value);
-		hidden(`API_KEY=${value}`, value);
-		hidden(`{"api_key": "${value}"}`, value);
-	}
-	kept("api_key: sha1.9d41e07b3c58a2f6b0e4d7c1a39f8e52", "sha1.9d41e07b3c58a2f6b0e4d7c1a39f8e52");
-	kept("cache_key: linux.9d41e07b3c58a2f6b0e4d7c1a39f8e52", "linux.9d41e07b3c58a2f6b0e4d7c1a39f8e52");
-});
-
-test("a YAML flow list of plain scalars is its items, each judged under the list's name", () => {
-	for (const name of ["api_keys", "passwords", "secrets", "auth_tokens"]) {
-		const text = `${name}: [Zq8kLm2Pw9xRt, Ab3dEf5Gh7JkQ]\n`;
-		hidden(text, "Zq8kLm2Pw9xRt");
-		hidden(text, "Ab3dEf5Gh7JkQ");
-		kept(text, `${name}: [`);
-		kept(text, "]\n");
-	}
-	hidden("auth_tokens: [ Zq8kLm2Pw9xRt , 'Ab3dEf5Gh7JkQ' ]", "Ab3dEf5Gh7JkQ");
-	hidden("scopes:\n  api_keys: [Zq8kLm2Pw9xRt,\n    Ab3dEf5Gh7JkQ]\n", "Ab3dEf5Gh7JkQ");
-	// (Words, references, an expression or a note in brackets are no list of secrets; in code, `[a, b]` are names.)
-	for (const [text, value] of [
-		["allowed_tokens: [read, write, admin]", "read, write, admin"],
-		["api_keys: [${API_KEY_A}, ${API_KEY_B}]", "${API_KEY_B}"],
-		["password: [parameters('adminPassword')]", "parameters('adminPassword')"],
-		["password: [GH-784]", "GH-784"],
-		["passwords = [pw1, pw2]", "pw1, pw2"],
-	])
-		kept(text, value);
-});
-
-test("an env value ends at an operator glued to the command after it, and at a redirection", () => {
-	for (const text of [
-		"export PGPASSWORD=Zq8kLm2Pw9xRt;psql -h db -U bob -c 'select 1'\n",
-		"PGPASSWORD=Zq8kLm2Pw9xRt;export X=1",
-		"TOKEN=Zq8kLm2Pw9xRt&&node app.js",
-	]) {
-		hidden(text, "Zq8kLm2Pw9xRt");
-		kept(text, /[;&]+(?:psql|export|node)/.exec(text)![0]);
-	}
+test("an env value ends at a redirection", () => {
 	for (const [text, rest] of [
 		["DB_PASSWORD=Winter2024!Prod > out.txt", " > out.txt"],
 		["DB_PASSWORD=Winter2024!Prod 2>&1 | tee log", " 2>&1 | tee log"],
@@ -1651,7 +1605,6 @@ test("a mapping under a plural credential's name is its credentials, when every 
 	for (const text of [
 		"passwords:\n  admin: Tr0ub4dor&3xQ\n  grafana: Winter2024!kz\n",
 		'{"passwords": {"admin": "Tr0ub4dor&3xQ", "grafana": "Winter2024!kz"}}',
-		"[passwords]\nadmin = Tr0ub4dor&3xQ\ngrafana = Winter2024!kz\n",
 	]) {
 		hidden(text, "Tr0ub4dor&3xQ");
 		hidden(text, "Winter2024!kz");

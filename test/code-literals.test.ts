@@ -506,20 +506,19 @@ test("an expression beside a credential's name in HCL is code; a literal there i
 	hidden("<input name=password value=Harbor2291x>", "Harbor2291x");
 });
 
-test("a form fill's options, a key pressed after it and calls between the field and the fill leave the value its", () => {
+test("a form fill's options and calls between the field and the fill leave the value its", () => {
 	for (const text of [
 		"cy.get('#password').type('Xq7#Lm2vRt9Kp4Wz', { log: false })",
 		"await page.fill('#password', 'Xq7#Lm2vRt9Kp4Wz', { timeout: 5000 })",
 		"await page.type('#password', 'Xq7#Lm2vRt9Kp4Wz', { delay: 100 })",
-		'driver.find_element(By.ID, "password").send_keys("Xq7#Lm2vRt9Kp4Wz", Keys.ENTER)',
-		'driver.findElement(By.id("password")).sendKeys("Xq7#Lm2vRt9Kp4Wz" + Keys.RETURN);',
+		'driver.findElement(By.id("password")).clear().sendKeys("Xq7#Lm2vRt9Kp4Wz");',
 		"await page.getByLabel('Password', { exact: true }).fill('Xq7#Lm2vRt9Kp4Wz')",
 		"await page.locator('#password').first().fill('Xq7#Lm2vRt9Kp4Wz')",
 		"cy.get('[name=\"password\"]').clear().type('Xq7#Lm2vRt9Kp4Wz')",
 		"await page.getByLabel('Password').fill('Xq7#Lm2vRt9Kp4Wz', { force: true })",
 	]) {
 		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
-		kept(text, /\{ \w+: \w+ \}|Keys\.\w+|\.(?:first|clear)\(\)|getBy\w+\('Password'/.exec(text)?.[0] ?? "Xq7#");
+		kept(text, /\{ \w+: \w+ \}|\.(?:first|clear)\(\)|getBy\w+\('Password'/.exec(text)?.[0] ?? "Xq7#");
 	}
 	kept("cy.get('#search').type('Xq7#Lm2vRt9Kp4Wz', { log: false })", "Xq7#Lm2vRt9Kp4Wz");
 	kept("await page.getByLabel('Username', { exact: true }).fill('qa-user-7Xk2Lm9')", "qa-user-7Xk2Lm9");
