@@ -1257,6 +1257,11 @@ const PASSWORD_HASHES: [format: string, whole: string][] = [
 		"LDAP",
 		String.raw`\{(?:SSHA\d*|SHA\d*|MD5|SMD5)\}${B64}{16,}={0,2}|\{PBKDF2(?:-SHA\d+)?\}\d+\$${C}+\$${C}{16,}|\{(?:CRYPT|ARGON2|BCRYPT)\}(?:${CRYPT_HASH})`,
 	],
+	// Spring Security's DelegatingPasswordEncoder names the encoder first, `{bcrypt}$2a$10$…`, `{argon2}$argon2id$…`
+	// (not `{noop}`, the password itself); Werkzeug's, its method and parameters, `scrypt:32768:8:1$<salt>$<hex>`,
+	// `pbkdf2:sha256:600000$<salt>$<hex>`.
+	["Spring Security", String.raw`\{(?:bcrypt|argon2)\}(?:${CRYPT_HASH})`],
+	["Werkzeug", String.raw`(?:scrypt:\d+:\d+:\d+|pbkdf2:sha\d+(?::\d+)?)\$[A-Za-z0-9]{1,64}\$[0-9a-f]{40,128}`],
 ];
 const HASH_WHOLE = new RegExp(`^(?:${PASSWORD_HASHES.map(([, whole]) => whole).join("|")})$`);
 
