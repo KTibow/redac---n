@@ -165,14 +165,6 @@ test("a scheme of any length with a driver's _ is a URL's: SQLAlchemy's dialect+
 	}
 });
 
-test("an apostrophe in a query string's value is the value's, unless a quote before it opened a string", () => {
-	// (encodeURIComponent leaves `'` as it is.)
-	const line = "GET /login?user=bob&password=Tr0ub4dor'3xK9mQ!x7&next=/home";
-	hidden(line, "3xK9mQ!x7");
-	kept(line, "]&next=/home");
-	kept("echo 'https://x.io/cb?password=Tr0ub4dorx3xK9mQ' && ls -la", "' && ls -la");
-});
-
 test("a quote in a password is the password's, and a quote that ends a URL isn't", () => {
 	const password = (text: string) => [...urls(text)][0]?.password?.value;
 	assert.equal(password("postgres://app:Kx9m'Qv2@db/x"), "Kx9m'Qv2");

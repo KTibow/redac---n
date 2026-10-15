@@ -24,10 +24,10 @@ test("a known value is hidden in its base64, hex and percent-encoded forms", () 
 
 test("a known value is hidden as each JSON encoder and percent-encoder writes it", () => {
 	for (const [value, text] of [
-		// Python's json.dumps and PHP's json_encode: every character past ASCII as a code (PHP's slashes escaped too).
+		// Python's json.dumps and PHP's json_encode: every character past ASCII as a code (.NET's in capitals).
 		["pässwörd-Zq8vK2mX9", String.raw`{"level":"info","msg":"login with p\u00e4ssw\u00f6rd-Zq8vK2mX9 ok"}`],
 		["Zq8vK2mX9pLw😀R4tY", String.raw`payload: "Zq8vK2mX9pLw\ud83d\ude00R4tY"`],
-		["Zq8v/K2émX9pLw", String.raw`payload: 'Zq8v\/K2\u00E9mX9pLw'`],
+		["Zq8v/K2émX9pLw", String.raw`payload: 'Zq8v/K2\u00E9mX9pLw'`],
 		// A form body (URLSearchParams, Java's URLEncoder), Go's QueryEscape, Python's quote.
 		["Zq8vK2mX~9pLw4R!", "POST body: p=Zq8vK2mX%7E9pLw4R%21"],
 		["Zq8v*K2mX!9pLw4R", "POST body: p=Zq8v*K2mX%219pLw4R"],

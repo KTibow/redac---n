@@ -46,17 +46,6 @@ function base64Shifts(value: string): string[] {
 	return out;
 }
 
-/** `value` percent-encoded byte by byte (UTF-8), but for the characters `keep` matches and a space, written `space`. */
-function percentEncoded(value: string, keep: RegExp, space: string): string {
-	let out = "";
-	for (const c of value) {
-		if (c === " ") out += space;
-		else if (keep.test(c)) out += c;
-		else for (const b of new TextEncoder().encode(c)) out += `%${b.toString(16).toUpperCase().padStart(2, "0")}`;
-	}
-	return out;
-}
-
 /** The forms a known value takes in output, besides itself. */
 function variants(value: string): string[] {
 	const out = new Set([value]);
@@ -65,28 +54,25 @@ function variants(value: string): string[] {
 	out.add(json.replace(/\//g, "\\/"));
 	out.add(json.replace(/[&<>']/g, (c) => `\\u00${c.charCodeAt(0).toString(16).padStart(2, "0")}`));
 	out.add(JSON.stringify(json).slice(1, -1)); // twice-escaped: JSON inside a JSON string
-	// Every character past ASCII as a code, as Python's json.dumps and PHP's json_encode write it (PHP's with `\/`).
-	if (/[^\x00-\x7f]/.test(json)) {
-		for (const hex of [(c: string) => c, (c: string) => c.toUpperCase()]) {
-			const ascii = json.replace(/[^\x00-\x7f]/g, (c) => `\\u${hex(c.charCodeAt(0).toString(16).padStart(4, "0"))}`);
-			out.add(ascii);
-			out.add(ascii.replace(/\//g, "\\/"));
-		}
-	}
+	// Every character past ASCII as a code, as Python's json.dumps and PHP's json_encode (with `\/`) write it, and .NET's
+	// in capitals.
+	const ascii = json.replace(/[^\x00-\x7f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+	out.add(ascii);
+	out.add(ascii.replace(/\//g, "\\/"));
+	out.add(ascii.replace(/\\u[0-9a-f]{4}/g, (m) => `\\u${m.slice(2).toUpperCase()}`));
 	let uri = value;
 	try {
 		uri = encodeURIComponent(value);
 	} catch {} // lone surrogates
 	out.add(uri);
-	out.add(uri.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`).replace(/%20/g, "+"));
+	// RFC 3986's unreserved characters only (Go's QueryEscape, Python's quote_plus with `+`, quote, which also leaves `/`),
+	// and a form body's (URLSearchParams, Java's URLEncoder: `*` left, `~` escaped, a space as `+`).
+	const strict = uri.replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+	out.add(strict);
+	out.add(strict.replace(/%20/g, "+"));
+	out.add(strict.replace(/%2F/g, "/"));
+	out.add(strict.replace(/%2A/g, "*").replace(/~/g, "%7E").replace(/%20/g, "+"));
 	out.add(uri.toLowerCase() === uri ? uri : uri.replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase()));
-	// The other percent-encoders, by the characters they leave as they are: a form body's (URLSearchParams, Java's
-	// URLEncoder: `*`, a space as `+`), RFC 3986's unreserved ones (Go's QueryEscape, Python's quote_plus: `~`), and
-	// Python's quote, which also leaves `/`.
-	out.add(percentEncoded(value, /[\w*.-]/, "+"));
-	out.add(percentEncoded(value, /[\w.~-]/, "+"));
-	out.add(percentEncoded(value, /[\w.~-]/, "%20"));
-	out.add(percentEncoded(value, /[\w.~/-]/, "%20"));
 	out.add(value.replace(/([^\w\-.,:/@+=%])/g, "\\$1")); // printf %q
 	out.add(value.replace(/(["\\$`])/g, "\\$1")); // inside double quotes
 	out.add(value.replace(/'/g, "'\\''")); // inside single quotes

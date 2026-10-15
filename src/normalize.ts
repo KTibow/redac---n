@@ -457,16 +457,13 @@ function unspell(text: string): Normalized {
 		// A line continuation: the backslash and newline vanish, joining the lines as a shell, a C macro or a string
 		// does (`--password \`, `TOKEN=AbCd\` then `EfGh`). Not a Windows path's last backslash (`DATA_DIR=C:\data\`,
 		// `C:\Program Files\App\`, `\\server\share\`, `%ProgramData%\app\`: a word with another backslash in it), nor a
-		// Markdown hard break (`**Host:** db\` then `**Password:** …`): a line that begins with no token there. Nor a
-		// setting's line before another's, `NAME=…` on both (a .env's value ending in a backslash).
+		// Markdown hard break (`**Host:** db\` then `**Password:** …`): a line that begins with no token there.
 		if (c === 92 && (text[i + 1] === "\n" || (text[i + 1] === "\r" && text[i + 2] === "\n"))) {
 			const next = text[i + 1] === "\r" ? i + 3 : i + 2;
 			const line = text.slice(lineStart(text, i), i);
-			const windowsPath = /(?:^|[\s=:"'])[A-Za-z]:\\[^\s]*$|\\[^\s]*$/.test(line);
+			const windowsPath = /\\\S*$/.test(line);
 			const hardBreak = !/[ \t]$/.test(line) && !/^[\w"'$\s-]/.test(text[next] ?? "");
-			const assignment = /^(?:export[ \t]+)?[A-Za-z_][\w.]*=/;
-			const setting = assignment.test(line) && assignment.test(text.slice(next, next + 80));
-			if (!windowsPath && !hardBreak && !setting) {
+			if (!windowsPath && !hardBreak) {
 				w.separate();
 				i = next;
 				continue;

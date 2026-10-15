@@ -607,7 +607,7 @@ function readsAsValue(line: string): boolean {
  * Whether a line is a JSON document whole: an object, an array, or a string that holds one (output encoded once more,
  * `--query SecretString`'s `"{\"password\": …}"`). A string that holds anything else is a value (jsonString).
  */
-function isJsonDocument(line: string): boolean {
+export function isJsonDocument(line: string): boolean {
 	if (!/^(?:[{[].*[}\]]|".*")$/.test(line)) return false;
 	try {
 		const v = JSON.parse(line);
