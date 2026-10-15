@@ -374,12 +374,15 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 			(/\s/.test(value) || /^[A-Z]{2,}$/.test(value) || /^\d+(?:[/.,]\d+)*%?$/.test(value))
 		)
 			return false;
-		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`.
+		// A test runner's status, not a password: `PASS: tests/test_auth.py::test_login`, `PASS  src/a.test.ts`, a
+		// test's short or word-like name (`PASS: regress1`, `PASS: x86_64`). Random letters and digits of eight or more
+		// are an env file's password (`PASS=zq8lw2mxr5`), as under any other spelling of the name.
 		if (
 			/^PASS(?:ED)?$/.test(name) &&
 			/^[\w./:\[\]-]+$/.test(value) &&
 			(/test|spec|::|\/[\w-]+\.\w{1,4}$/i.test(value) ||
-				!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)))
+				(!(/[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)) &&
+					(value.length < 8 || naturalness(value) > -0.5)))
 		)
 			return false;
 		// A compound adjective about the password, not one: a sentence's word among its parts (isSentenceWord: `write-only`,
@@ -826,6 +829,37 @@ function keyColumnOf(column: string, columns: readonly string[]): number {
 
 /** An INI or TOML section header line: `[database]`, `[profile "prod"]`. */
 const INI_SECTION = /(?:^|\n)[ \t]*\[[\w. "'-]{1,80}\][ \t]*\r?(?=\n)/g;
+
+/** A config file's line: `host = db.internal`, `port = 5432`, a value with no quote, bracket or `;` of code's. */
+const CONFIG_PAIR = /^[ \t]*[A-Za-z_][\w.-]{0,60}[ \t]*=[ \t]*[^\s"'`([{;][^"'`()[\]{};]*\r?$/;
+
+/**
+ * Whether the line at `lineStart` is in a config file with no `[section]` (a `.conf`, a `.properties`): the lines
+ * around it, up to a blank line, are `name = value` pairs, one at least besides it, and none holds code (a quote, a
+ * bracket, a `;`, a keyword). Its value is then a literal, brackets and all: `password = Winter(2025)!!`.
+ */
+function isConfigBlock(text: string, lineStart: number): boolean {
+	const around: string[] = [];
+	for (let at = lineStart, n = 0; at > 0 && n < 6; n++) {
+		const start = lineStartAt(text, at - 1);
+		const line = text.slice(start, at - 1);
+		if (!line.trim()) break;
+		around.push(line);
+		at = start;
+	}
+	for (let at = lineEndAt(text, lineStart) + 1, n = 0; at < text.length && n < 6; n++) {
+		const line = text.slice(at, lineEndAt(text, at));
+		if (!line.trim()) break;
+		around.push(line);
+		at += line.length + 1;
+	}
+	// (Comments are the file's own.)
+	around.splice(0, around.length, ...around.filter((l) => !/^[ \t]*[#;]/.test(l)));
+	return (
+		around.some((l) => CONFIG_PAIR.test(l)) &&
+		around.every((l) => CONFIG_PAIR.test(l) && !/^[ \t]*(?:export|const|let|var|my|local|set)\b/.test(l))
+	);
+}
 /** A flag that sets an environment variable or a property, before `NAME=value`: `-e`, `--env`, `--build-arg`, `-D`, `--set`. */
 const ENV_FLAG = /(?:^|\s)(?:-e|--env|--build-arg|-D|--set|--set-string|--var|-var|env)[ \t]+["']?$/;
 
@@ -948,7 +982,7 @@ function assignments(text: string, out: Finding[]) {
 			!sigil &&
 			/^[ \t]*$/.test(before) &&
 			!/^[A-Za-z_][\w.]*\((?![ \t]*-?\d+[ \t]*\))[^()\n]*\)[ \t]*\r?$/.test(text.slice(at, lineEndAt(text, at))) &&
-			underSection(m.index);
+			(underSection(m.index) || isConfigBlock(text, lineStart));
 		// `key: # a comment`: YAML has no value there.
 		if (yamlLine && text[at] === "#") continue;
 		const wholeLine = (envLine || yamlLine || iniLine) && unquoted;

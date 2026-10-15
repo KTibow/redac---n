@@ -963,7 +963,7 @@ const PASSWORD_WORDS = new Set([
 /**
  * Whether a name's word names a password: "password" in any language, or one glued to the word before it (`PGPASSWORD`,
  * `adminpasswd`, `DBPASSCODE`); the short `PASS`, `PWD`, `PW` and Redis's `AUTH` glued only after what they belong to
- * (`REDISPASS`, `ROOTPWD`, `rootpw`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
+ * (`REDISPASS`, `JKSPASS`, `ROOTPWD`, `rootpw`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
  */
 function isPasswordWord(word: string): boolean {
 	if (PASSWORD_WORDS.has(word)) return true;
@@ -1176,11 +1176,80 @@ const PASSWORD_OWNERS = new Set([
 ]);
 
 /**
+ * Words `PASS` ends glued to them that are no password's owner: English words (`bypass`, `compass`, `overpass`,
+ * `trespass`), filters (`lowpass`, `bandpass`), a renderer's or a compiler's passes (`subpass`, `renderpass`,
+ * `multipass`, `numpass`), and passes that admit a person (`daypass`, `boardingpass`) or products (`KeePass`, `LastPass`,
+ * `gopass`, `NordPass`).
+ */
+const NOT_PASSWORD_OWNERS = new Set([
+	"BY",
+	"COM",
+	"ENCOM",
+	"OVER",
+	"UNDER",
+	"TRES",
+	"SUR",
+	"RE",
+	"PRE",
+	"OUT",
+	"MIS",
+	"LOW",
+	"HIGH",
+	"BAND",
+	"ALL",
+	"NOTCH",
+	"SUB",
+	"MULTI",
+	"SINGLE",
+	"FIRST",
+	"SECOND",
+	"THIRD",
+	"FINAL",
+	"LAST",
+	"NEXT",
+	"PREV",
+	"ONE",
+	"TWO",
+	"DOUBLE",
+	"NUM",
+	"MAX",
+	"MIN",
+	"RENDER",
+	"DEPTH",
+	"SHADOW",
+	"LIGHT",
+	"BLUR",
+	"DRAW",
+	"BOARDING",
+	"SEASON",
+	"BATTLE",
+	"HALL",
+	"DAY",
+	"BUS",
+	"RAIL",
+	"SKI",
+	"FAST",
+	"EASY",
+	"EZ",
+	"BACKSTAGE",
+	"KEE",
+	"GO",
+	"NORD",
+	"EN",
+	"PROTON",
+	"NO",
+]);
+
+/**
  * Whether `PASS`, `PWD`, `PW` or `AUTH` glued after `head` names a password or an auth string: after what it belongs to
- * (PASSWORD_OWNERS, a vendor's name). (Not `PW` after a letter, as base64 ends, `…GS+xpw==`.)
+ * (PASSWORD_OWNERS, a vendor's name); `PASS`, the commonest, after any other word that's no part of another
+ * (NOT_PASSWORD_OWNERS): `JKSPASS`, `vpnpass`, `kafkapass`, `p12pass`. (Not after a letter or a number alone: `npass`,
+ * `2pass`; nor `PW` after a letter, as base64 ends, `…GS+xpw==`.)
  */
 function ownsGlued(head: string, suffix: string): boolean {
-	return (suffix !== "PW" || head.length > 1) && (PASSWORD_OWNERS.has(head) || isVendorName(head));
+	if (suffix === "PW" && head.length < 2) return false;
+	if (PASSWORD_OWNERS.has(head) || isVendorName(head)) return true;
+	return suffix === "PASS" && /^[A-Z][A-Z0-9]+$/.test(head) && !NOT_PASSWORD_OWNERS.has(head);
 }
 
 /**

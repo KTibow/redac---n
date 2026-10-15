@@ -125,6 +125,22 @@ function otherPrivateKeys(text: string, out: Finding[]) {
 			out.push({ start, end, kind: "private key", rule: "structure:jwk", confidence: 0.95 });
 		}
 	}
+	// The same members in YAML (a Helm values file's `jwks:` list), unquoted, in a mapping that has a `kty`.
+	if (/^[ \t]*(?:-[ \t]+)?kty:/m.test(text)) {
+		const lines = yamlLines(text);
+		lines.forEach((l, i) => {
+			const v = l.value?.value ?? "";
+			if (!l.key || !/^(?:d|p|q|dp|dq|qi|k)$/.test(l.key) || !/^[A-Za-z0-9_-]{16,}$/.test(v) || isWordsValue(v)) return;
+			if (siblingValue(lines, i, "kty") === undefined) return;
+			out.push({
+				start: l.value!.start,
+				end: l.value!.end,
+				kind: "private key",
+				rule: "structure:jwk",
+				confidence: 0.95,
+			});
+		});
+	}
 }
 
 /** A name in docs' brackets: `<password>`, `[YOUR_PASSWORD]`, `{db pass}`; not a password left in them, `<Harbor2291x>`. */

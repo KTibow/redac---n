@@ -1291,11 +1291,17 @@ test("a password's word written as two words, or glued after what it belongs to,
 		"ClearTextPassword=Hunter2hunter2!x",
 		"clear_text_password: Hunter2hunter2!x",
 		"PlainTextPassword=Hunter2hunter2!x",
+		"export JKSPASS='Hunter2hunter2!x'",
+		"vpnpass=Hunter2hunter2!x",
+		"kafkapass: Hunter2hunter2!x",
+		"P12PASS=Hunter2hunter2!x",
 		"adminpw: Hunter2hunter2!x",
 		"userpw=Hunter2hunter2!x",
 		"DBPW=Hunter2hunter2!x",
 	])
 		hidden(text, "Hunter2hunter2!x");
+	// (CredData: a hex password under a glued PASS.)
+	hidden("Ctrl.hexpass = hexpass:88476859103f8069", "88476859103f8069", { path: "test/x.txt" });
 	// slapd.conf's and nslcd.conf's directives.
 	hidden('database bdb\nrootdn "cn=Manager,dc=example,dc=com"\nrootpw Hx7mQ2pL9vRt\n', "Hx7mQ2pL9vRt", {
 		command: "cat /etc/openldap/slapd.conf",
@@ -1510,6 +1516,16 @@ test("Bundler's name for a gem server's host holds its credentials; its other se
 		assert.notEqual(nameClass(name), "credential", name);
 });
 
+test("an upper-case PASS holds a password unless its value is a test's path or a short or word-like name", () => {
+	for (const text of ["SFTP_USER=bob\nPASS=zq8lw2mxr5\n", "PASS=qw8xz3vn7b", 'PASS="qw8xz3vn7b"'])
+		hidden(text, /PASS="?(\w+)/.exec(text)![1]);
+	hidden("$ msfvenom -p windows/adduser USER=backdoor PASS=ujyadfys759 -f msi -o evil.msi", "ujyadfys759", {
+		path: "r.md",
+	});
+	for (const line of ["PASS: tests/test_auth.py::test_login", "PASS: regress1", "PASS: x86_64", "PASS  src/a.test.ts"])
+		kept(line, line);
+});
+
 test("an env value ends at a redirection", () => {
 	for (const [text, rest] of [
 		["DB_PASSWORD=Winter2024!Prod > out.txt", " > out.txt"],
@@ -1616,6 +1632,25 @@ test("a release, a VCS revision, a reference and an organization are named as ID
 	kept("LANGFUSE_RELEASE=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env.observability" });
 	kept("BUILD_VCS_NUMBER=0e38f1d46da738d2c1f329127d8f93f3fab0e2c2\n", "0e38f1d4", { command: "set" });
 	hidden("RELEASE_TOKEN=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env" });
+});
+
+test("a config file's `key = value` lines with no section are literals, brackets and all", () => {
+	for (const v of ["Winter(2025)!!", "Summer[2024]x", "Rt5{Yu8}Io3", "Kj8;Hd3Lp9", "Qw3<Er5Ty9"]) {
+		hidden(`host = db.internal\nport = 5432\npassword = ${v}\n`, v);
+		hidden(`# db\nhost = db.internal\nuser = app\npassword = ${v}\n`, v, { command: "cat db.conf" });
+	}
+	// (CredData: lower-case passwords in a .properties file and in a sectionless block.)
+	hidden("ldap.url = ldap://x\nldap.password = gvlrxankq\nldap.base = dc=x", "gvlrxankq", {
+		path: "conf/security/a.properties",
+	});
+	hidden("datastore.user = app\ndatastore.password = rflmnnph\n", "rflmnnph", { path: "_/a.sh" });
+	// (Code's lines around it make it code: a call, a subscript, a keyword.)
+	for (const text of [
+		'host = os.environ["HOST"]\nport = 5432\npassword = get_password(user)\n',
+		"host = db.internal\nport = 5432\npassword = get_password(user)\n",
+		"const host = cfg.host\npassword = load(cfg)\n",
+	])
+		kept(text, text.match(/password = (.*)\n/)![1]);
 });
 
 test("a key and value table's row names its value by its key cell", () => {
