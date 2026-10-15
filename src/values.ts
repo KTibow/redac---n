@@ -1766,11 +1766,12 @@ export const COMMON_WORDS = new Set([
 
 /**
  * "Password" in another language, as a form's label (i18n files, string resources): `wachtwoord`, `mot de passe
- * actuel`, run together or plural (`Motdepasse`, `Passwörter`, `Contraseñas`), with a note in words after it
+ * actuel`, run together or plural (`Motdepasse`, `Passwörter`, `Contraseñas`), with a word or two around it
+ * (`Ubah kata sandi`, "change password"; `Kata sandi inisialisasi admin`) or a note in words after it
  * (`Phrase de passe (facultative)`, `Contraseña (opcional)`).
  */
 const PASSWORD_LABEL = new RegExp(
-	String.raw`^(?:${FOREIGN_PASSWORD_SPELLINGS.map((s) => s.replace(/ /g, "\\s*")).join("|")})(?:s|es|er|en|e)?(?:\s+\p{L}+)?(?:\s*\([\p{L} ,.'’/-]{1,30}\))?\*?$`,
+	String.raw`^(?:\p{L}+\s+){0,2}(?:${FOREIGN_PASSWORD_SPELLINGS.map((s) => s.replace(/ /g, "\\s*")).join("|")})(?:s|es|er|en|e)?(?:\s+\p{L}+){0,2}(?:\s*\([\p{L} ,.'’/-]{1,30}\))?\*?$`,
 	"iu",
 );
 const isPasswordLabel = (value: string) => PASSWORD_LABEL.test(value);

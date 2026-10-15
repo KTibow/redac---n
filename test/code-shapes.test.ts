@@ -203,6 +203,21 @@ test("labels in other scripts and locales are not passwords", () => {
 	kept("sk: Slovensky", "Slovensky");
 });
 
+test("a translation of the word password, with a word or two around it, is a label in Latin script too", () => {
+	for (const [line, label] of [
+		['    "Password" : "Fjalëkalim",', "Fjalëkalim"],
+		['    "Password" : "Salasõna",', "Salasõna"],
+		['    "Password" : "Nenosiri",', "Nenosiri"],
+		['    "Password" : "Zaporka",', "Zaporka"],
+		['    "Recovery key password" : "Endurheimtulykilorð",', "Endurheimtulykilorð"],
+		['  "adminInitPassword": "Kata sandi inisialisasi admin",', "Kata sandi inisialisasi admin"],
+		['  "changePassword": "Ubah kata sandi",', "Ubah kata sandi"],
+	])
+		kept(line, label);
+	hidden('    "Password" : "Zaporka2024!",', "Zaporka2024!");
+	hidden('  "adminInitPassword": "Kx9mQ2vLp7",', "Kx9mQ2vLp7");
+});
+
 test("a declaration's type is no value, nor a generic type in an interface, but a bare name there is", () => {
 	for (const line of ["val passwordData: PasswordData?,", "privateKey: Uint8Array;"])
 		kept(line, line.replace(/^.*: /, "").replace(/[?,;]+$/, ""));
