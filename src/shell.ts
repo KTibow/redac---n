@@ -87,9 +87,11 @@ export interface Heredoc {
 export interface ShellGroup {
 	kind: string;
 	redirects: ShellRedirect[];
+	/** The operator after the group: `|` pipes what every command in it prints (`{ cat .env; echo; } | sha256sum`). */
+	then?: ShellOperator;
 }
 
-type ShellOperator = "|" | "|&" | "||" | "&&" | ";" | "&" | "\n" | "";
+export type ShellOperator = "|" | "|&" | "||" | "&&" | ";" | "&" | "\n" | "";
 
 export interface ShellCommand {
 	/** The command as written, and where it starts and ends (offset added). */
@@ -462,6 +464,7 @@ export function shellCommands(
 		if (closed && !words.length) {
 			// The redirections and the operator after a group's closer are the group's.
 			closed.group.redirects.push(...redirects);
+			closed.group.then = then;
 			const last = out.at(-1);
 			if (last && out.length > closed.from) last.then = then;
 		} else if (words.length || redirects.length) {
@@ -667,11 +670,14 @@ export function shellLine(argv: string[]): string {
 }
 
 /**
- * A terminal prompt at the start of a line, before a command: a shell's `$ `, `user@host:~$ `, PowerShell's
- * `PS C:\> `, a notebook's `In [3]: !` or a cell's bare `!` before a command. Group 1 is the command.
+ * A terminal prompt at the start of a line, before a command. Group 1 is the command. A POSIX shell's, after a
+ * virtualenv's or conda's `(venv) `: `$ `, `user@host:~/app$ `, `root@3f2a9c1d:/app# `, RHEL's `[ec2-user@ip-10-0-1-5
+ * app]$ `, macOS zsh's `user@host app % `, a bare shell's `bash-5.1$ ` and `sh-4.2# `, busybox's `/app # `. PowerShell's
+ * `PS C:\> ` and `PS> `, cmd's `C:\app>` (no blank after it), a notebook's `In [3]: !` or a cell's bare `!` before a
+ * command. (Not root's bare `# `: a comment or a Markdown heading is written so.)
  */
 export const PROMPT =
-	/^[ \t]*(?:\$ |In \[\d*\]:[ \t]*!|PS [^>\n]{0,200}> |[\w.-]+@[\w.-]+:[^\n$#]{0,200}[$#] |!(?=[a-z]))[ \t]*(\S[^\n]{0,2000})/;
+	/^[ \t]*(?:(?:\([\w.-]{1,40}\)[ \t]+)?(?:\$ |[\w.-]+@[\w.-]+:[^\n$#]{0,200}[$#] |\[[\w.-]+@[\w.-]+(?:[ \t][^\]\n]{0,200})?\][$#] |[\w.-]+@[\w.-]+[ \t]\S{1,200}[ \t][%$#] |[a-z]+-\d+(?:\.\d+)*[$#] |[~/][\w./~-]{0,200}[ \t]#[ \t])|In \[\d*\]:[ \t]*!|PS(?: [^>\n]{0,200})?> |[A-Za-z]:\\[^<>|"\n]{0,200}>|!(?=[a-z]))[ \t]*(\S[^\n]{0,2000})/;
 
 /** Words before a simple command's own (`!` negates it); `then`, `do`, `else` open a group's commands. */
 const RESERVED = new Set(["!", "if", "then", "else", "elif", "do", "while", "until"]);
@@ -713,10 +719,37 @@ export function isWrapper(word: string): boolean {
 	return WRAPPERS.has(word);
 }
 
-/** A program's name without its directory and Windows' `.exe`: `/usr/bin/grep` → `grep`, `.\\steamcmd.exe` → `steamcmd`. */
+/**
+ * A program's name without its directory and Windows' `.exe`: `/usr/bin/grep` → `grep`, `.\\steamcmd.exe` → `steamcmd`.
+ * PowerShell's and cmd's commands in the case the readers know them by, as both shells take any case (`get-content`,
+ * `TYPE`, `Select-string`).
+ */
 export function programName(word: ShellWord | undefined): string {
-	return (word?.text ?? "").replace(/^.*[/\\]/, "").replace(/\.exe$/i, "");
+	const name = (word?.text ?? "").replace(/^.*[/\\]/, "").replace(/\.exe$/i, "");
+	return WINDOWS_COMMANDS.get(name.toLowerCase()) ?? name;
 }
+
+/** PowerShell's cmdlets and aliases and cmd's builtins that the readers name, by their names in lower case. */
+const WINDOWS_COMMANDS = new Map(
+	[
+		"Get-Content",
+		"Select-String",
+		"Write-Output",
+		"Write-Host",
+		"Get-Item",
+		"Get-ChildItem",
+		"Get-Secret",
+		"gc",
+		"sls",
+		"gci",
+		"gi",
+		"type",
+		"findstr",
+		"pwsh",
+		"powershell",
+		"cmd",
+	].map((name) => [name.toLowerCase(), name]),
+);
 
 /**
  * A simple command's words from the program it runs: past assignments (`FOO=1`), reserved words (`!`, `then`, `do`)
