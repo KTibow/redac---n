@@ -542,7 +542,9 @@ function connectionStrings(text: string, out: Finding[]) {
 
 /**
  * Base64 that decodes to something public or trivial: a certificate, a public key; a word, a boolean, a number or a
- * URL without credentials, unless the key says password or PIN (`admin-pin: NDgyMTc3MzA=`).
+ * URL without credentials, unless the key says password or PIN (`admin-pin: NDgyMTc3MzA=`). (Three words or more
+ * joined are a passphrase but under a setting's key, as isHarmlessText judges them written plain: under `redis` or
+ * `admin`, `lamp-otter-marble-quill` is one; `sslmode: require` is a setting.)
  */
 function harmlessBase64(v: string, key = ""): boolean {
 	const d = /^[A-Za-z0-9+/]+={0,2}$/.test(v) && v.length % 4 === 0 ? base64Binary(v) : undefined;
@@ -551,7 +553,8 @@ function harmlessBase64(v: string, key = ""): boolean {
 	const t = d.trim();
 	return (
 		!namesPasswordOrPin(key) &&
-		((d.length < 40 && (isWordsValue(t) || /^(?:true|false|\d+)$/.test(t) || HOST_NAME.test(t))) || isPlainUrl(t, key))
+		((d.length < 40 && ((isWordsValue(t) && (isSettingName(key) || t.split(/[_-]/).length < 3)) || /^(?:true|false|\d+)$/.test(t) || HOST_NAME.test(t))) ||
+			isPlainUrl(t, key))
 	);
 }
 

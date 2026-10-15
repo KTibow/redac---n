@@ -334,6 +334,27 @@ test("a Secret's fields that name no credential and hold a word, a boolean or a 
 	assert.ok(!out.includes("Harbor2291x"));
 });
 
+test("a Secret's base64 passphrase is judged as the same text written plain; a single word is kept", () => {
+	const data = (key: string, plain: string) =>
+		`apiVersion: v1\nkind: Secret\nmetadata:\n  name: app\ndata:\n  ${key}: ${Buffer.from(plain).toString("base64")}\n`;
+	for (const [key, plain] of [
+		["redis", "lamp-otter-marble-quill"],
+		["admin", "correct-horse-battery-staple"],
+		["value", "lamp-otter-marble-quill"],
+		["ldap", "lamp-otter-marble-quill"],
+	])
+		hidden(data(key, plain), Buffer.from(plain).toString("base64"));
+	for (const [key, plain] of [
+		["type", "git"],
+		["mode", "production"],
+		["insecure", "false"],
+		["server", "mycluster.example.com"],
+		["sslmode", "require"],
+		["merchant-account", "AcmeECOM"],
+	])
+		kept(data(key, plain), Buffer.from(plain).toString("base64"));
+});
+
 test("a cookie's value is read quoted, and ends at an escaped line break", () => {
 	const g = new Redactor({ guessing: "off" });
 	const quoted = g.redact('Cookie: session="Zq8Vn3Kx9mQv2Lp7Rt"; theme=dark').text;
