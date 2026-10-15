@@ -766,7 +766,7 @@ test("in a secret file a session's ID is hidden under anyone's name, a terminal'
 	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
 });
 
-test("a command run as another user, in a one-off container or as an image's given entrypoint prints what that command prints", () => {
+test("a command run as another user, or in a one-off container prints what that command prints", () => {
 	const env = "APP_NAME=shop\nSALT=k2Lm9Qx\nPORT=8080\n";
 	for (const command of [
 		"su -c 'cat .env' app",
@@ -774,8 +774,6 @@ test("a command run as another user, in a one-off container or as an image's giv
 		"runuser -l app -c 'cat .env'",
 		"docker compose run --rm web cat .env",
 		"docker-compose run -e X=1 web cat .env",
-		"docker run --rm --entrypoint cat img /app/.env",
-		"docker run --rm --entrypoint=cat img /app/.env",
 		"cat .env*",
 		"find . -maxdepth 2 -name .env | xargs grep SALT",
 		"find . -name .env -exec grep -H SALT {} +",

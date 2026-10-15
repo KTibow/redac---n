@@ -426,12 +426,6 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 	// image; with none, the arguments go to the image's entrypoint, a tool's for a tool's image (`curlimages/curl -b …`).
 	if (/^(?:docker|podman|nerdctl)$/.test(program) && sub[0]?.text === "run") {
 		const k = afterOptions(sub, 1, VALUE_OPTIONS["docker run"]);
-		// (`--entrypoint cat IMAGE /app/.env`: the words after the image are the given program's arguments.)
-		const given = sub.findIndex((w, i) => i < k && /^--entrypoint(?:=|$)/.test(w.text));
-		if (given > 0) {
-			const program = sub[given].text.includes("=") ? sub[given].text.slice(13) : sub[given + 1]?.text;
-			return program && k + 1 < sub.length ? entrypoint(program, sub[k + 1].start) : undefined;
-		}
 		const tool = ENTRYPOINT_TOOLS[imageName(sub[k]?.text ?? "")];
 		if (!tool || (k + 1 < sub.length && !sub[k + 1].text.startsWith("-"))) return from(sub, k + 1);
 		return k + 1 < sub.length ? entrypoint(tool, sub[k + 1].start) : undefined;
