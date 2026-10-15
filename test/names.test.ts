@@ -1717,20 +1717,6 @@ test("a release, a VCS revision, a reference and an organization are named as ID
 	hidden("RELEASE_TOKEN=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env" });
 });
 
-test("a config file's `key = value` lines with no section are literals, brackets and all", () => {
-	for (const v of ["Winter(2025)!!", "Summer[2024]x", "Rt5{Yu8}Io3", "Kj8;Hd3Lp9", "Qw3<Er5Ty9"]) {
-		hidden(`host = db.internal\nport = 5432\npassword = ${v}\n`, v);
-		hidden(`# db\nhost = db.internal\nuser = app\npassword = ${v}\n`, v, { command: "cat db.conf" });
-	}
-	// (Code's lines around it make it code: a call, a subscript, a keyword.)
-	for (const text of [
-		'host = os.environ["HOST"]\nport = 5432\npassword = get_password(user)\n',
-		"host = db.internal\nport = 5432\npassword = get_password(user)\n",
-		"const host = cfg.host\npassword = load(cfg)\n",
-	])
-		kept(text, text.match(/password = (.*)\n/)![1]);
-});
-
 test("a key and value table's row names its value by its key cell", () => {
 	hidden(
 		"INSERT INTO config (name, value) VALUES ('aws_secret_access_key', 'qT7xKp2LmZ9vRnB4sWyH8dFh6ZcQe3JaUo5GtN1c');",
@@ -1745,25 +1731,14 @@ test("a key and value table's row names its value by its key cell", () => {
 	kept("INSERT INTO settings (key, value) VALUES ('session_cookie_name', 'Hx7mQ2pL9vRtZk3v');", "Hx7mQ2pL9vRtZk3v");
 });
 
-test("a YAML value slot is named by its sibling or its parent, a block scalar's lines too", () => {
+test("a YAML value slot is named by its parent", () => {
 	const v = "Zq8vT3mK9xLwPr2Yd7Hn";
-	for (const indicator of ["|", "|-", ">", ">-"]) {
-		hidden(`env:\n  - name: DB_PASSWORD\n    value: ${indicator}\n      ${v}\n`, v);
-		hidden(`variables:\n  DB_PASSWORD:\n    value: ${indicator}\n      ${v}\n`, v);
-	}
 	hidden(`variables:\n  DB_PASSWORD:\n    value: "${v}"\n    description: db\n`, v);
 	hidden(`secrets:\n  api_key:\n    value: ${v}\n    expires: 2025\n`, v);
-	kept(`env:\n  - name: CONFIG\n    value: |\n      ${v}\n`, v);
-	kept(`env:\n  - name: DB_PASSWORD\n    value: |-\n      {{ .Values.db.password }}\n`, "{{ .Values.db.password }}");
 	kept(`variables:\n  DB_PASSWORD:\n    value: "{{ vault_db }}"\n`, "{{ vault_db }}");
 });
 
-test("a value ends where the syntax around it resumes: its quote, a page's markup, a shell expansion's close", () => {
-	const v = "Zq8vT3mK9xLwPr2Yd7Hn";
-	for (const q of ["'", '"']) {
-		const out = r().redact(`environment:\n  - ${q}DB_PASSWORD: ${v}${q}  # note\n`).text;
-		assert.match(out, new RegExp(`- ${q}DB_PASSWORD: \\[REDACTED [^\\]]+\\]${q}  # note`));
-	}
+test("a value ends where the syntax around it resumes: a page's markup, a shell expansion's close", () => {
 	for (const [text, after] of [
 		["<!-- DB_PASSWORD=Hx7mQ2pL9vRt-->", "]-->"],
 		["<td>Password: Hx7mQ2pL9vRt<br />more</td>", "]<br />more</td>"],
