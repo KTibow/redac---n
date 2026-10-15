@@ -302,6 +302,48 @@ test("merged findings: a whole line gives way to a sure finding inside it; a val
 	assert.ok(!covered(merge([at(0, 10, "a")]), 5, 15));
 });
 
+test("a format's token is the span where a value read to the next blank runs past it", () => {
+	const tok = "ghp\x5f0MDkfSKa7K7EeAKNsT3RLsNg5Wt5QRZ3XEna";
+	const R = new Redactor({ fingerprintKey: "test" });
+	const tag = R.redact(tok).text;
+	for (const [text, after] of [
+		[`GITHUB_TOKEN=${tok};git push origin main`, ";git push origin main"],
+		[`export TOKEN=${tok};ls`, ";ls"],
+		[`token=${tok}&q=foo&page=2&sort=desc`, "&q=foo&page=2&sort=desc"],
+		[`wget https://x.io/a?token=${tok}#top`, "#top"],
+		[`token=${tok}.`, "."],
+		[`TOKEN=${tok},next`, ",next"],
+	]) {
+		const out = R.redact(text).text;
+		assert.ok(out.endsWith(`${tag}${after}`), out);
+	}
+	// A token that stops where its format stops but the text goes on in token characters is hidden with its tail.
+	for (const tail of ["%2Bab12", ".abc123", "-extra9"]) {
+		const out = R.redact(`token=${tok}${tail} done`).text;
+		assert.ok(!out.includes(tail), out);
+	}
+});
+
+test("an unquoted value ends at the settings after it in a list with no blank between", () => {
+	const R = new Redactor({ fingerprintKey: "test" });
+	const pw = "Kx9mQ2vL8nRt4zWp";
+	const tag = `#${R.fingerprint(pw)}]`;
+	for (const [text, rest] of [
+		[`password=${pw};username=bob`, ";username=bob"],
+		[`DB_PASSWORD=${pw},DB_HOST=db,DB_PORT=5432`, ",DB_HOST=db,DB_PORT=5432"],
+		[`user=bob;password=${pw};port=22`, ";port=22"],
+		[`secret=${pw}&redirectUri=https://app.example.com/cb`, "&redirectUri=https://app.example.com/cb"],
+	]) {
+		const out = R.redact(text).text;
+		assert.ok(out.endsWith(`${tag}${rest}`), out);
+	}
+	// A password's own punctuation is not a list: hidden whole.
+	for (const value of ["86)68/C{,C=wyhJH9", "W;FHFj=7agoi1q%!#Fo", "Nakp&nDiqWJ-K=nW", "Kx9mQ2;vL8nRt=4zWp!x"])
+		hidden(`DB_PASSWORD=${value}`, value);
+	// Nor is a value that is a list itself, or a URL.
+	hidden("DSN=host=db;password=Kx9mQ2vL8nRt4zWp;port=5432", "Kx9mQ2vL8nRt4zWp");
+});
+
 test("a long finding a read bound may have cut runs on to its word's end, through PHP's `\\/`", () => {
 	const token = b62(3000);
 	const f = { start: 0, end: 2500, kind: "token", rule: "named:assign", confidence: 0.95 };
