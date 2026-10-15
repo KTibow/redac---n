@@ -143,6 +143,7 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 	kept("SCHTASKS /Query /FO csv /v /s srv /U CORP\\alice /P  | ConvertFrom-Csv", "ConvertFrom-Csv");
 	kept("schtasks /run /tn TaskName [/s computer [/u [domain\\]user /p [password]]] /?", "[password]]]");
 	kept("you do not need /s /u /p; you already gave them", "you already");
+	kept("I even tried the script with the /u and /p fields so that it runs as admin", "fields so that");
 	kept("tasklist /s srv /u CORP\\alice /p <password>", "<password>");
 	kept("C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", "C:\\Users\\bob> net use Z:");
 	kept("schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup", "/tn Backup");

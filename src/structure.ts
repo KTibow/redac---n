@@ -1001,6 +1001,10 @@ function stdinFeeds(text: string): { value: ShellWord; reader: ShellCommand }[] 
 const STDIN_SECRET =
 	/^(?:sudo(?:\s+-[A-Za-z]*S[A-Za-z]*)(?:\s|$)|(?:sudo(?:\s+-\S+)*\s+)?(?:(?:docker|podman|nerdctl|helm|oras|crane|skopeo|buildah)\s+(?:registry\s+)?login\b.*--password-stdin|gh\s+auth\s+login\b.*--with-token|gh\s+secret\s+set\b|(?:podman|docker)\s+secret\s+create\b|(?:npx\s+)?wrangler\s+secret\s+put\b|vercel\s+env\s+add\b|kubectl\s+create\s+secret\b|fly(?:ctl)?\s+secrets\s+(?:set|import)\b|netlify\s+env:set\b|pulumi\s+config\s+set\b.*--secret\b|vault\s+(?:login|kv\s+put|write)\b|chpasswd\b|passwd\b|openssl\b.*-pass(?:in|out)?\s+stdin))/;
 
+/** Windows' commands that run against another computer as another user, `/s srv /u CORP\bob /p pw`. */
+const REMOTE_USER_TOOLS =
+	/^(?:schtasks|setx|taskkill|tasklist|systeminfo|getmac|bootcfg|gpresult|openfiles|eventcreate|eventquery|eventtriggers|driverquery|waitfor)(?:\.exe)?$/i;
+
 /**
  * Windows commands' passwords: switches (`cmdkey /pass:pw`, `wmic /password:pw`, `winrs -p:pw`, `schtasks /rp pw`,
  * `psexec -p pw`, `osql -P pw`, and the remote user's `/u CORP\bob /p pw` that schtasks, setx, taskkill, tasklist,
@@ -1035,8 +1039,10 @@ function windowsPasswords(text: string, add: AddPassword) {
 				? v
 				: undefined;
 		};
-		// The remote user's password, `/u CORP\bob /p pw`, on whichever command takes them.
-		for (let k = 2; k + 1 < ws.length; k++)
+		// The remote user's password, `/u CORP\bob /p pw`, on the commands that take them (not in prose: `use the /u and /p
+		// fields`).
+		const remote = ws.findIndex((w) => REMOTE_USER_TOOLS.test(w.text));
+		for (let k = Math.max(2, remote + 3); remote >= 0 && k + 1 < ws.length; k++)
 			if (/^\/p$/i.test(ws[k].text) && /^\/u$/i.test(ws[k - 2].text) && value(k - 2) && value(k)) {
 				const pw = value(k)!;
 				addTail(add, pw, pw.text, pw.quoted);
