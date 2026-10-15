@@ -474,6 +474,27 @@ test("a connection string's template, reference or code is no password; its lite
 	assert.deepEqual(findStructure("Server=db;Database=app;User Id=sa;Password=settings.Database.Password;"), []);
 	hidden("Driver={ODBC Driver 18 for SQL Server};Server=db;Uid=sa;Pwd={Harbor2291x!};", "Harbor2291x!");
 	assert.ok(!ruled("Server=db;Uid=sa;Pwd=Xk9fPq2LmZ8bW4kY=").includes("Xk9fPq2LmZ8bW4kY="));
+	// The tokens a deployment replaces (Octopus, Azure DevOps' Replace Tokens), in JSON or bare; a literal stays hidden.
+	for (const token of ["#{DbPassword}#", "#{Db.Password}", "__DbPassword__", "@@DbPassword@@"]) {
+		kept(`{"Default": "Server=#{DbServer}#;Database=app;User Id=app;Password=${token};"}`, token, {
+			path: "appsettings.json",
+		});
+		kept(`Server=db;Database=app;User Id=app;Password=${token};`, token);
+	}
+	hidden("Server=db;Database=app;User Id=app;Password=__Hx7mQ2pL9vRt__;", "Hx7mQ2pL9vRt");
+});
+
+test("a connection string written from its password on ends the password at its first ;", () => {
+	for (const [line, secret, rest] of [
+		["Password=Hx7mQ2pL9vRt;Server=db;Database=app;User Id=sa", "Hx7mQ2pL9vRt", ";Server=db;Database=app;User Id=sa"],
+		["ClientSecret=Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6;TenantId=abc;ClientId=def", "Xk9fPq2LmZvRt7Hn4Jw8Bc3Ds6", ";TenantId=abc;ClientId=def"],
+		['export CONN="Pwd=Hx7mQ2pL9vRt;Server=db;Database=app"', "Hx7mQ2pL9vRt", ';Server=db;Database=app"'],
+	]) {
+		hidden(line, secret);
+		kept(line, rest);
+	}
+	// (A password's own `;` with no pairs after it is the password's.)
+	hidden("DB_PASSWORD=Hx7m;Q2pL9vRt", "Q2pL9vRt");
 });
 
 test("a Secret's config file, certificates, public keys, endpoint and base64 settings are kept, its credentials hidden", () => {

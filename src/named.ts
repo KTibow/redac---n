@@ -1220,10 +1220,14 @@ function assignedValue(
 	// An unquoted env value runs to the end of the line only as words (a dotenv passphrase); on a shell line it is one
 	// shell word (`PGPASSWORD=… psql -h db`, `export MYSQL_PWD=… && mysql`). A query string's value ends at its next
 	// pair, every `&` starting one (`oauth_consumer_key=…&oauth_nonce=…`, a percent-encoded one decoded; a password's
-	// own `&` starts none, `Tr0ub4dor&3horse`).
+	// own `&` starts none, `Tr0ub4dor&3horse`). So does a connection string's, written from its password on
+	// (`Password=…;Server=db;Database=app;User Id=sa`), at its next `;`: two more `Key=Value` pairs after it say what the
+	// line is, as a password's own `;` would not.
 	if (span && envLine && wholeLine) {
 		const value = text.slice(span[0], span[1]);
 		if (/^[^&\s]+(?:&[A-Za-z_][\w.-]{1,60}=[^&\s]*)+$/.test(value)) return [span[0], span[0] + value.indexOf("&")];
+		if (/^[^;\s]+(?:;[ \t]*[A-Za-z][\w .-]{0,40}=[^;\n]*){2,}$/.test(value))
+			return [span[0], span[0] + value.indexOf(";")];
 		return shellWordValue(text, span);
 	}
 	return span;
