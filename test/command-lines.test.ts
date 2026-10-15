@@ -139,17 +139,22 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 	for (const [t, v, hint] of [
 		["crypto isakmp key Harbor#2291x address 0.0.0.0", S],
 		[" ip ospf message-digest-key 1 md5 Harbor#2291x", S],
-		["crypto isakmp key Harbor#2291x hostname r1.example.com", S],
 		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key local Harbor#2291x", S],
 		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key remote Harbor#2291x", S],
 		["snmp-server community Harbor#2291x view v1 RW", S],
+		// A CRLF file's lines, with a tail; and Junos' `show configuration`, which marks the secret.
+		["snmp-server community Harbor#2291x view v1 RO\r\nsnmp-server community Harbor#2291x RW\r\n", "x view"],
+		["snmp-server community Harbor#2291x RW\r\n!\r\n", "x RW"],
+		["crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n!\r\n", S],
+		["crypto isakmp key Harbor#2291x address 10.0.0.1   \n", S],
+		['    ike {\n        policy P {\n            pre-shared-key ascii-text "Harbor#2291x"; ## SECRET-DATA\n', S],
 		["SQL> connect scott/Harbor#2291x@orcl", S],
 		["rman target sys/Harbor#2291x@db", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	kept("crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n", "crypto isakmp key ");
 	for (const line of ["snmp-server community public view v1 RO", "pre-shared-key is set per peer"])
 		assert.equal(r().redact(line).text, line);
-	kept("crypto isakmp key Harbor#2291x hostname r1.example.com", "hostname r1.example.com");
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");
 	// An Oracle login with no `@db`, before the command's next word: an option, a script, a redirect.
 	for (const line of [

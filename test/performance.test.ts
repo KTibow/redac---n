@@ -71,6 +71,11 @@ test("a long run of blanks before a block scalar costs linear time", () => {
 	assertLinear("blanks before a block scalar", (n) => r().redact(`${" ".repeat(n)}k: |`), 20_000);
 });
 
+test("a device config line's long run of trailing blanks costs linear time", () => {
+	for (const line of ["crypto isakmp key Kx9q address", "snmp-server community Kx9q view v RO"])
+		assertLinear(line, (n) => r().redact(`${line}${" \t".repeat(n)};x`), 10_000);
+});
+
 test("heredocs in heredocs' bodies cost linear time", () => {
 	// (A body is read on its own once; a body inside it is its text.)
 	const nested = (n: number) => {
