@@ -53,6 +53,7 @@ in them would otherwise read as real ones to secret scanners.
 | 2026-10-09 | CTF writeups and solve scripts (CC0, MIT, eval only): 22.7 M chars | data agent | 33.97 per M chars balanced | 5.64 per M |
 | 2026-10-09 | PyPI READMEs and release metadata (MIT): 60.0 M chars | data agent | 8.76 per M chars balanced (about 275 false) | 11.12 per M |
 | 2026-10-09 | "Hiding in Plain Sight" obfuscation benchmark (MIT): 12,150 obfuscated credentials | data agent | balanced 79.3 (90.4 without encoded AWS key IDs; zero-width-separated: 0 of 810) | detect-secrets 71.3 |
+| 2026-10-15 | holdout9.jsonl, 300 cases, 518 secrets, 530 keeps, 300 contexts | three blind template writers (the 2026 AI and agent ecosystem: MCP client configs, model providers, vector stores, inference platforms; JVM and .NET business applications; SaaS integrations: commerce, payments, messaging, auth, CMS) + seeded filler (seed 9090). The JVM/.NET writer was stopped by a safety classifier after 60 of 120 templates, and a fourth writer (one tool's output in many presentations) before writing any; neither was retried | 89.8/4.0 · 94.0/7.9 · 94.2/8.1 | not run |
 
 ## What each set became after its blind run
 
@@ -66,6 +67,7 @@ in them would otherwise read as real ones to secret scanners.
 | holdout6.jsonl | dev_h.jsonl |
 | holdout7.jsonl | dev_i.jsonl |
 | holdout8.jsonl | dev_j.jsonl |
+| holdout9.jsonl | dev_k.jsonl |
 | final2–final6 | real-text sets used to find false positives |
 | levainbot/fp-corpus | ~/Downloads/redact-corpora/levain (outside the repository); its misses drove the Resend, Airtable and email-user URL fixes and the protobuf veto |
 | ICSME 2026 "no leak" snippets | ~/Downloads/redact-corpora/icsme (outside the repository); its hits drove the code-shape rules in src/policy.ts and the guard in test/benign.test.ts |
