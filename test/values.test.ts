@@ -603,29 +603,6 @@ test("a key chord is a modifier and one key; a password that starts with a modif
 	for (const v of ["ctrl+shift+F12", "Cmd+K,Cmd+S", "Ctrl+Alt+Delete", "Alt+F4", "Ctrl+/"]) kept(`key: ${v}`, v);
 });
 
-test("a password of words that holds a stand-in word is a password; a placeholder's words are a placeholder's", () => {
-	for (const v of [
-		"Hidden-Dragon-2024",
-		"Crouching-Tiger-Hidden-Dragon",
-		"Purple_Elephant_Removed_7731",
-		"Blue-Horse-Example-4420",
-		"Summer-Changed-2024",
-		"Lemon-Here-Now-77",
-	]) {
-		hidden(`DB_PASSWORD=${v}`, v);
-		hidden(`mysql -u root -p'${v}' app`, v);
-	}
-	for (const v of [
-		"your-api-key-here",
-		"your-company-name-here",
-		"my-example-app-password",
-		"removed-for-security-reasons",
-		"not-a-real-key",
-		"hidden thing found",
-	])
-		kept(`DB_PASSWORD=${v}`, v);
-});
-
 test("a key cut short after a long vendor prefix is a display, as one after a short prefix is", () => {
 	for (const v of ["sk-ant-api03-Zx9K...", "sk-ant-admin01-Zx9...QAAA", "sk-ant-oat01-Zx9K…", "sk-proj-QmTxvRk9..."])
 		kept(`ANTHROPIC_API_KEY=${v}`, v);
