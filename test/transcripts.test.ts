@@ -122,6 +122,16 @@ test("base64 documents of text media are decoded and redacted", () => {
 	assert.deepEqual(r().redactValue(png).value, png);
 	const clean = doc("text/plain", b64("hello world, nothing here"));
 	assert.deepEqual(r().redactValue(clean).value, clean);
+	const binary = {
+		role: "user",
+		content: [
+			{
+				type: "file",
+				file: { filename: ".env", file_data: `data:application/octet-stream;base64,${b64(`\u0000\u0001${env}`)}` },
+			},
+		],
+	};
+	assert.deepEqual(r().redactValue(binary).value, binary);
 });
 
 test("a redactor remembers findings of texts it has detected, until the known values change", () => {
@@ -326,6 +336,20 @@ test("redactValue reads a leaf where it sits: a name/value pair and an argv", ()
 		assert.ok(!JSON.stringify(r().redactValue(obj).value).includes("Harbor2291!"), JSON.stringify(obj));
 		hidden(JSON.stringify(obj, null, 2), "Harbor2291!");
 	}
+	// A value JSON writes escaped, a quote, a backslash or a tab in it, is read where it sits too.
+	for (const pw of ['Tr0ub4dor"x9Qm2Lp', "Tr0ub4dor\\x9Qm2Lp", "Tr0ub4dor\tx9Qm2Lp", '\u{1F600}Tr0ub"4dor9Qm2Lp']) {
+		for (const obj of [
+			{ env: [{ name: "DB_PASSWORD", value: pw }] },
+			{ env: [{ key: "MYSQL_PWD", value: pw }] },
+			{ action: { command: ["docker", "login", "-u", "ci", "-p", pw, "registry.example.com"] } },
+		]) {
+			const out = r().redactValue(obj).value;
+			assert.ok(!JSON.stringify(out).includes(JSON.stringify(pw).slice(1, -1)), JSON.stringify(out));
+		}
+	}
+	// Its neighbours stay.
+	const kept = { env: [{ name: "DB_HOST", value: 'db"main.internal' }] };
+	assert.deepEqual(r().redactValue(kept).value, kept);
 });
 
 test("envelope fields are skipped by place, not by name", () => {
@@ -393,6 +417,104 @@ test("a Claude Code record's toolUseResult carries its call's hint", () => {
 		},
 	];
 	assert.ok(!JSON.stringify(r().redactValue(record, { learn: false }).value).includes("Copper7781#x"));
+});
+
+test("a Gemini functionResponse carries its call's hint, by the call's id", () => {
+	const env = "APP_PORT=3000\nJWT_KEY=hello-world-service-key\nENC_KEY=kitchen-sink-moon-47\n";
+	const gemini = (call: object, response: object) => ({
+		contents: [
+			{ role: "model", parts: [{ functionCall: call }] },
+			{ role: "user", parts: [{ functionResponse: response }] },
+		],
+	});
+	const id = `run_shell_command-1726000000000-${b62(12)}`;
+	const shapes = [
+		// Gemini, paired by id (Gemini CLI's ids; pydantic-ai's are `pyd_ai_…`); `read_file`'s `absolute_path`.
+		gemini(
+			{ id, name: "run_shell_command", args: { command: "cat .env" } },
+			{ id, name: "run_shell_command", response: { output: env } },
+		),
+		gemini(
+			{ id: "pyd_ai_7f3a9c", name: "read_file", args: { absolute_path: "/app/.env" } },
+			{ id: "pyd_ai_7f3a9c", name: "read_file", response: { output: env } },
+		),
+	];
+	for (const v of shapes) {
+		const out = JSON.stringify(r().redactValue(v).value);
+		for (const s of ["hello-world-service-key", "kitchen-sink-moon-47"]) assert.ok(!out.includes(s), out);
+		// The envelope stays: ids and names.
+		for (const s of ['"read_file"', id, "pyd_ai_7f3a9c"])
+			if (JSON.stringify(v).includes(s)) assert.ok(out.includes(s), `${s} in ${out}`);
+	}
+	// Each response by its own call's id, whatever the order: the result of `ls` is not the `.env`.
+	const crossed = {
+		contents: [
+			{
+				role: "model",
+				parts: [
+					{ functionCall: { id: "c2", name: "run_shell_command", args: { command: "cat .env" } } },
+					{ functionCall: { id: "c1", name: "run_shell_command", args: { command: "ls" } } },
+				],
+			},
+			{
+				role: "user",
+				parts: [
+					{ functionResponse: { id: "c1", name: "run_shell_command", response: { output: "plain-words-here-42\n" } } },
+					{ functionResponse: { id: "c2", name: "run_shell_command", response: { output: env } } },
+				],
+			},
+		],
+	};
+	const out = r().redactValue(crossed, { learn: false }).value as any;
+	assert.equal(out.contents[1].parts[0].functionResponse.response.output, "plain-words-here-42\n");
+	assert.ok(!JSON.stringify(out.contents[1].parts[1]).includes("hello-world-service-key"));
+});
+
+test("a block keeps its type and ids under a secret file's hint, whatever the type", () => {
+	const call = (input: object) => ({ type: "tool_use", id: "t1", name: "x", input });
+	const result = (content: unknown) => ({ type: "tool_result", tool_use_id: "t1", content });
+	const env = "PORT=3000\nJWT_KEY=hello-world-service-key\n";
+	for (const blocks of [
+		// MCP's resource blocks, from a filesystem server reading `.env`.
+		[
+			call({ path: "/app/.env" }),
+			result([{ type: "resource", resource: { uri: "file:///app/.env", mimeType: "text/plain", text: env } }]),
+		],
+		// A server tool's result, its content an object of its own type.
+		[
+			{ type: "server_tool_use", id: "t1", name: "bash_code_execution", input: { command: "cat .env" } },
+			{
+				type: "bash_code_execution_tool_result",
+				tool_use_id: "t1",
+				content: { type: "bash_code_execution_result", stdout: env, stderr: "", return_code: 0 },
+			},
+		],
+	]) {
+		const out = JSON.stringify(r().redactValue({ messages: [{ role: "assistant", content: blocks }] }).value);
+		assert.ok(!out.includes("hello-world-service-key"), out);
+		for (const s of ['"resource"', '"text/plain"', '"bash_code_execution_result"', '"bash_code_execution"'])
+			if (JSON.stringify(blocks).includes(s)) assert.ok(out.includes(s), `${s} in ${out}`);
+	}
+	// A Responses request's `input` is its items, not a tool's input: the output's type and the call's id stay paired.
+	const callId = `call_${b62(24)}`;
+	const responses = {
+		model: "gpt-5",
+		input: [
+			{ type: "function_call", call_id: callId, name: "shell", arguments: '{"command":["bash","-lc","cat .env"]}' },
+			{ type: "function_call_output", call_id: callId, output: "PORT=3000\nNODE_ENV=development\n" },
+		],
+	};
+	const red = r();
+	assert.deepEqual(red.redactValue(responses).value, responses);
+	assert.equal(red.redact("type function_call_output").text, "type function_call_output");
+	// A document of a secret file's name sent by its file id, or as content blocks.
+	for (const source of [
+		{ type: "file", file_id: `file_011C${b62(20)}` },
+		{ type: "content", content: [{ type: "text", text: "PORT=3000" }] },
+	]) {
+		const doc = { role: "user", content: [{ type: "document", title: ".env", source }] };
+		assert.deepEqual(r().redactValue(doc).value, doc);
+	}
 });
 
 test("a serialized tool call and the parsed one hide the same values under every tool-input key", () => {
@@ -487,5 +609,50 @@ test("an environment URL with a reference holds no password", () => {
 			REDIS_URL: "redis://:<password>@cache:6379",
 		}),
 		[],
+	);
+});
+
+test("fromEnvironment takes the password a connection string or a URL's query gives, under any name", () => {
+	for (const value of [
+		"postgres://h:5432/db?user=app&password=Hx7mQ2pL9vRt",
+		"jdbc:postgresql://h/db?user=app&password=Hx7mQ2pL9vRt",
+		"Server=h;User Id=sa;Password=Hx7mQ2pL9vRt;",
+		"host=h user=app password=Hx7mQ2pL9vRt",
+		"postgres://app:Hx7mQ2pL9vRt@h/db",
+	])
+		assert.deepEqual(
+			fromEnvironment({ DATABASE_URL: value }).map((e) => e.value),
+			["Hx7mQ2pL9vRt"],
+			value,
+		);
+	assert.deepEqual(
+		fromEnvironment({
+			DATABASE_URL: "postgres://h:5432/db?user=app&password=${DB_PASSWORD}",
+			DB_DSN: "host=h user=app password=%DB_PASSWORD%",
+			REDIS_URL: "redis://h:6379/0",
+			APP_NAME: "shop",
+		}),
+		[],
+	);
+});
+
+test("fromEnvironment keeps what is public by design: a publishable key, a key under a browser's prefix", () => {
+	assert.deepEqual(
+		fromEnvironment({
+			NEXT_PUBLIC_STRIPE_KEY: "pk_live_51Hx9mQ2pLrTvB7nWz4aBcDeHq",
+			NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyA-Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x",
+			VITE_API_KEY: "Hx7mQ2pLrTvB7nWz",
+			STRIPE_PUBLISHABLE_KEY: "pk_live_51Hx9mQ2pLrTvB7nWz4aBcDeHq",
+		}),
+		[],
+	);
+	// (A vendor's secret key says what it is under any name; a server's Google key and a password are hidden.)
+	assert.deepEqual(
+		fromEnvironment({
+			VITE_OPENAI_API_KEY: `sk-proj-${"Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x".repeat(3)}`,
+			GOOGLE_MAPS_API_KEY: "AIzaSyA-Xk9mQ2pLrTvB7nWz4aBcDeHq7zR2x",
+			NEXT_PUBLIC_DB_PASSWORD: "Hx7mQ2pLrTvB7nWz",
+		}).map((e) => e.label),
+		["OpenAI API key in $VITE_OPENAI_API_KEY", "$GOOGLE_MAPS_API_KEY", "$NEXT_PUBLIC_DB_PASSWORD"],
 	);
 });

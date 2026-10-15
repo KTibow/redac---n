@@ -16,7 +16,7 @@ import { base64Binary, base64Bytes } from "./base64.ts";
 import { naturalness } from "./charlm.ts";
 import { contextOf, type Context, Doc } from "./context.ts";
 import { isCredentialName, isVendorClient, mentionsCredential } from "./names.ts";
-import { isPlaceholder } from "./public.ts";
+import { isPlaceholder, isTruncated } from "./public.ts";
 import { alphabetOf, entropyZ, shape, type Alphabet } from "./random.ts";
 import type { Finding, Guessing } from "./types.ts";
 import { trailingRun } from "./lines.ts";
@@ -49,7 +49,7 @@ const API_OBJECT_ID =
  * are also prefixes of keys (`re_` is Resend's), so these are public only outside a key's place (keyPlace).
  */
 const OBJECT_ID =
-	/^(?:env|usr|svc|srv|db|setl|order|job|raysubmit|ins|client|sia|sms|idn|pri|pro|sub|txn|ctm|add|biz|dsc|dpl|prj|team|conn|directory|user|ap|in|ta|fu|vol|sb|sess(?=_)|we|promo|qt|cs|dp|cus|pi|ch|il|ii|price|prod|evt|acct|tr|po|pm|seti|src|card|ba|btok|tok|re|plink|si|pmc|ipi|cbtxn|ich|ic|fee|link|req|test_clock|whe|wh|ca|cn|du|py|mandate|pyr|trr|setatt|sched|subi|ri|gsk_live_?)[-_]/;
+	/^(?:env|usr|svc|srv|db|setl|order|org|job|raysubmit|ins|client|sia|sms|idn|pri|pro|sub|txn|ctm|add|biz|dsc|dpl|prj|team|conn|directory|user|ap|in|ta|fu|vol|sb|sess(?=_)|we|promo|qt|cs|dp|cus|pi|ch|il|ii|price|prod|evt|acct|tr|po|pm|seti|src|card|ba|btok|tok|re|plink|si|pmc|ipi|cbtxn|ich|ic|fee|link|req|test_clock|whe|wh|ca|cn|du|py|mandate|pyr|trr|setatt|sched|subi|ri|gsk_live_?)[-_]/;
 /** Right after an encryption wrapper (values.ts ENCRYPTION_WRAPPER), or SOPS's `,iv:` and `,tag:` fields, or Splunk's `$7$`. */
 const AFTER_ENCRYPTION_WRAPPER = new RegExp(String.raw`(?:${ENCRYPTION_WRAPPER}|,iv:|,tag:|(?:^|[\s=:"'])\$[17]\$)$`);
 
@@ -91,6 +91,11 @@ const CANDIDATE = new RegExp(`^[A-Za-z0-9+/=_-]{${MIN_TOKEN},}$`);
  */
 const PERCENT_RUN = /(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2}){16,}/g;
 
+/** A run of token characters with JSON's escaped slashes in it (PHP's and Laravel's `Zx9…\/Hd1…`). */
+const ESCAPED_SLASH_RUN = /(?:[A-Za-z0-9+=_-]|\\\/){16,}/g;
+/** A letter beyond ASCII in an alphabet with cases (Latin's, Greek's, Cyrillic's): `ð`, `é`, `ж`. */
+const NON_ASCII_CASED = /(?![\x00-\x7f])[\p{Lu}\p{Ll}]/u;
+
 /**
  * Runs of token characters long enough to be a key. A run that is a path (`/api/v1/<id>/users`) or
  * dotted (`a.b.c`) is split into its segments, each judged alone. A percent-encoded run that decodes to one token is
@@ -112,12 +117,28 @@ export function candidates(text: string): Candidate[] {
 			encoded.push([m.index, m.index + m[0].length]);
 		}
 	}
+	// A base64 value whose slashes JSON escaped, as PHP's json_encode does every one, is judged whole too, as its
+	// decoded value; a path's (`api.example.io\/v1\/me`) is split as a path is.
+	if (text.includes("\\/")) {
+		for (const m of text.matchAll(ESCAPED_SLASH_RUN)) {
+			if (!m[0].includes("\\/") || backslashesBefore(text, m.index) % 2) continue;
+			const token = m[0].replace(/\\\//g, "/");
+			if (token.length > 256 || !CANDIDATE.test(token) || !isBase64Run(token, text, m.index)) continue;
+			out.push({ start: m.index, end: m.index + m[0].length, token });
+			encoded.push([m.index, m.index + m[0].length]);
+		}
+		encoded.sort((x, y) => x[0] - y[0]);
+	}
 	// (Both in the text's order: the encoded run a token run may be in is the first not ended before it.)
 	let k = 0;
 	for (const [runStart, runEnd] of longRuns(text, CANDIDATE_SET, MIN_TOKEN)) {
 		while (k < encoded.length && encoded[k][1] <= runStart) k++;
 		if (k < encoded.length && runStart >= encoded[k][0] && runEnd <= encoded[k][1]) continue;
 		if (runEnd - runStart > 256) continue; // blobs: images, certificates, bundles; longer tokens are caught by format or header
+		// The ASCII part of a word in a cased alphabet, cut at its first letter beyond ASCII: Icelandic's
+		// `Endurheimtulykilorð`, `endurheimtulykilorðið`. (Not after a letter of a script without cases: Chinese writes a
+		// token against its words, `令牌是Xk9…`.)
+		if (NON_ASCII_CASED.test(text[runStart - 1] ?? "") || NON_ASCII_CASED.test(text[runEnd] ?? "")) continue;
 		const run = text.slice(runStart, runEnd);
 		// `name=value` inside a run (query strings, form bodies): split at an `=` that isn't padding.
 		for (const [eqOff, piece] of splitKeep(run, /=(?=[A-Za-z0-9+/_-])/g)) {
@@ -368,13 +389,14 @@ const isUserinfo = (f: Features) => /^[^\s"'<>@?#/]*@[\w-]+(?:\.[\w-]+)+/.test(f
 /**
  * A URL path segment that names an object: under a collection (`/v1/predictions/<id>`), or anywhere when its shape
  * says ID (a file name, `<key>~noop.jpeg`, `<id>.png`; short; one case). A mixed-case random run of 20 or more is a
- * token whatever path it's in, unless the host serves media (`inews.gtimg.com`) or a content word is its parent
- * (`/article/<id>`). Never a hook's URL, the user part before an `@`, or a secret file's value.
+ * token whatever path it's in (24 or more under a collection: `/integrations/<token>`, `/endpoints/<token>`), unless
+ * the host serves media (`inews.gtimg.com`) or a content word is its parent (`/article/<id>`). Never a hook's URL, the
+ * user part before an `@`, or a secret file's value.
  */
 function urlPathId(f: Features): string | undefined {
 	if (f.ctx.syntax !== "path" || f.secretFile || isHookUrl(f) || isUserinfo(f)) return undefined;
-	if (/^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) && !isHookSegment(f.ctx.pathParent)) return "collection-id";
-	if (f.ctx.nameClass === "credential") return undefined;
+	const collection = /^[a-z][a-z-]{2,30}s$/i.test(f.ctx.pathParent) && !isHookSegment(f.ctx.pathParent);
+	if (f.ctx.nameClass === "credential" && !collection) return undefined;
 	const mediaHost =
 		/:\/\/(?:[\w-]+\.)*[\w-]*(?:img|image|images|cdn|static|media|pic|pics|photo|photos|thumb|thumbs|resiz|assets?)[\w-]*\.[\w.-]+\/[^\s"']*$/i.test(
 			f.ctx.left,
@@ -386,7 +408,19 @@ function urlPathId(f: Features): string | undefined {
 	const t = f.token;
 	const tokenShaped =
 		t.length >= 20 && /[a-z]/.test(t) && /[A-Z]/.test(t) && /\d/.test(t) && !mediaHost && !contentParent;
-	return /^[~.][A-Za-z0-9]{2,6}\b|^~|^=[swhc]\d+/.test(f.ctx.right) || !tokenShaped ? "url-path-id" : undefined;
+	// (Under a collection, longer than the IDs services generate in that alphabet: Firestore's 20, nanoid's 21, Spotify's
+	// 22, ElevenLabs' voice 20.)
+	if (collection) return tokenShaped && t.length >= 24 ? undefined : "collection-id";
+	// (A file name: an image's or a page asset's, named by its ID on any host, `<key>~noop.jpeg`, `<id>.png`, an image
+	// server's sizing, `<id>=s1200`. Not a feed, a calendar or a download, which a private link names by its token:
+	// `/subscribe/<token>.ics`, `/feeds/<token>.rss`.)
+	if (
+		/^~|^=[swhc]\d+|^\.(?:jpe?g|png|gif|webp|avif|svg|ico|bmp|tiff?|heic|mp[34]|webm|mov|m4[av]|ogg|wav|m3u8|ts|js|mjs|css|map|woff2?|ttf|html?)\b/i.test(
+			f.ctx.right,
+		)
+	)
+		return "url-path-id";
+	return tokenShaped ? undefined : "url-path-id";
 }
 
 /**
@@ -468,6 +502,15 @@ const VETOES: Veto[] = [
 	// The token's own shape.
 	["digits", (_, t) => /^\d+$/.test(t)],
 	["placeholder", (_, t) => isPlaceholder(t)],
+	// A key shown cut short, its front before an ellipsis (`sk-ant-api03-Zx9K...`, `…QAAA` after it): the token stops at
+	// the dots, the display doesn't.
+	[
+		"placeholder",
+		(f, t) => {
+			const cut = /^(?:\.\.\.|…)[\w+/=-]{0,40}/.exec(f.ctx.right)?.[0];
+			return cut !== undefined && isTruncated(`${f.lead ?? ""}${t}${cut}`);
+		},
+	],
 	// Hex of one short unit written over and over (`Key = ef012345ef012345ef012345ef012345`): a filler someone typed, not
 	// key bytes, which never repeat in step. (Other alphabets' fillers, `foobarfoobar…`, are in the model's training
 	// negatives, which a veto would change.)
@@ -499,6 +542,51 @@ const VETOES: Veto[] = [
 			),
 	],
 	["build-id", (f) => /\bBuildID=\S*$/.test(f.ctx.left)],
+	// The name a declaration gives, an identifier in its letters' case: C++'s `class XiaomiLYWSD03MMC final`, `struct
+	// QMI8658Config {`, `enum`, `interface`.
+	[
+		"declared-name",
+		(f, t) =>
+			/(?:^|[\s;{])(?:class|struct|enum|union|interface|trait|namespace|record)[ \t]+$/.test(f.ctx.left) &&
+			/^[A-Z][A-Za-z0-9_]*$/.test(t) &&
+			/^[ \t]*(?:final\b|[:{<(]|extends\b|implements\b|\r?$)/m.test(f.ctx.right),
+	],
+	// A cell of a row of a command's table, six cells or more and three of the others counts, sizes or dates, with no
+	// credential's word: an ID (Elasticsearch's `_cat/indices`, `green open chunks-2026.10 <uuid> 3 1 1820331 0 14.2gb`).
+	[
+		"table-row",
+		(f, t, cred) => {
+			if (cred || f.ctx.lineCredential) return false;
+			const cells = `${f.ctx.left}${f.lead ?? ""}${t}${f.ctx.right}`.trim().split(/[ \t]+/);
+			if (cells.length < 6 || !/(?:^|[ \t])$/.test(f.ctx.left) || !/^(?:[ \t]|$)/.test(f.ctx.right)) return false;
+			const counts = cells.filter((c) =>
+				/^\d+(?:\.\d+)?(?:[kmgtp]?i?b|[kmg]|%|ms|s|m|h|d)?$|^\d{4}-\d\d-\d\d(?:T[\d:.]+Z?)?$/i.test(c),
+			);
+			return counts.length >= 3 && !/key|token|secret|passw|auth|credential/i.test(f.ctx.left + f.ctx.right);
+		},
+	],
+	// The object a lookup is given, its first argument: `Subscription::retrieve("<id>")`, `stripe.customers.retrieve(…)`,
+	// `Model.findById(…)`. (Not a secret's lookup, `get_secret`, `Secret.fetch`: there the argument names the secret.)
+	[
+		"lookup-id",
+		(f, _, cred) =>
+			!cred &&
+			f.ctx.syntax === "call" &&
+			/(?:^|[.:])(?:retrieve|find|findById|findOne|fetch|lookup|describe|delete|destroy|cancel|getById|get_by_id|find_by_id)$/i.test(
+				f.ctx.name,
+			) &&
+			/(?:::|\.|->)\w+\([ \t]*["'`]$/.test(f.ctx.left) &&
+			!/secret|token|key|passw|credential|vault/i.test(/[\w$\\:.>-]*\([ \t]*["'`]$/.exec(f.ctx.left)?.[0] ?? ""),
+	],
+	// A static file's cache buster, a digest of its content: `site.css?v=<base64url SHA-256>` (ASP.NET's
+	// `asp-append-version`), and as IIS logs it, the query after the path's field, `/css/site.css v=…`.
+	[
+		"cache-buster",
+		(f) =>
+			/\.(?:css|js|mjs|png|svg|jpe?g|gif|webp|avif|woff2?|ttf|otf|eot|ico|map)(?:\?|[ \t]+)(?:[\w.-]+=[^\s&=]*&)*(?:v|ver|version|hash|h|cb|rev|_)=$/i.test(
+				f.ctx.left,
+			),
+	],
 	["public-id", (f) => inPublicNamespace(f)],
 	// A hashed host in `~/.ssh/known_hosts` (`|1|<salt>|<HMAC-SHA1 of the host name>`, both base64 of 20 bytes): public, as the host names are.
 	// (With the `+` a salt can start with, which the token drops: `|1|+bsj…=|`.)
@@ -630,12 +718,15 @@ const VETOES: Veto[] = [
 			),
 	],
 	// Where it sits: a file path, a PEM block of public material, a line of a wrapped blob.
-	["fs-path", (f, _, cred) => f.ctx.fsPath && !cred],
+	// (Not a request target in a log under a hook's segment, `"POST /hooks/<token> HTTP/1.1"`: a URL's path.)
+	["fs-path", (f, _, cred) => f.ctx.fsPath && !cred && !isHookSegment(f.ctx.pathParent)],
 	["armored-public", (f) => f.ctx.armored],
 	// A PEM block's label on the line above it, a name of parts (`ALICE_cf_c2pnb163v1`, `PRIME192V1_RFC5114-Peer`): the
 	// block holds the key.
 	["block-label", (f, t) => f.ctx.labelsBlock && /^[A-Za-z][A-Za-z0-9]*(?:[_-][A-Za-z0-9]+)+$/.test(t)],
-	["blob-line", (f, _, cred) => f.ctx.blobLine && !cred],
+	// (Not lines a handover heads, keys listed one per line: "Here are your new API keys:" over three `openssl rand
+	// -base64 32`s, of one width as a blob's lines are.)
+	["blob-line", (f, _, cred) => f.ctx.blobLine && !cred && !f.ctx.handover],
 	["ssh-public-key", (_, t) => /^AAAA[A-Z]\d?Nza|^AAAAE2Vj/.test(t)],
 	// (After a version's number, `1.2.`, not after the last digit of a token cut at a dot: `<id>7.<secret>`.)
 	["version", (f, t) => /(?:^|[^\w.])v?\d{1,4}(?:\.\d{1,6})*\.$/.test(f.ctx.left) || /\+g[0-9a-f]{7,40}$/.test(t)],
@@ -663,7 +754,12 @@ const VETOES: Veto[] = [
 			!cred &&
 			!keyPlace(f),
 	],
-	["filename", (f, _, cred) => f.ctx.fileish && !cred],
+	// (A web link's path segment is read by urlPathId, which knows a private feed's or download's link from a file's
+	// name; a `file://` URL's are a file's path.)
+	[
+		"filename",
+		(f, _, cred) => f.ctx.fileish && !cred && (f.ctx.syntax !== "path" || /file:\/\/[^\s"']*$/i.test(f.ctx.left)),
+	],
 	// (Elsewhere a UUID is hex in groups: hexVeto.)
 	["uuid", (f, t, cred) => cred && UUID.test(t) && /session[_-]?id$|sessionId$/i.test(f.ctx.name)],
 	// (A ULID's and a cuid's own timestamp says ID wherever it stands; a key's random characters rarely make one.)
@@ -714,11 +810,14 @@ const VETOES: Veto[] = [
 	],
 	// The local part of an email address or Message-ID (`<CAOS…@mail.gmail.com>`, its first piece when an `=` in it
 	// split it, `CAPig+…=JtAj…@mail.gmail.com`), a push token's body. (Not a URL's userinfo, `https://<token>@host`: a
-	// password or a token there.)
+	// password or a token there; nor the password after a user and a colon with the scheme left off, as proxy variables
+	// are written, `HTTPS_PROXY=svc:<password>@proxy:8080`: an address's local part holds no colon.)
 	[
 		"local-part",
 		(f) =>
-			(/^(?:=[\w+=.-]*)?@/.test(f.ctx.right) && !/:\/\/[^\s/@]*$/.test(f.ctx.left)) ||
+			(/^(?:=[\w+=.-]*)?@/.test(f.ctx.right) &&
+				!/:\/\/[^\s/@]*$/.test(f.ctx.left) &&
+				!/(?:^|[\s="'])[\w.%+-]{1,64}:$/.test(f.ctx.left)) ||
 			/ExponentPushToken\[$|ExpoPushToken\[$/.test(f.ctx.left),
 	],
 	// An Android app's signature hash in MSAL's redirect URI (`msauth://com.contoso.app/<base64 SHA-1>`, encoded or in
@@ -743,15 +842,20 @@ const VETOES: Veto[] = [
 	// A fragment of a percent-encoded value (`…%2fAx%2bTHQ…`): the whole value, not a key, if anything.
 	["percent-fragment", (f) => /%[0-9A-Fa-f]{2}$/.test(f.ctx.left) || /^%[0-9A-Fa-f]{2}/.test(f.ctx.right)],
 	// Cloud resource IDs: `/subscriptions/<uuid>/resourceGroups/<name>/providers/…`, ARNs.
-	// (The path ends at a query: a parameter after `?` or `&` is its own, and a credential's name keeps it.)
+	// (The path ends at a query: a parameter after `?` or `&` is its own, and a credential's name keeps it. And a hook's
+	// segment after the resource starts a secret's path: `/projects/42/webhooks/<token>`.)
 	[
 		"resource-id",
-		(f, _, cred) =>
-			!cred &&
-			(/\/(?:subscriptions|resourceGroups|resourcegroups|providers|projects|locations|instances|clusters|namespaces)\/[^\s"'?&#]*$/.test(
-				f.ctx.left,
-			) ||
-				/\barn:aws[\w-]*:[^\s"'?&#]*$/.test(f.ctx.left)),
+		(f, _, cred) => {
+			if (cred) return false;
+			const path =
+				/\/(?:subscriptions|resourceGroups|resourcegroups|providers|projects|locations|instances|clusters|namespaces)\/([^\s"'?&#]*)$/.exec(
+					f.ctx.left,
+				)?.[1];
+			return (
+				(path !== undefined && !path.split("/").some(isHookSegment)) || /\barn:aws[\w-]*:[^\s"'?&#]*$/.test(f.ctx.left)
+			);
+		},
 	],
 	// IDs that frameworks generate: cuid2 (24 lowercase characters starting with a letter, random all through: only
 	// where IDs are written says it's one).
@@ -763,11 +867,16 @@ const VETOES: Veto[] = [
 		"public-browser-key",
 		(f) => f.ctx.syntax === "call" && (PUBLIC_KEY_CALLEE.test(f.ctx.name) || FULLSTORY_GLOBAL.test(f.ctx.name)),
 	],
-	// A Solana address near Solana's words. (Other blockchain addresses and content IDs are `inert`'s: values.ts.)
+	// A Solana address near Solana's words. (Other blockchain addresses and content IDs are `inert`'s: values.ts.) Not
+	// under a credential's name, nor where an RPC provider's URL takes its key: after the API's version
+	// (`solana-devnet.g.alchemy.com/v2/<key>`). (A key's parameter, `?api-key=`, is a credential's name.)
 	[
 		"public-address",
-		(f, t) =>
-			/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t) && /solana|devnet|mainnet-beta|lamports|phantom|pubkey/i.test(f.ctx.near),
+		(f, t, cred) =>
+			/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(t) &&
+			/solana|devnet|mainnet-beta|lamports|phantom|pubkey/i.test(f.ctx.near) &&
+			!cred &&
+			!(f.ctx.inUrl && /\/v\d{1,2}\/$/.test(f.ctx.left)),
 	],
 	["timestamp", (_, t) => /^\d{8}T\d{6}Z$/.test(t)],
 	// A Google Drive file's ID near Drive's words.
@@ -782,7 +891,17 @@ const VETOES: Veto[] = [
 	["name-hash", (f) => f.ctx.nameClass === "hash"],
 	["name-public", (f) => f.ctx.nameClass === "public"],
 	["name-identifier", (f) => f.ctx.nameClass === "identifier"],
-	["base64-text", (f, t, cred) => f.decodes === "text" && f.length >= 24 && !cred && decodedIsNatural(t)],
+	// (Shorter, only words or a JWT's header: a tokenizer's vocabulary, `IG5lY2Vzc2FyaWx5` for ` necessarily`;
+	// `eyJhbGciOiJFUzI1NiJ9`, `{"alg":"ES256"}`. A pair, `user:pass`, is a credential's, and other JSON a cookie's,
+	// Laravel's `{"iv":…}`.)
+	[
+		"base64-text",
+		(f, t, cred) =>
+			f.decodes === "text" &&
+			!cred &&
+			decodedIsNatural(t) &&
+			(f.length >= 24 || /^(?:[A-Za-z]+(?: [A-Za-z]+)*|\{"(?:alg|typ)":"[\w-]+"\})$/.test(base64Binary(t)!.trim())),
+	],
 	// Words, and words around a digit or two: package and module names (`qtquick3dphysics`, `oauth2client`).
 	[
 		"words",

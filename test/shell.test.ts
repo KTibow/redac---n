@@ -161,7 +161,12 @@ test("a password's span when quotes or escapes sit inside it", () => {
 	);
 	assert.equal(
 		r.redact("mysql -u root -p'Xk9'\\''mQ2pLw7v' -h db").text.replace(/#\w+/, "#"),
-		"mysql -u root -p[REDACTED password #] -h db",
+		"mysql -u root -p'[REDACTED password #]' -h db",
+	);
+	// (Its quotes stay about it, as the word wrote them: `'admin:<it>'` keeps its closing quote.)
+	assert.equal(
+		r.redact("curl -u 'admin:Tr0ub4dor'\\''3xK9mQx7' https://x.io/api").text.replace(/#\w+/, "#"),
+		"curl -u 'admin:[REDACTED password #]' https://x.io/api",
 	);
 	assert.equal(
 		r.redact("sshpass -p Xk9\\ mQ2pLw7v ssh host").text.replace(/#\w+/, "#"),
@@ -295,4 +300,39 @@ test("a heredoc inside a substitution is text: an apostrophe in a commit message
 		assert.ok(!new Redactor().redact(out, { hint: { command } }).text.includes("Kx9mQ2vLp7"), message);
 	}
 	assert.equal(shellCommands("echo \"$(cat <<'EOF'\ndon't\nEOF\n)\"\ncurl -u a:b http://x").length, 2);
+});
+
+test("a prompt is read in the shapes terminals print it, and a comment or a heading is none", () => {
+	const r = new Redactor();
+	const body = "cat .env\nPORT=8080\nACMEPAY=Hx7mQ2pLw9zK\n";
+	for (const prompt of [
+		"bash-5.1$ ",
+		"sh-4.2# ",
+		"[ec2-user@ip-10-0-1-5 app]$ ",
+		"[root@web01 ~]# ",
+		"(venv) user@host:~/app$ ",
+		"(base) $ ",
+		"user@host app % ",
+		"/app # ",
+		"~ # ",
+		"PS> ",
+		"C:\\app>",
+		"C:\\Users\\bob\\app> ",
+	])
+		assert.ok(!r.redact(`${prompt}${body}${prompt}ls\n`).text.includes("Hx7mQ2pLw9zK"), prompt);
+	for (const line of ["# cat .env", "# Setup", "/dist # build output", "C:\\app>"])
+		assert.ok(r.redact(`${line}\nACMEPAY=Hx7mQ2pLw9zK\n`).text.includes("Hx7mQ2pLw9zK"), line);
+	// (cmd's prompt is cmd's line: its backslashes are a path's, and the command after it is read.)
+	assert.ok(!r.redact('C:\\> sqlcmd -S db01 -U sa -P "G4rd3n!23" -Q "select 1"\n').text.includes("G4rd3n!23"));
+	assert.ok(!r.redact("C:\\app>type config\\.env\nACMEPAY=Hx7mQ2pLw9zK\n\nC:\\app>").text.includes("Hx7mQ2pLw9zK"));
+});
+
+test("a group's pipe takes what every command in it prints", () => {
+	const r = new Redactor();
+	for (const line of [
+		"{ echo A=1; echo 'STRIPE=Harbor#2291x'; } | tee .env",
+		"{ echo 'STRIPE=Harbor#2291x'; echo A=1; } | tee .env",
+		"bash -c \"echo 'STRIPE=Harbor#2291x'; echo A=1\" | tee .env",
+	])
+		assert.ok(!r.redact(line).text.includes("Harbor#2291x"), line);
 });

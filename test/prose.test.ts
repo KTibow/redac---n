@@ -138,6 +138,27 @@ test("pass as an ordinary English word is kept", () => {
 		kept(line, v);
 });
 
+test("a string's escaped line break ends a value in prose, so a short stand-in before it is kept", () => {
+	for (const [line, value] of [
+		['    assert_equal "The secret is bar\\n", content', "bar\\n"],
+		['    assert_equal "The secret is foo\\n", content', "foo\\n"],
+	])
+		kept(line, value);
+	hidden('    assert_equal "The secret is Kx9mQ2vLp7\\n", content', "Kx9mQ2vLp7");
+});
+
+test("pass as a step or a verdict is kept; a password under it is hidden", () => {
+	for (const line of [
+		"                # 1st pass: check if the value is an exact instance of one of the Union types",
+		"                # 2nd pass: check if the value is an instance of any subclass",
+		'    print("UNEXPECTED PASS: check")',
+	])
+		kept(line, line);
+	hidden('SETTING_PASS="Kx9mQ2vLp"', "Kx9mQ2vLp");
+	hidden("wifi pass: Kx9mQ2vLp7", "Kx9mQ2vLp7");
+	hidden("DB_PASS=sunshine", "sunshine");
+});
+
 test("foreign sentences and algorithm names that mention a password come out unchanged", () => {
 	for (const t of [
 		"Das Passwort ist 8-stellig",
@@ -163,6 +184,17 @@ test("sentences about a password policy are kept", () => {
 	kept("I changed the password policy to require 12 characters", "require 12 characters");
 	for (const t of ["password: case-sensitive", "The password policy is Strict@2024 compliant."])
 		assert.equal(r().redact(t).text, t);
+});
+
+test("four 4-letter words after 'app password:' are the sentence going on; Google's random letters are hidden", () => {
+	for (const t of [
+		"You need an app password: this will work with most mail clients",
+		"# Gmail requires an app password: this must come from your account settings.",
+		"SMTP error: app password required: this will work with Gmail",
+	])
+		assert.equal(r().redact(t).text, t);
+	hidden("Your app password for your device: qwhz kfmt vbnr xplo", "qwhz kfmt vbnr xplo");
+	hidden("App password: `kfmt qwhz xplo vbnr`", "kfmt qwhz xplo vbnr");
 });
 
 test("a command's pattern list that names password words is kept", () => {
@@ -228,6 +260,12 @@ test("a password stated in Dutch, Finnish or Chinese is hidden, a count after it
 test("a user and a password after a slash in prose: random letters are a password, words a page's path", () => {
 	hidden("wifi: guest / QwZxKvBnMp", "QwZxKvBnMp");
 	kept("open the account settings/billing page", "settings/billing");
+	// (An account's or a login's path of words names an organization's service; credentials or a wifi's may be words.)
+	for (const t of ["account: acme/payments-api", "login: dev/staging-env", "account: acme/billing_service"])
+		kept(t, t.split("/")[1]);
+	hidden("account: acme/Pq8vLm2-Zx7k", "Pq8vLm2-Zx7k");
+	hidden("login admin/Tq7#mPx2Lw9z", "Tq7#mPx2Lw9z");
+	hidden("wifi: guest / walnut-thistle-harbor", "walnut-thistle-harbor");
 });
 
 test("a parameter's description is no password, in any comment's syntax or a line of output", () => {
@@ -319,6 +357,106 @@ test("a password's ! after it in a sentence is hidden with it, and a common word
 	assert.equal(r().redact("the pass is Xyzzy42!").text.at(-1), "]");
 	assert.equal(r().redact("Passwort: root!").text, "Passwort: root!");
 	kept("the pass is Xyzzy42? not sure", "? not sure");
+});
+
+test("a credential reset, rotated or updated to a value, in the same sentence or the next, is hidden", () => {
+	for (const t of [
+		"The admin password was reset to Qm7vLx2kP9",
+		"The admin password was rotated to Qm7vLx2kP9",
+		"the password was updated to Qm7vLx2kP9",
+		"The API token has been rotated to Qm7vLx2kP9xzRtWq7",
+		"I changed the password. The new one is Qm7vLx2kP9.",
+		"I changed the password. It's Qm7vLx2kP9",
+		"Rotated the admin token. New one is Qm7vLx2kP9xzRtWq7",
+	])
+		hidden(t, "Qm7vLx2kP9");
+	for (const t of [
+		"The password was changed yesterday.",
+		"The password policy changed. It is NIST800compliant now.",
+		"Reset the password. It is required for login.",
+	])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("a label that says whose credential it is before its colon names it: `Password for admin:`", () => {
+	for (const t of [
+		"Password for admin: Qm7vLx2kP9",
+		"sudo password for bob: Qm7vLx2kP9",
+		"Password for the admin user: Qm7vLx2kP9",
+		"Password for jenkins: Xk9mPq2&Rt7vLw4!Qm7vLx2kP9",
+		'Password for postgres: "Qm7vLx2kP9"',
+		"Token for the CI bot: Qm7vLx2kP9xzRtWq7",
+		"API key for the payments service: Qm7vLx2kP9xzRtWq7",
+	])
+		hidden(t, "Qm7vLx2kP9");
+	assert.deepEqual(
+		r()
+			.detect("Password for the admin user: Qm7vLx2kP9")
+			.map((f) => f.kind),
+		["password"],
+	);
+	for (const t of ["Password for reset: click here", "Password for admin: required", "Password for user bob: bob"])
+		assert.equal(r().redact(t).text, t);
+});
+
+test("a value in a sentence ends at a dash or CJK punctuation outside ASCII, and the words after it are kept", () => {
+	for (const [t, rest] of [
+		["the password is Qm7vLx2kP9—don't share it", "—don't share it"],
+		["the password is Qm7vLx2kP9–don't share it", "–don't share it"],
+		["the password is Qm7vLx2kP9，user is bob", "，user is bob"],
+		["**Password:** Qm7vLx2kP9—keep it safe", "—keep it safe"],
+	]) {
+		hidden(t, "Qm7vLx2kP9");
+		kept(t, rest);
+	}
+});
+
+test("a passphrase in curly or angle quotes, or going on into the sentence, is read whole; a rule for one is no passphrase", () => {
+	for (const t of [
+		"The passphrase is “lamp otter river stone”",
+		"The passphrase is ‘lamp otter river stone’",
+		"The passphrase is «lamp otter river stone»",
+		"The passphrase is lamp otter river stone, don't share it.",
+		"The passphrase is lamp otter river stone (changed monthly)",
+		"The passphrase is lamp otter river stone - keep it safe",
+	])
+		hidden(t, "otter river stone");
+	kept("The passphrase is lamp otter river stone, don't share it.", ", don't share it.");
+	kept("The passphrase is “lamp otter river stone”", "”");
+	for (const t of [
+		"The passphrase is “not set yet”",
+		"The password is stored in the vault, ask bob.",
+		"The password is long and random, so keep it.",
+		'The passphrase must be: "at least four words long"',
+		'passphrase should be: "a long sentence you can remember"',
+		'Your passphrase: "must contain four words"',
+	])
+		assert.equal(r().redact(t).text, t);
+	hidden('Your passphrase (between double-quotes): "falcon tiger quartz sierra harbor"', "falcon tiger quartz");
+});
+
+test("a scheme a password is checked or sent by, in parentheses after it, is no password", () => {
+	for (const t of [
+		"Password (scram-sha-256)",
+		"Password (WPA2)",
+		"password (sha512crypt)",
+		"password (md5crypt)",
+		"password (NTLMv2)",
+		"Password (MSCHAPv2)",
+	])
+		assert.equal(r().redact(t).text, t);
+	hidden("rotate the passwd (M34d0w) before Friday", "M34d0w");
+});
+
+test("a Markdown label in underscores is a label as one in asterisks is", () => {
+	for (const t of [
+		"__Password:__ Summer2024!",
+		"__Password__: Summer2024!",
+		"_Password:_ Summer2024!",
+		"**Password:** Summer2024!",
+	])
+		hidden(t, "Summer2024!");
+	kept("self._password: str = None", "str = None");
 });
 
 test("a password in a Latin sentence with accents is one; hyphened words in the sentence's language are not", () => {

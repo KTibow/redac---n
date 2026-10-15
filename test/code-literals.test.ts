@@ -22,6 +22,13 @@ test("adjacent string literals are one value in code, but a log's quoted fields 
 	hidden('x = foo(\n    "ghp\x5f16C7e42F292c69"\n    "12E7710c838347Ae178B4b",\n)', "12E7710c838347Ae178B4b");
 	hidden("token = ('ghp\x5f16C7e42F292c69' '12E7710c838347Ae178B4b')", "12E7710c838347Ae178B4b");
 	kept('200 512 "https://app.example.com/reset?token=Qz8rT2mLx0vB4nW7kP1y" "curl/7.88.1"', '" "curl/7.88.1"');
+	// (A C initializer's next piece is indented under it; a shell line's quoted value ends its line.)
+	hidden('static const char *key =\n    "sk-proj-Ab3De5Fg7"\n    "Hi9Jk1Lm3No5Pq7Rs9Tu";', "Hi9Jk1Lm3No5Pq7Rs9Tu");
+	for (const next of ['"$SCRIPT_DIR/run.sh" --migrate', '"$@"', '"/usr/local/bin/deploy" --prod']) {
+		const script = `export DB_PASSWORD="Xk29fLmq81Zt"\n${next}\n`;
+		hidden(script, "Xk29fLmq81Zt");
+		kept(script, `"\n${next}\n`);
+	}
 });
 
 test("pieces in single quotes join as double-quoted ones do; a string starts with three characters, of token-like pieces", () => {
@@ -138,6 +145,125 @@ test("SQL that sets a password hides the literal and keeps a password hash", () 
 	// A keyword or a stand-in where the password goes is none.
 	kept("CREATE USER 'app'@'%' IDENTIFIED BY RANDOM PASSWORD;", "RANDOM PASSWORD");
 	kept("CREATE USER app WITH PASSWORD 'abcd1234';", "abcd1234");
+	// A literal whose quote is escaped by a backslash (MySQL's default, Postgres' E'…'), whole.
+	for (const line of [
+		"CREATE USER 'app'@'%' IDENTIFIED BY 'Hx7m\\'Q2pL9vRtZk3w';",
+		"ALTER USER 'u'@'h' IDENTIFIED WITH mysql_native_password BY \"Hx7m\\\"Q2pL9vRtZk3w\";",
+		"SET PASSWORD FOR 'u'@'h' = 'Hx7m\\'Q2pL9vRtZk3w';",
+		"CREATE ROLE app LOGIN PASSWORD E'Hx7m\\'Q2pL9vRtZk3w';",
+	])
+		hidden(line, "Q2pL9vRtZk3w");
+	// The quoted form in a statement that makes, changes or grants to a user, over several lines too; prose says what
+	// a record is identified by.
+	hidden("CREATE USER app\n  IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	// (MariaDB's `CREATE OR REPLACE USER` makes one too.)
+	hidden("CREATE OR REPLACE USER u1@localhost IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	hidden("CREATE OR REPLACE USER IF NOT EXISTS u1 IDENTIFIED BY Hx7mQ2pL9vRtZk3w;", "Hx7mQ2pL9vRtZk3w");
+	// Dynamic SQL's string built around a variable holds no password.
+	kept("SET @SQL = 'CREATE LOGIN [' + @NewLogin + '] WITH PASSWORD = N''' + @NewLoginPwd + ''';';", "@NewLoginPwd");
+	hidden("GRANT ALL ON *.* TO 'u'@'h' IDENTIFIED BY 'Hx7mQ2pL9vRtZk3w';", "Hx7mQ2pL9vRtZk3w");
+	hidden("CREATE DATABASE LINK l CONNECT TO u IDENTIFIED BY \"Hx7mQ2pL9vRtZk3w\" USING 'x';", "Hx7mQ2pL9vRtZk3w");
+	for (const line of [
+		"Each record is identified by 'order_id' in the table.",
+		'The cluster is identified by "prod-eu-1".',
+		"Nodes are identified by 'worker-3'; users by 'email address'.",
+	])
+		assert.equal(r().redact(line).text, line);
+});
+
+test("a common password's stand-in after a config's or a statement's password keyword is kept, as under a password's name", () => {
+	for (const [line, value] of [
+		["ALTER USER app WITH PASSWORD 'hunter2';", "hunter2"],
+		["CREATE USER 'app'@'%' IDENTIFIED BY 'test123';", "test123"],
+		["127.0.0.1:6379> AUTH hunter2", "hunter2"],
+		["userlist L\n  user bob insecure-password hunter2", "hunter2"],
+		['%any : PSK "hunter2"', "hunter2"],
+	])
+		kept(line, value);
+	hidden("ALTER USER app WITH PASSWORD 'Harbor2291x';", "Harbor2291x");
+	// (A command line's option names no password: `-phunter2` is hidden.)
+	hidden("mysql -u root -phunter2 app", "hunter2");
+	hidden("openssl enc -aes256 -pass pass:hunter2 -in a", "hunter2");
+});
+
+test("SQL's own strings are read as strings: N'…', E'…', a character set's, a cast, a hash's input", () => {
+	const pw = "Harbor2291!x";
+	for (const t of [
+		`INSERT INTO Users (Id, Email, Password) VALUES (1, N'a@b.com', N'${pw}');`,
+		`UPDATE Users SET Password = N'${pw}' WHERE Id = 1;`,
+		`CREATE LOGIN app WITH PASSWORD = N'${pw}', CHECK_POLICY = OFF;`,
+		`ALTER LOGIN sa WITH PASSWORD=N'${pw}'`,
+		`CREATE USER app IDENTIFIED BY N'${pw}';`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', E'${pw}');`,
+		`INSERT INTO users (name, password) VALUES (_utf8mb4'ann', _utf8mb4'${pw}');`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', '${pw}'::character varying(64));`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', crypt('${pw}', gen_salt('bf')));`,
+		`INSERT INTO users (email, password) VALUES ('ann@x.io', encode(digest('${pw}', 'sha256'), 'hex'));`,
+	])
+		hidden(t, pw);
+	// (A prefix is SQL's before SQL's quote only: a password may start `N"`. Prose's `N's` and `E'll` open nothing.)
+	hidden('level=info user=admin password=N"4jVkMdXAoCDB! host=db', 'N"4jVkMdXAoCDB!');
+	kept("SELECT N'Don''t panic' AS msg FROM t; It's N's turn, and E'll go.", "N'Don''t panic' AS msg");
+	kept("INSERT INTO users (email, password) VALUES ('ann@x.io', crypt(:pw, gen_salt('bf')));", "gen_salt('bf')");
+	kept("INSERT INTO users (email, created) VALUES ('ann@x.io', '2024-01-01'::timestamp);", "'2024-01-01'::timestamp");
+});
+
+test("a key/value table's value is named by its row, and pg_dump's COPY rows by their columns", () => {
+	for (const [t, v] of [
+		["INSERT INTO wp_options (option_name, option_value) VALUES ('smtp_password', 'Harbor2291!x');", "Harbor2291!x"],
+		["INSERT INTO settings (name, value) VALUES ('site', 'x'), ('api_key', 'Winter2024pass');", "Winter2024pass"],
+		[
+			"INSERT INTO `wp_usermeta` (`user_id`, `meta_key`, `meta_value`) VALUES (1, 'stripe_secret', 'Hx7mQ2pL9vRt');",
+			"Hx7mQ2pL9vRt",
+		],
+		["INSERT INTO config (setting_key, setting_value) VALUES ('mail.password', 'Hx7mQ2pL9vRt');", "Hx7mQ2pL9vRt"],
+		[
+			"COPY public.users (id, email, password) FROM stdin;\n1\tann@x.io\tHarbor2291!x\n2\tbob@x.io\tWinter2024pass\n\\.\n",
+			"Winter2024pass",
+		],
+		["COPY public.users (id, email, password) FROM stdin;\r\n1\tann@x.io\tHarbor2291!x\r\n\\.\r\n", "Harbor2291!x"],
+	])
+		hidden(t, v);
+	kept(
+		"INSERT INTO settings (name, value) VALUES ('smtp_host', 'mail.x.io'), ('api_key', 'Winter2024pass');",
+		"mail.x.io",
+	);
+	kept("INSERT INTO settings (name, value) VALUES ('blogname', 'Harbor Tales');", "Harbor Tales");
+	kept("COPY public.users (id, email, password) FROM stdin;\n1\tann@x.io\t\\N\n\\.\nSELECT 1;", "ann@x.io");
+});
+
+test("a literal converted before it's passed, or given to a converter, is still the value", () => {
+	const pw = "lamp-otter-91Qx-blue";
+	for (const t of [
+		`return new PasswordAuthentication("deploy", "${pw}".toCharArray());`,
+		`mgr.setPassword("${pw}".getBytes(StandardCharsets.UTF_8));`,
+		`sig = hmac.new("${pw}".encode("utf-8"), body, hashlib.sha256).hexdigest()`,
+		`client.setPassword("${pw}".trim().toCharArray());`,
+		`const token = jwt.sign(payload, new TextEncoder().encode("${pw}"));`,
+		`config.setPassword(Secret::new("${pw}".to_string()));`,
+		`config.set_password(SecretString::from("${pw}"));`,
+		`token = jwt.sign(payload, Buffer.from("${pw}", "utf8"))`,
+		`jwtKey := []byte("${pw}")`,
+	])
+		hidden(t, pw);
+	// (A method that combines the literal with a variable makes another value; a lookup takes a name.)
+	kept('client.setPassword("lamp-otter-{}".format(suffix));', "lamp-otter-{}");
+	kept('client.setPassword(getSecret("prod-db-password"));', "prod-db-password");
+	kept('client.setPassword(Secret.load("prod-db-password").get());', "prod-db-password");
+	// (A constructor given two strings, a client's ID and its secret, makes no value of the first.)
+	kept(
+		'KeyVaultCredentials kvCred = new ClientSecretKeyVaultCredential("4f1c2a77-app-client", "client Secret");',
+		"4f1c2a77-app-client",
+	);
+	hidden(
+		"$this->key = InMemory::base64Encoded('Zp3Lq8Wv2Rk9Tn4Mx7Bc1Hd6Fy0Js5Ga+Ke3Ou8Ni/E=');",
+		"Zp3Lq8Wv2Rk9Tn4Mx7Bc1Hd6Fy0Js5Ga+Ke3Ou8Ni/E=",
+	);
+	// (A declaration whose type is named for a password declares a variable: the literal is the value, not the line.)
+	const out = r().redact(`PasswordAuthentication auth = new PasswordAuthentication("deploy", "${pw}");`).text;
+	assert.ok(out.includes('auth = new PasswordAuthentication("deploy", "') && !out.includes(pw), out);
+	kept("PasswordEncoder encoder = new BCryptPasswordEncoder();", "encoder = new BCryptPasswordEncoder();");
+	hidden("requirepass Kx9mQ2vLp7Rt", "Kx9mQ2vLp7Rt");
 });
 
 test("call arguments and object fields that take a secret are hidden: setters, constructors, connect calls, basic auth, JWT and HMAC keys", () => {
@@ -324,4 +450,110 @@ test("an interpolated string's holes are code, in the value's own string or the 
 	// (A connection string in quotes: a value ends at the next `;name=`.)
 	hidden('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "Xk9mQ2pLrT");
 	kept('conn = "Server=db;Pwd=Xk9mQ2pLrT;User Id=sa"', "User Id=sa");
+});
+
+test("a Markdown code fence opens no template literal: the calls inside it are read", () => {
+	const java = 'cfg.setUsername("jenkins");\ncfg.setPassword("Winter1!!");';
+	const php = "<?php\ndefine( 'DB_PASSWORD', 'O9FyDB0k=HtE4' );";
+	for (const [code, secret] of [
+		[java, "Winter1!!"],
+		[php, "O9FyDB0k=HtE4"],
+	]) {
+		hidden("```\n" + code + "\n```", secret);
+		hidden("Here's what it printed:\n\n```java\n" + code + "\n```\n\nAnything look off?", secret);
+		hidden("~~~\n" + code + "\n~~~", secret);
+	}
+});
+
+test("a call that takes a secret is read in its older forms: jjwt's algorithm first, Jersey's basic", () => {
+	for (const line of [
+		'Jwts.builder().setSubject("u").signWith(SignatureAlgorithm.HS512, "Harbor2291xSecret").compact();',
+		'Jwts.builder().signWith("Harbor2291xSecret").compact();',
+		'HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret")',
+		'client.register(HttpAuthenticationFeature.basic("admin", "Harbor2291xSecret"));',
+	])
+		hidden(line, "Harbor2291xSecret");
+	kept("Jwts.builder().signWith(key, SignatureAlgorithm.HS256).compact();", "SignatureAlgorithm.HS256");
+	kept('Feature.basic("standard", "configuration")', "configuration");
+});
+
+test("a command that sets a variable takes its options before the name: setx /M, fish's long options", () => {
+	for (const line of [
+		"setx /M DB_PASSWORD Harbor2291!x",
+		"setx DB_PASSWORD Harbor2291!x /M",
+		"set --export DB_PASSWORD Harbor2291!x",
+		"set -gx --path DB_PASSWORD Harbor2291!x",
+		"set --global --export DB_PASSWORD Harbor2291!x",
+	])
+		hidden(line, "Harbor2291!x");
+	kept("setx /M PATH C:\\tools\\bin", "C:\\tools\\bin");
+	kept("set --export EDITOR vim", "vim");
+});
+
+test("an expression beside a credential's name in HCL is code; a literal there is the value", () => {
+	for (const ref of [
+		"random_password.db.result",
+		"aws_secretsmanager_secret_version.db.secret_string",
+		"var.db_password",
+	])
+		kept(
+			`resource "aws_ssm_parameter" "db" {\n  name  = "db_password"\n  type  = "SecureString"\n  value = ${ref}\n}\n`,
+			ref,
+			{ path: "ssm.tf" },
+		);
+	hidden(
+		'resource "aws_ssm_parameter" "db" {\n  name  = "db_password"\n  type  = "SecureString"\n  value = "Harbor2291!x"\n}\n',
+		"Harbor2291!x",
+		{ path: "ssm.tf" },
+	);
+	hidden("- name: DB_PASSWORD\n  value: Harbor2291x\n", "Harbor2291x");
+	hidden("<input name=password value=Harbor2291x>", "Harbor2291x");
+});
+
+test("a form fill's options and calls between the field and the fill leave the value its", () => {
+	for (const text of [
+		"cy.get('#password').type('Xq7#Lm2vRt9Kp4Wz', { log: false })",
+		"await page.fill('#password', 'Xq7#Lm2vRt9Kp4Wz', { timeout: 5000 })",
+		"await page.type('#password', 'Xq7#Lm2vRt9Kp4Wz', { delay: 100 })",
+		'driver.findElement(By.id("password")).clear().sendKeys("Xq7#Lm2vRt9Kp4Wz");',
+		"await page.getByLabel('Password', { exact: true }).fill('Xq7#Lm2vRt9Kp4Wz')",
+		"await page.locator('#password').first().fill('Xq7#Lm2vRt9Kp4Wz')",
+		"cy.get('[name=\"password\"]').clear().type('Xq7#Lm2vRt9Kp4Wz')",
+		"await page.getByLabel('Password').fill('Xq7#Lm2vRt9Kp4Wz', { force: true })",
+	]) {
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+		kept(text, /\{ \w+: \w+ \}|\.(?:first|clear)\(\)|getBy\w+\('Password'/.exec(text)?.[0] ?? "Xq7#");
+	}
+	kept("cy.get('#search').type('Xq7#Lm2vRt9Kp4Wz', { log: false })", "Xq7#Lm2vRt9Kp4Wz");
+	kept("await page.getByLabel('Username', { exact: true }).fill('qa-user-7Xk2Lm9')", "qa-user-7Xk2Lm9");
+});
+
+test("a literal converted where it's given, `.toCharArray()`, `.trim()`, `String.valueOf(…)`, is the value", () => {
+	for (const text of [
+		'cfg.setPassword("Xq7#Lm2vRt9Kp4Wz".toCharArray());',
+		'new PasswordAuthentication("bob", "Xq7#Lm2vRt9Kp4Wz".toCharArray());',
+		'cfg.setPassword(String.valueOf("Xq7#Lm2vRt9Kp4Wz"));',
+		'cfg.setPassword("Xq7#Lm2vRt9Kp4Wz".trim());',
+		'client.setPassword(Buffer.from("Xq7#Lm2vRt9Kp4Wz"));',
+	]) {
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+		kept(text, /\.toCharArray\(\)|\.trim\(\)|String\.valueOf\("|Buffer\.from\("/.exec(text)![0]);
+	}
+	kept('cfg.setUsername("deploy-user".toCharArray());', "deploy-user");
+});
+
+test("a credential a chained assertion expects to equal a literal is that literal", () => {
+	for (const text of [
+		'assertThat(cfg.getPassword()).isEqualTo("Xq7#Lm2vRt9Kp4Wz");',
+		"expect(cfg.password).toEqual('Xq7#Lm2vRt9Kp4Wz')",
+	])
+		hidden(text, "Xq7#Lm2vRt9Kp4Wz");
+	kept('assertEquals(config.getUsername(), "deploy-user");', "deploy-user");
+	kept('self.assertEqual(cfg.password_hash_scheme, "pbkdf2_sha256")', "pbkdf2_sha256");
+	kept("expect(cfg.passwordMinLength).toBe(12)", "toBe(12)");
+});
+
+test("C and C++ wide and UTF-8 literals are read as strings", () => {
+	hidden('std::wstring password = L"Zq8vT3mK9xLw";', "Zq8vT3mK9xLw");
+	hidden('const char8_t* api_secret = u8"Zq8vT3mK9xLwPr2Y";', "Zq8vT3mK9xLwPr2Y");
 });

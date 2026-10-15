@@ -242,6 +242,37 @@ test("base64 of text is kept: a sentence, a table, words, a URL, a GraphQL node 
 	hidden(`Use this one: ${b64("Winter 2024!")}`, b64("Winter 2024!"));
 });
 
+test("short base64 of words or of a JWT's header is kept; of a pair or other JSON, hidden", () => {
+	const b64 = (s: string) => Buffer.from(s).toString("base64");
+	// A tokenizer's vocabulary: each token's bytes in base64, then its rank.
+	const vocab = [" necessarily", " regulations", " connections", " observation"].map((w, i) => `${b64(w)} ${6646 + i}`);
+	kept(vocab.join("\n"), vocab.join("\n"));
+	kept(`base64_string = "${b64("Random string")}"`, b64("Random string"));
+	kept(`const base64Content = '${b64("test content")}';`, b64("test content"));
+	kept("&assertion=eyJhbGciOiJFUzI1NiJ9.", "eyJhbGciOiJFUzI1NiJ9");
+	hidden(`Use this one: ${b64("admin:Kx9mQ2vL")}`, b64("admin:Kx9mQ2vL"));
+	hidden("tmux_session=eyJpdiI6IlZ4In0%3D", "eyJpdiI6IlZ4In0");
+});
+
+test("a word in a cased alphabet is read whole, not as its ASCII letters; a token after Chinese words is a token", () => {
+	for (const line of [
+		'    "Recovery key password" : "Endurheimtulykilorð",',
+		'    "Recovery Key disabled" : "Endurheimtulykilorð óvirkt",',
+		'    "Please check your recovery key password" : "Athugaðu endurheimtulykilorðið þitt!",',
+	])
+		kept(line, line);
+	hidden("我的令牌是Xk9mQ2vLp7Rt3Wz8nB5c，别告诉别人", "Xk9mQ2vLp7Rt3Wz8nB5c");
+});
+
+test("the name a declaration gives is an identifier; a token in the class's body is still judged", () => {
+	kept(
+		"namespace esphome::xiaomi_lywsd03mmc {\n\nclass XiaomiLYWSD03MMC final : public Component {",
+		"XiaomiLYWSD03MMC",
+	);
+	kept("struct QMI8658GyroCfg2 {\n  int range;\n};", "QMI8658GyroCfg2");
+	hidden('class Client {\n  const char *token = "Xk9mQ2vLp7Rt3Wz8nB5c";\n};', "Xk9mQ2vLp7Rt3Wz8nB5c");
+});
+
 test("a random key in groups or with underscores is neither a slug nor an identifier", () => {
 	for (const [text, token] of [
 		["Use this one: xk9mq-2vl7p-zrtq8-wn3xc-4yb5v", "xk9mq-2vl7p-zrtq8-wn3xc-4yb5v"],
@@ -262,7 +293,7 @@ test("hex is kept in dashed groups and with a word before it, unless a credentia
 	kept(login, "eac2dc73-2323-49d6-bd8b-aa36a28fceab");
 	hidden("token=acme_9f86d081884c7d65", "9f86d081884c7d65");
 	// In a secret file, a whole value; and a URL's path segment there.
-	hidden("RELEASE=build_9f86d081884c7d659a2f\n", "9f86d081884c7d659a2f", { secretFile: true });
+	hidden("STAGE=build_9f86d081884c7d659a2f\n", "9f86d081884c7d659a2f", { secretFile: true });
 	hidden("DOWNLOAD_URL=https://files.acme.io/d/kx9mq2vl7pzrtq8wn3xcz\n", "kx9mq2vl7pzrtq8wn3xcz", { secretFile: true });
 });
 
@@ -375,4 +406,99 @@ test("a token's context: the name and syntax the text around it gives", () => {
 		if (JSON.stringify(got) !== JSON.stringify(want)) wrong.push(`${JSON.stringify(text)} → ${JSON.stringify(got)}`);
 	}
 	assert.deepEqual(wrong, []);
+});
+
+test("keys handed over one per line are judged as keys, whatever widths they share", () => {
+	const keys = [
+		"IhRIAJZE/PEO5pJ8eQjG6ZuJftA791osjvBiB7MCDfw=",
+		"lXgCzYiAz6EwdnsyAatoWBPEVC2txVnt280dN9YDbMY=",
+		"mxeXTdT/W94sA8J0TV/BoCf2PA8zVvnHoWu/+2fUSTY=",
+	];
+	for (const key of keys) hidden(`Here are your new API keys:\n${keys.join("\n")}`, key);
+	// (A list with no handover over it, `wg show wg0 peers`, is left to the blob rule: public keys, one per line.)
+	for (const key of keys) kept(`$ wg show wg0 peers\n${keys.join("\n")}`, key);
+});
+
+test("a secret in a URL's path is one whether the URL has its scheme and host or a log shows its path alone", () => {
+	const token = "Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN";
+	for (const path of [`/hooks/${token}`, `/webhook/${token}`, `/api/keys/${token}/rotate`])
+		hidden(`10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "POST ${path} HTTP/1.1" 200 12`, token);
+	hidden(`curl -X POST https://ci.example.com/api/projects/42/webhooks/${token}`, token);
+	hidden(`curl -X POST https://gitlab.example.com/api/v4/projects/7/trigger/${token}`, token);
+	// (Other paths stay IDs and files: a resource's, a file on disk, a cloud resource's.)
+	kept(`10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "GET /api/v1/users/${token} HTTP/1.1" 200 12`, token);
+	kept(`cp /hooks/${token} /tmp/x`, token);
+	kept(`https://compute.googleapis.com/compute/v1/projects/my-proj/zones/us-central1-a/instances/${token}`, token);
+});
+
+test("a password after a user and a colon is hidden with or without the URL's scheme", () => {
+	const pw = "Kd8fQ2mZx9Lp4VnR7sTb3WyH";
+	hidden(`export HTTPS_PROXY=svc:${pw}@proxy.corp:8080`, pw);
+	hidden(`export HTTPS_PROXY=http://svc:${pw}@proxy.corp:8080`, pw);
+	kept(`Message-ID: <CAOS${pw}@mail.gmail.com>`, pw);
+	kept(`From: ${pw}@users.noreply.github.com`, pw);
+});
+
+test("an RPC provider's key in a Solana URL is a key; an address near Solana's words stays", () => {
+	const key = "QpDQ2eodexkZNDm3FHupsikXm4fjaPeY";
+	hidden(`RPC_URL=https://solana-devnet.g.alchemy.com/v2/${key}\n`, key);
+	hidden(`solana config set --url https://mainnet.helius-rpc.com/?api-key=${key}`, key);
+	kept(`https://explorer.solana.com/address/${key}?cluster=devnet`, key);
+	kept(`solana balance ${key}`, key);
+});
+
+test("IDs where commands, logs and SDKs print them stay: a table's cells, a cache buster, a lookup's argument", () => {
+	kept("green open chunks-2026.10 z0JPk8Nk-z16-21STCuI2e 3 1 1820331 0 14.2gb 7.1gb", "z0JPk8Nk-z16-21STCuI2e");
+	kept('<link href="/css/site.css?v=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7" rel="stylesheet" />', "R1xcOGum");
+	kept('$result = ChargeBee\\Models\\Subscription::retrieve("b1AO9C0mWmtoh1Mlk");', "b1AO9C0mWmtoh1Mlk");
+	kept("pspReference=5V59S4TGC5KYYSDW&eventCode=AUTHORISATION&success=false", "5V59S4TGC5KYYSDW");
+	kept("  organization: 'org_YWW51UBRXV18GF09IKVYQMG2PN',", "org_YWW51UBRXV18GF09IKVYQMG2PN");
+	// (The same places with a credential in them: a key's parameter, a secret's lookup, a client's argument.)
+	hidden("https://x.io/app.js?token=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7", "R1xcOGum");
+	hidden('secret = client.secrets.fetch("Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te")', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te");
+});
+
+test("a header names a value after its parameters and version tags", () => {
+	kept("svix-signature: v1,j0N+Ji4l/S09vw5xgfcXlalZr04qXkw27r3i87b/nil=", "j0N+Ji4l");
+	kept(
+		"Stripe-Signature: t=1492774577,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd",
+		"5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd",
+	);
+	hidden("X-Api-Key: v1,Kx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sW5", "Kx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sW5");
+	hidden("error: pin=dGhpc0lzQVNlY3JldEtleTEyMw8x", "dGhpc0lzQVNlY3JldEtleTEyMw8x");
+});
+
+test("a query parameter's credential words are its own: a key's parameter doesn't make the next one a key", () => {
+	const ctx = (text: string, token: string) =>
+		features(
+			new Doc(text),
+			candidates(text).find((c) => c.token === token)!,
+			false,
+		).ctx;
+	const url =
+		"https://server.smithery.ai/exa/mcp?api_key=1b2c3d4e-1111-2222-3333-444455556666&profile=loexnc-wjfyad-li2q6";
+	assert.equal(ctx(url, "loexnc-wjfyad-li2q6").lineCredential, false);
+	assert.equal(
+		ctx("token: x\nhttps://a.io/cb?profile=loexnc-wjfyad-li2q6", "loexnc-wjfyad-li2q6").lineCredential,
+		true,
+	);
+});
+
+test("a base64 digest is kept where its line names the digest: HTTP's digest fields, a label's bracketed algorithm", () => {
+	for (const bytes of [32, 48, 64]) {
+		const digest = randomBytes(bytes).toString("base64");
+		for (const text of [
+			`Content-Digest: sha-256=:${digest}:`,
+			`Repr-Digest: sha-512=:${digest}:`,
+			`Digest: sha-256=${digest}`,
+			`Hash (sha256): ${digest}`,
+			`Checksum (base64): ${digest}`,
+			`SHA256 (app.tar.gz) = ${digest}`,
+		])
+			kept(text, digest);
+	}
+	// A credential's label with an encoding in brackets is still a credential's.
+	const secret = randomBytes(32).toString("base64");
+	hidden(`Secret (base64): ${secret}`, secret);
+	hidden("api_key (prod): Xk9mQ2vLp7RtN3wY8cBdZq4T", "Xk9mQ2vLp7RtN3wY8cBdZq4T");
 });

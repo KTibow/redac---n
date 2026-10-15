@@ -262,8 +262,14 @@ test("a password hash is recognised whole, not by how it starts", () => {
 		"{CRYPT}$6$saltsalt$1tySNNgq6Honi21SstQhFBZIa4TOpuhR6v7fJtbxWwEy6BU3rZRVNtB.144R0..s/NUKKimOuL4AFnrIBJcFA0",
 		"*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19",
 		"md5d41d8cd98f00b204e9800998ecf8427e",
+		// Spring Security's DelegatingPasswordEncoder, the encoder's id first; Werkzeug's, its method and parameters.
+		"{bcrypt}$2a$10$sCBi9fy9814vUPf2ZRbtp.fR5/VgRk2iBFZ.ypu5IyZ28bZgxrVDa",
+		"scrypt:32768:8:1$k3T9vQ2mLpX7rW4n$1d4c0a6e8f2b9d7c5a3e1f0b8d6c4a2e9f7d5b3c1a0e8f6d4b2c0a9e7f5d3b1c8a6e4f2d0b9c7a5e3f1d8b6c4a2e0f9d7b5c3a1e8f6d4b2",
+		"pbkdf2:sha256:600000$Kx9mQ2vR$3f9a1c7e5b2d4f60a8c6e4b2d0f9e7c5a3b1d8f6e4c2a0b9d7f5e3c1a8b6d4f2",
 	])
 		assert.ok(isPasswordHash(hash), hash);
+	// (Spring's `{noop}` stores the password itself.)
+	assert.ok(!isPasswordHash("{noop}Harbor2291x"));
 	for (const password of [
 		"md5$Xk9#mP2vQ!&z",
 		"{SSHA}Xk9#mP2vQ!&z",
@@ -362,6 +368,12 @@ test("password hashes are kept whole by default and hidden whole with hashes: hi
 		strict.redact("GRANT ALL ON *.* TO 'bob'@'%' IDENTIFIED BY '*3F1A9C2E7B5D4F6A8C0E2B4D6F8A0C2E4B6D8F0A';").text,
 		/BY '\[REDACTED password hash #\w+\]';$/,
 	);
+	// A Redis ACL rule's hash, in an ACL file and set in a session.
+	const hex = "a3f5c8e1b2d4967f0a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef";
+	for (const line of [`user bob on #${hex} ~* +@all`, `127.0.0.1:6379> ACL SETUSER bob on #${hex} ~* +@all`]) {
+		kept(line, hex);
+		assert.ok(!strict.redact(line).text.includes(hex), line);
+	}
 });
 
 test("a SCRAM hash is kept by default", () => {
@@ -544,10 +556,14 @@ test("names built from short parts are identifiers; a product key's groups and a
 		"py3-gcc-x64",
 		"RHSA-2024:1234",
 		"prod-db01-eu01",
+		// A sentinel in underscores.
+		"__n8n_BLANK_VALUE",
 	])
 		assert.ok(isIdentifierShaped(v), v);
-	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key"])
+	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key", "__Kx9mQ2vLp7Rt__"])
 		assert.ok(!isIdentifierShaped(v), v);
+	kept("data: { oauthTokenData: '__n8n_BLANK_VALUE' },", "__n8n_BLANK_VALUE");
+	hidden("data: { oauthTokenData: 'Kx9mQ2vLp7Rt3Wz8nB5c' },", "Kx9mQ2vLp7Rt3Wz8nB5c");
 	kept("key_curve: ECDH-brainpoolP384r1", "ECDH-brainpoolP384r1");
 	hidden("api_key: qzxvbK9mWpL2-x7", "qzxvbK9mWpL2");
 	assert.ok(isPodName("ledger-api-58d4f7c9b-rbjl3"));
@@ -568,4 +584,82 @@ test("brackets balance by kind, in order", () => {
 test("an empty token has no NaN in its shape, and = is no alphabet", () => {
 	assert.equal(shape("").expectedSwitches, 0);
 	assert.equal(alphabetOf("abcDEF12=="), alphabetOf("abcDEF12"));
+});
+
+test("a key chord is a modifier and one key; a password that starts with a modifier's word isn't one", () => {
+	for (const v of ["Super+Admin2024!", "Alt+Tango9Kilo", "Meta+Xk9mP2vQ7", "Win+Xk9mP2vQ7rT4"]) {
+		hidden(`DB_PASSWORD=${v}`, v);
+		hidden(`{"db": {"password": "${v}"}}`, v);
+	}
+	for (const v of ["ctrl+shift+F12", "Cmd+K,Cmd+S", "Ctrl+Alt+Delete", "Alt+F4", "Ctrl+/"]) kept(`key: ${v}`, v);
+});
+
+test("a key cut short after a long vendor prefix is a display, as one after a short prefix is", () => {
+	for (const v of ["sk-ant-api03-Zx9K...", "sk-ant-admin01-Zx9...QAAA", "sk-ant-oat01-Zx9K…", "sk-proj-QmTxvRk9..."])
+		kept(`ANTHROPIC_API_KEY=${v}`, v);
+	assert.ok(isPlaceholder("github\x5fpat_11AQ3ZK2Y0...a1b2"));
+	// (Not a password with words before its ellipsis, nor a long run of the key itself.)
+	hidden("API_KEY=Summer-Breeze-Kx9mQ...", "Summer-Breeze-Kx9mQ");
+	hidden("API_KEY=Kx9mQv2Lp7RtVw8NyKcHj0Df...", "Kx9mQv2Lp7RtVw8NyKcHj0Df");
+});
+
+test("references to a secret held elsewhere stay under every credential name", () => {
+	for (const v of [
+		"@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/dbpass/)",
+		"@Microsoft.KeyVault(SecretUri=https://kv.vault.azure.net/secrets/dbpass/ec96f02080254f109c51a1f14cdb1931)",
+		"@Microsoft.KeyVault(VaultName=kv;SecretName=dbpass)",
+		"$[variables.dbPassword]",
+		"((cf-admin-password))",
+		"((vault/db.password))",
+		"((db_pass))",
+		"((/main/db_pass))",
+		"projects/123456789/secrets/db-password/versions/latest",
+		"projects/my-project/secrets/db-password",
+		"arn:aws:secretsmanager:us-east-1:123456789012:secret:rds!db-1a2b3c4d-1234-5678-9abc-def012345678-AbCdEf",
+	]) {
+		kept(`password: ${v}\n`, v);
+		kept(`DB_PASSWORD=${v}\n`, v);
+	}
+	kept(
+		'az webapp config appsettings set -g rg -n app --settings "DB_PASSWORD=@Microsoft.KeyVault(VaultName=kv;SecretName=dbpass)"',
+		";SecretName=dbpass)",
+	);
+	// (A shape's names must read as names: a password in its brackets is a password.)
+	for (const v of ["((Xk9mP2vQ7rT4wZ))", "@Microsoft.KeyVault(Xk9mP2vQ7rT4wZ)"]) hidden(`password: ${v}\n`, v);
+});
+
+test("a `$` before letters and digits that switch twice is a password, not a variable", () => {
+	for (const v of ["$kd9xqz2m", "$hk2dcf74", "$X7K2M9QP", "$R8IE9GS1", "$ZQ4N8TX2"]) {
+		hidden(`password: ${v}\n`, v);
+		hidden(`{"password":"${v}"}`, v);
+	}
+	for (const v of ["$PASS", "$pass1", "$DB_PASS", "$PGPASS2", "$DB_PASSWORD"]) kept(`password: ${v}\n`, v);
+});
+
+test("a path is a path whatever case and digits its people-made names hold, and a drive's path with either slash", () => {
+	for (const [text, v] of [
+		["ssl_certificate_key /opt/Server2022/certs/Wildcard-Cert2024.pem;", "/opt/Server2022/certs/Wildcard-Cert2024.pem"],
+		[
+			"ssl_key: /var/lib/jenkins/workspace/Build-Pipeline-v2/ssl.key",
+			"/var/lib/jenkins/workspace/Build-Pipeline-v2/ssl.key",
+		],
+		[
+			"GOOGLE_APPLICATION_CREDENTIALS=/home/me/Downloads/Firebase-adminsdk-9x2k4-3f8a1c.json",
+			"/home/me/Downloads/Firebase-adminsdk-9x2k4-3f8a1c.json",
+		],
+		["ssl_key: C:/Users/jsmith/.ssh/id_rsa", "C:/Users/jsmith/.ssh/id_rsa"],
+		["PRIVATE_KEY=C:/Users/jsmith/.ssh/id_rsa", "C:/Users/jsmith/.ssh/id_rsa"],
+		["ssl_key: C:\\Users\\jsmith\\.ssh\\id_rsa", "C:\\Users\\jsmith\\.ssh\\id_rsa"],
+	])
+		kept(text, v);
+	// (A generator's segment, joined with dashes or not, is no person's name.)
+	hidden("SECRET_KEY=/opt/kx9mQ2pLw7vRtZ8nB4c-Yd3HqT6uV1sW", "kx9mQ2pLw7vRtZ8nB4c");
+	hidden("api_key: /Kx9mQ2pLw7vRtZ8nB4c/Yd3Hq", "Kx9mQ2pLw7vRtZ8nB4c");
+});
+
+test("Jenkins' `{AQAAABAAAA…}` is hidden, its key on the same machine; other tools' ciphertext stays", () => {
+	const jenkins = "{AQAAABAAAAAQmEZaw8Ev9tClXWVQye1TR2KgF3p/wGoYs/TEQCmsxCk=}";
+	hidden(`<password>${jenkins}</password>`, "AQAAABAAAAAQmEZaw8Ev9tCl");
+	hidden(`    "passphrase": "${jenkins}",`, "AQAAABAAAAAQmEZaw8Ev9tCl");
+	kept("spring.datasource.password={cipher}9f8Kq2LmX7vR4tZpW1nB6yHc3JdE5sGa", "9f8Kq2LmX7vR4tZpW1nB6yHc3JdE5sGa");
 });

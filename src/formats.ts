@@ -272,6 +272,18 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 		["aeaaqwvhqxbps2v5"],
 	],
 	["Amazon Bedrock API key", /\b(bedrock-api-key-[A-Za-z0-9+/_-]{40,2000}={0,2})/, ["bedrock-api-key-"]],
+	// The long-term key: `ABSK` and the base64 of `BedrockAPIKey-<id>-at-<account>:<secret>`.
+	["Amazon Bedrock API key (long-term)", /\b(ABSKQmVkcm9ja0FQSUtleS[A-Za-z0-9+/]{40,2000}={0,2})/, ["absk"]],
+	// Cloudflare Tunnel's token: the base64 of `{"a":<account>,"t":<tunnel>,"s":<secret>}`.
+	[
+		"Cloudflare Tunnel token",
+		/(?<![A-Za-z0-9+/])(eyJhIjoi[A-Za-z0-9+/]{90,600}={0,2})(?![A-Za-z0-9+/=])/,
+		["eyjhijoi"],
+	],
+	["Inngest signing key", /\b(signkey-(?:prod|test|branch)-[0-9a-f]{64})\b/, ["signkey-"]],
+	["Firecrawl API key", /(?<![\w-])(fc-[0-9a-f]{32})\b/, ["fc-"]],
+	["Context7 API key", /\b(ctx7sk-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/, ["ctx7sk-"]],
+	["Axiom token", /\b(xa[ap]t-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/, ["xaat-", "xapt-"]],
 	[
 		"Heroku API key",
 		/\b(HRKU-(?:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}|AA[0-9A-Za-z_-]{58}))\b/,

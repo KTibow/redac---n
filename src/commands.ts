@@ -90,7 +90,7 @@ export function holdsOnlySecrets(path: string): boolean {
 }
 
 const CONTENT_COMMANDS =
-	/^(cat|tac|head|tail|less|more|bat|batcat|nl|sed|awk|grep|egrep|fgrep|zgrep|rg|ag|ack|Select-String|sls|cut|sort|uniq|strings|xxd|od|base64|tr|column|jq|yq|type|Get-Content|gc|diff|sops|op|dotenv|printenv|env|set|export|declare)$/;
+	/^(cat|tac|head|tail|less|more|bat|batcat|nl|sed|awk|grep|egrep|fgrep|zgrep|rg|ag|ack|Select-String|sls|cut|sort|uniq|strings|xxd|od|base64|tr|column|jq|yq|type|Get-Content|gc|findstr|diff|sops|op|dotenv|printenv|env|set|export|declare)$/;
 /**
  * Commands whose whole output is a credential, by tool: each read from the program on (a commit message that mentions
  * `gh auth token` isn't one).
@@ -139,6 +139,8 @@ const SECRET_TOOLS = new RegExp(
 		/secret-tool\s+lookup\b/,
 		/lpass\s+show\b.*--password\b/,
 		/keepassxc-cli\s+show\b.*(?:-a|--attributes)\s+Password\b/,
+		// (PowerShell's SecretManagement; without `-AsPlainText` it prints `System.Security.SecureString`.)
+		/Get-Secret\b.*-AsPlainText\b/,
 		// Generators.
 		/openssl\s+rand\b/,
 		/pwgen\b/,
@@ -152,7 +154,14 @@ const SECRET_TOOLS = new RegExp(
 );
 /** What a command reads or calls that is a secret, wherever it sits in the command: a random device, a language's generator. */
 const SECRET_SOURCES =
-	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto\.randomBytes/;
+	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto(?:["']\))?\.randomBytes/;
+/**
+ * Byte generators that make IDs, salts and test data as often as keys (`user = os.urandom(8).hex()`, a patch that
+ * changes `os.urandom(3)`): a secret only printed as made, `print(os.urandom(32).hex())`, `echo
+ * bin2hex(random_bytes(32));`.
+ */
+const PRINTED_SOURCE =
+	/\b(?:print|puts|echo)\b[ \t(]*(?:[\w.]+\()*(?:os\.urandom\(|random_bytes\(|openssl_random_pseudo_bytes\()/;
 
 /** A shell's name: `bash`, `sh`, `zsh`. */
 export const SHELL = /^(?:ba|z|da|k)?sh$/;
@@ -169,10 +178,10 @@ export interface CommandRun extends ShellCommand {
 
 /**
  * A line written for PowerShell or cmd, where a backslash separates a path (`.\.env`, `C:\Users\me\.aws\credentials`,
- * `$env:USERPROFILE\.ssh\id_rsa`): read without POSIX escapes.
+ * `$env:USERPROFILE\.ssh\id_rsa`, `%USERPROFILE%\.ssh`): read without POSIX escapes.
  */
 const WINDOWS_LINE =
-	/(?:^|[\s'"=(])(?:[A-Za-z]:\\|\.{1,2}\\[\w.$-]|~\\|\$(?:HOME|env:\w+)\\)|^[ \t]*(?:Get-\w+|Select-String|gc|type|pwsh|powershell|cmd)(?:\.exe)?[ \t]/i;
+	/(?:^|[\s'"=(])(?:[A-Za-z]:\\|\.{1,2}\\[\w.$-]|~\\|\$(?:HOME|env:\w+)\\|%\w+%\\)|^[ \t]*(?:Get-\w+|Select-String|gc|type|findstr|pwsh|powershell|cmd)(?:\.exe)?[ \t]/i;
 
 /**
  * The simple commands a command line runs, in order, read through what runs a command of its own: a shell (`bash -lc
@@ -219,7 +228,7 @@ export function commandsRun(
 			out.push(c);
 			continue;
 		}
-		const wrapper: ShellGroup = { kind: programName(simpleCommand(c.words)[0]), redirects: c.redirects };
+		const wrapper: ShellGroup = { kind: programName(simpleCommand(c.words)[0]), redirects: c.redirects, then: c.then };
 		for (const r of run) r.groups = [...r.groups, wrapper, ...c.groups];
 		run[run.length - 1].then = c.then;
 		out.push(...run);
@@ -256,7 +265,10 @@ function commandLine(
 		: prose
 			? at + prose[0].length - (prose[1] ? 1 : 0)
 			: at;
-	const backslash = !WINDOWS_LINE.test(text.slice(from, lineEnd(text, from, 4000)));
+	// (After PowerShell's prompt or cmd's, `PS C:\app> `, `C:\app>`, the line is theirs.)
+	const backslash =
+		!(prompt && /^[ \t]*(?:PS\b|[A-Za-z]:\\)/.test(prompt[0])) &&
+		!WINDOWS_LINE.test(text.slice(from, lineEnd(text, from, 4000)));
 	return shellCommands(text, 0, { at: from, oneLine, lines, backslash });
 }
 
@@ -377,6 +389,14 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 		const k = words.findIndex((w) => /^\/[ck]$/i.test(w.text));
 		return k > 0 ? from(words, k + 1) : undefined;
 	}
+	// `su - app -c 'cat .env'`, and runuser's twin of it, `runuser -l app -c …` (no `-u`, so no wrapper): the command
+	// string `-c` (`--command`) gives, as a shell's.
+	const runuser = programName(c.words.find((w) => !/^[A-Za-z_]\w*=/.test(w.text))) === "runuser";
+	if (program === "su" || runuser) {
+		const own = program === "su" ? words : c.words;
+		const k = own.findIndex((w) => /^(?:-c|--command)$/.test(w.text));
+		return k > 0 ? own[k + 1] && wordSource(own[k + 1]) : undefined;
+	}
 	const sub = subcommand(words);
 	if (/^(?:kubectl|oc)$/.test(program) && sub[0]?.text === "exec") {
 		const dashes = sub.findIndex((w) => w.text === "--");
@@ -468,6 +488,12 @@ const ECHOES = /^(?:echo|printf|Write-Output|Write-Host)$/;
 
 /** Whether a command prints the contents of a secret file (`cat .env`, `grep KEY .env.local`, `cat < .env`, `git show HEAD:.env`). */
 export function printsSecretFile(command: string): boolean {
+	// (A member of what a command gives prints that member, not the file or the listing: `(Get-Item Env:HOM*).Name`.)
+	if (
+		EXPRESSION.test(command) &&
+		/\)(?:\.[A-Za-z_]\w*(?:\(\))?)*\.(?!value\b)[A-Za-z_]\w*(?:\(\))?[ \t]*$/i.test(command)
+	)
+		return false;
 	return printsWhatItReads(command, readsSecretFile, isSecretFile) || printsIndirectly(command);
 }
 
@@ -476,7 +502,7 @@ export function printsSecretFile(command: string): boolean {
  * variable or a substitution (`cat "$f"`, `cat $(find …)`, `echo "$line"`), a script's `open(…).read()`.
  */
 const PRINTER =
-	/-exec[ \t]+(?:cat|tac|head|tail|less|more|bat|nl)\b|\bxargs[ \t]+(?:-\S+[ \t]+)*(?:cat|tac|head|tail|less|more|bat|nl)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)/;
+	/(?:-exec|\bxargs\b[^|&\n]*?|\bfd(?:find)?\b[^|;&\n]*[ \t]-[xX])[ \t'"]+(?:cat|tac|head|tail|less|more|bat|nl|sort|strings|awk|(?:e?grep|rg)\b(?![^;|&\n]*[ \t]-[A-Za-z]*[lLcq])|sed\b(?![^;|&\n]*[ \t]-(?:[A-Za-z]*i|-in-place)))\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|\b(?:print|puts|console\.log|echo)\b[^;\n]{0,80}?(?:readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\()/;
 
 /**
  * A secret file printed by a route the pipeline reader doesn't follow: named to `find … -exec cat {}`, `xargs cat`, a
@@ -569,6 +595,12 @@ function readsSecretFile(c: ShellCommand): boolean {
 	// echo`, `xargs < .env`; `xargs -a hosts.txt ping` prints no file.)
 	const xargs = xargsInput(c, words);
 	if (xargs !== undefined && (program === "xargs" || ECHOES.test(program))) return isSecretFile(xargs);
+	// (PowerShell's `Get-ChildItem Env:` and `Get-Item Env:NAME` print the variables as a table of names and values: all
+	// of them, or those a wildcard matches; one variable named in full is judged by its name, `Env:AZURE_TENANT_ID`.)
+	const drive = /^(?:Get-ChildItem|gci|dir|ls|Get-Item|gi)$/.test(program)
+		? rest.find((t) => /^env:/i.test(t))
+		: undefined;
+	if (drive !== undefined) return !/^env:\\?\w+$/i.test(drive) || isCredentialName(drive.replace(/^env:\\?/i, ""));
 	if (!CONTENT_COMMANDS.test(program) || printsNamesOnly(words) || editsInPlace(words)) return false;
 	// (`env` here runs no command: simpleCommand reads past it to the one it runs. `env -0` prints the environment too;
 	// `printenv NAME` prints one variable, judged by its name: printsSecret.)
@@ -586,9 +618,12 @@ function readsSecretFile(c: ShellCommand): boolean {
 	// (Counting, listing and testing print none of what grep reads: `grep -c`, `grep -l`, `grep -q`.)
 	if (/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep)$/.test(program) && rest.some((t) => countsMatches(program, t)))
 		return false;
+	// (A word with backslashes is read as written, a Windows path whatever else the line holds: PowerShell's `cat
+	// apps\web\.env.local`.)
+	const args = words.slice(1).map((w) => (/\\/.test(w.raw) && !/['"$`]/.test(w.raw) ? w.raw : w.text));
 	const files = /^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
-		? searchedFiles(rest)
-		: rest.filter((t) => !t.startsWith("-"));
+		? searchedFiles(args)
+		: args.filter((t) => !t.startsWith("-"));
 	return files.some((t) => isSecretFile(t));
 }
 
@@ -689,6 +724,14 @@ function printsWhatItReads(
 	return false;
 }
 
+/**
+ * Whether what a command prints goes into the next command's input: by its own `|`, or by a group's around it, whatever
+ * follows it inside the group (`{ echo A=1; echo B=2; } | tee .env`).
+ */
+export function pipes(c: ShellCommand): boolean {
+	return [c.then, ...c.groups.map((g) => g.then)].some((then) => then === "|" || then === "|&");
+}
+
 /** Devices that are what's shown: a tool's captured output holds stdout and stderr, and a terminal shows both. */
 const SHOWN = /^\/dev\/(?:stdout|stderr|tty|fd\/[12])$/;
 
@@ -744,7 +787,38 @@ function consumesInput(command: ShellWord[]): boolean {
 
 /** Whether a command prints a credential: any of its pipelines (`openssl rand -hex 32 && echo ok`) whose stage that makes one reaches its output. */
 export function printsSecret(command: string): boolean {
-	return printsWhatItReads(command, printsCredential);
+	return printsExpression(command) || printsWhatItReads(command, printsCredential);
+}
+
+/**
+ * A command line that is one expression, which PowerShell prints (as a REPL does; a POSIX shell runs a variable's value
+ * as a command and prints it in its error): a variable, `$env:NAME`, its members (`$cred.GetNetworkCredential().Password`),
+ * or a command's in parentheses (`(Get-Item Env:TOKEN).Value`).
+ */
+const EXPRESSION = /^[ \t]*(?:\$\{?(?:env:)?[A-Za-z_]\w*\}?|\([^()\n]{1,200}\))(?:\.[A-Za-z_]\w*(?:\(\))?)*[ \t]*$/i;
+
+/**
+ * Whether a command line is an expression (EXPRESSION) that prints a credential: by its last member's name, or with
+ * none, or a `Value` (an entry's), by its variables' (`$cred.UserName` is a name; `$env:TOKEN`, `(Get-Item
+ * Env:TOKEN).Value` are the token).
+ */
+function printsExpression(command: string): boolean {
+	if (!EXPRESSION.test(command)) return false;
+	const member = /\.([A-Za-z_]\w*)(?:\(\))?[ \t]*$/.exec(command)?.[1];
+	// (A dictionary's keys are its names, `$hash.Keys`, `(Get-Command x).Parameters.Keys`, and an entry's `$_.Key`.)
+	if (member !== undefined && !/^value$/i.test(member))
+		return !/^(?:all)?keys?$/i.test(member) && isCredentialName(member);
+	return variablesIn(command).some(isCredentialName);
+}
+
+/**
+ * The variables a text reads, by their names, in any shell's syntax: `$NAME`, `${NAME}`, PowerShell's `$env:NAME`,
+ * `${env:NAME}` and its drive's `Env:NAME`, cmd's `%NAME%`.
+ */
+function variablesIn(text: string): string[] {
+	return [...text.matchAll(/\$\{?(?:env:)?([A-Za-z_]\w*)|%([A-Za-z_]\w*)%|\benv:([A-Za-z_]\w*)/gi)].map(
+		(m) => m[1] ?? m[2] ?? m[3],
+	);
 }
 
 function passesThrough(c: ShellCommand): boolean {
@@ -772,11 +846,15 @@ function printsCredential(c: ShellCommand): boolean {
 	const words = simpleCommand(c.words);
 	// (Read from the program's own name on: `/usr/bin/gh auth token` is `gh auth token`.)
 	const line = [programName(words[0]), ...words.slice(1).map((w) => w.text)].join(" ").slice(0, MAX_TOOL_LINE);
-	if (SECRET_TOOLS.test(line) || SECRET_SOURCES.test(line)) return true;
+	if (SECRET_TOOLS.test(line) || SECRET_SOURCES.test(line) || PRINTED_SOURCE.test(line)) return true;
 	const program = programName(words[0]);
 	const args = words.slice(1);
 	if (program === "printenv") return args.length === 1 && isCredentialName(args[0].text);
-	if (program !== "echo" && program !== "printf") return false;
+	// (A script given on the command line that prints a credential's variable: `python3 -c "print(os.environ['TOKEN'])"`,
+	// `node -e "console.log(process.env.TOKEN)"`.)
+	if (INTERPRETER.test(program))
+		return [...line.matchAll(PRINTED_ENV_READ)].some((m) => isCredentialName(m[1] ?? m[2]));
+	if (program !== "echo" && program !== "printf" && !/^write-(?:host|output)$/i.test(program)) return false;
 	// (printf prints its format and its operands alike, `printf "Token: %s\n" "$TOKEN"`, `printf "$TOKEN"`; but `-v NAME`
 	// assigns what it would print and prints nothing.)
 	const values =
@@ -785,11 +863,20 @@ function printsCredential(c: ShellCommand): boolean {
 			: args[0]?.text === "-v"
 				? []
 				: args.filter((w) => w.text !== "--");
-	// (A credential's variable printed alone, `echo $DB_PASSWORD`, or inside its words, `echo "token: $GITHUB_TOKEN"`.)
-	return values.some(
-		(v) => !v.literalEnd && [...v.text.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => isCredentialName(m[1])),
-	);
+	// (A credential's variable printed alone, `echo $DB_PASSWORD`, `echo %DB_PASSWORD%`, or inside its words, `echo
+	// "token: $GITHUB_TOKEN"`.)
+	return values.some((v) => !v.literalEnd && variablesIn(v.text).some(isCredentialName));
 }
+
+/** Interpreters that run a script given on their command line. */
+const INTERPRETER = /^(?:python[\d.]*|node|deno|bun|ruby|perl|php)$/;
+/**
+ * A read of an environment variable in those scripts, by its name, that their print takes: `print(os.environ['TOKEN'])`,
+ * `console.log("token", process.env.TOKEN)`. (A script that reads one to use it prints what it does with it: a login
+ * script's `type(process.env.PW)` and its `console.log("submitted")`.)
+ */
+const PRINTED_ENV_READ =
+	/\b(?:print|puts|console\.log|echo|say|process\.stdout\.write)\b[^;\n]{0,80}?(?:(?:os\.environ(?:\.get)?|os\.getenv|\bENV(?:\.fetch)?|\bgetenv|\$_ENV|\$ENV)\s*[[({]\s*["']([A-Za-z_]\w*)["']|process\.env\.([A-Za-z_]\w*))/g;
 
 /** How a command-line tool takes a password. */
 export interface ToolSpec {

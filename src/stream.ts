@@ -4,7 +4,8 @@
  */
 import type { Redactor } from "./index.ts";
 import { occurrences, type Remembered, repeatable } from "./repeats.ts";
-import { openScopes } from "./secretfile.ts";
+import { endsInBlock } from "./pem.ts";
+import { firstPrompt, openScopes } from "./secretfile.ts";
 import { openManifestData } from "./structure.ts";
 import { needsNormalizing, normalize } from "./normalize.ts";
 import { merge, secretValue } from "./spans.ts";
@@ -39,7 +40,8 @@ export class RedactionStream {
 	private remembered = new Map<string, Remembered>();
 
 	private readonly redactor: Redactor;
-	private readonly options: DetectOptions;
+	/** The options each scan runs with: the hint's command dropped once a prompt is released (see advance). */
+	private options: DetectOptions;
 
 	constructor(redactor: Redactor, options: DetectOptions & { holdback?: number }) {
 		this.redactor = redactor;
@@ -86,9 +88,12 @@ export class RedactionStream {
 	private flush(all: boolean): string {
 		const head = this.head();
 		const left = head.length;
-		// (Up to the buffer's last line break, but at the end: no detector sees a line cut short that the whole text wouldn't.)
+		// (Up to the buffer's last line break, but at the end: no detector sees a line cut short that the whole text wouldn't.
+		// Unless that break is inside a private key whose END line has no break after it, `…-----END RSA PRIVATE KEY----- {"a":…`:
+		// the key is read to its END, and what follows on that line, cut short, is held back with it.)
 		const lineEnd = all ? -1 : this.buffer.lastIndexOf("\n");
-		const whole = head + (lineEnd < 0 ? this.buffer : this.buffer.slice(0, lineEnd + 1));
+		let whole = head + (lineEnd < 0 ? this.buffer : this.buffer.slice(0, lineEnd + 1));
+		if (lineEnd >= 0 && endsInBlock(whole)) whole = head + this.buffer;
 		// An unfinished line, and a Secret's data whose `kind` hasn't come yet, are held until they are whole.
 		let cut = this.releasePoint(all);
 		if (cut <= 0 || (!all && this.buffer.length < MAX_HELD && openManifestData(whole)?.pending)) {
@@ -147,6 +152,12 @@ export class RedactionStream {
 		const raw = this.head() + out;
 		const seen = needsNormalizing(raw) ? normalize(raw).text : raw;
 		this.scopes = [...openScopes(seen), ...(openManifestData(seen)?.lines ?? [])];
+		// A command's output runs to the next prompt in it, as `redact()` reads the whole text (secretfile.ts firstPrompt):
+		// once one is released, what comes after is another command's, and the hint's command no longer says what it is,
+		// however far behind the prompt has scrolled.
+		const hint = this.options.hint;
+		if (hint?.command !== undefined && firstPrompt(seen) < seen.length)
+			this.options = { ...this.options, hint: { ...hint, command: undefined } };
 		// The context starts at a line's start, as the whole text's lines do (a piece of a line would read as one).
 		const joined = this.context + out;
 		this.context = joined.slice(-CONTEXT);

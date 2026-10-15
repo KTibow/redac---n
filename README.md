@@ -32,15 +32,15 @@ came from, and see what would be sent. The library runs in the page, so nothing 
 
 ![Secrets caught against look-alike values destroyed, redac---n and seven open-source scanners](docs/holdout.svg)
 
-On a held-out set of realistic agent output (1,112 cases, never used for tuning), redac---n catches **93.0%** of
-secrets and destroys **3.0%** of the values that look like secrets but aren't. The best combination of existing
+On a held-out set of realistic agent output (1,112 cases, never used for tuning), redac---n catches **92.6%** of
+secrets and destroys **2.9%** of the values that look like secrets but aren't. The best combination of existing
 scanners we found catches 70.6% and destroys 2.2%; all seven together catch 84.2% but destroy 28.6% of the
 look-alikes.
 
 | | secrets caught | look-alikes destroyed |
 |---|---:|---:|
-| **redac---n** (default) | **93.0%** | **3.0%** |
-| redac---n, `guessing: "off"` | 90.9% | 1.1% |
+| **redac---n** (default) | **92.6%** | **2.9%** |
+| redac---n, `guessing: "off"` | 90.5% | 0.9% |
 | gitleaks + Betterleaks + Kingfisher | 70.6% | 2.2% |
 | all seven scanners combined | 84.2% | 28.6% |
 | CredSweeper, the best single scanner | 70.1% | 15.2% |
@@ -81,7 +81,7 @@ and then became development data. Secrets caught / look-alikes destroyed at that
 
 | set | redac---n | `guessing: "off"` | gitleaks + Betterleaks + Kingfisher | best single other scanner |
 |---|---:|---:|---:|---:|
-| Held-out 1: 1,112 cases over 104 kinds of output | 93.0 / 3.0 | 90.9 / 1.1 | 70.6 / 2.2 | CredSweeper 70.1 / 15.2 |
+| Held-out 1: 1,112 cases over 104 kinds of output | 92.6 / 2.9 | 90.5 / 0.9 | 70.6 / 2.2 | CredSweeper 70.1 / 15.2 |
 | Held-out 2: 848 cases from blind template writers | 86.8 / 5.7 | 78.3 / 3.7 | 60.3 / 5.1 | CredSweeper 65.7 / 20.1 |
 | Held-out 3: 450 cases, mobile, ML, IoT, enterprise stacks, other CI vendors | 85.5 / 7.4 | 78.5 / 3.2 | 64.0 / 4.8 | CredSweeper 69.4 / 21.0 |
 | Held-out 4: 478 everyday agent sessions, issue and PR threads | 90.4 / 1.9 | 86.7 / 0.7 | 66.2 / 3.6 | CredSweeper 74.1 / 20.4 |
@@ -89,6 +89,7 @@ and then became development data. Secrets caught / look-alikes destroyed at that
 | Held-out 6: 112 cases from regional clouds and payment APIs | 93.2 / 9.3 | 78.9 / 5.8 | 61.7 / 3.1 | CredSweeper 73.7 / 18.1 |
 | Held-out 7: 305 cases from databases, queues, observability, build tooling | 93.4 / 8.5 | 85.1 / 3.8 | 69.6 / 3.1 | CredSweeper 67.5 / 19.8 |
 | Held-out 8: 261 cases from data and analytics tooling | 89.0 / 1.5 | 83.7 / 0.8 | 67.9 / 1.8 | CredSweeper 72.4 / 16.7 |
+| Held-out 9: 300 cases from the AI and agent ecosystem, JVM and .NET business apps, and SaaS integrations | 94.0 / 7.9 | 89.8 / 4.0 | not run | not run |
 | [SlotGuard](https://github.com/illinoisdata/SlotGuard): 200 agent sessions, 852 planted values (652 credentials, and 200 email addresses this library leaves alone) | 62.6 / 0.0 | 53.1 / 0.0 | 29.2 / 0.0 | CredSweeper 46.9 / 0.0 |
 | [ProwlBench](https://github.com/Lercas/prowlbench): 7,491 secrets in code, tickets, logs and chat in eight languages; 7,375 "secret-free" snippets, some with values under credential names that this library hides by design | 89.4 / 12.5 | 78.6 / 7.8 | 59.1 / 8.7 | detect-secrets 63.8 / 19.1 |
 
@@ -96,9 +97,9 @@ Other measurements; where a set was first scored blind, that score comes first:
 
 | set | result |
 |---|---|
-| Development sets (4,250 cases, 6,424 secrets, 18,402 look-alikes; held-out 2–8 among them) | 95.4% caught, 1.4% destroyed; 95.4% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
-| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.5% and 3.5%. On the dev split it was tuned on, 91.1% and 1.8%: the gap shows how much of the tuning doesn't carry over to new repositories |
-| Five more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5 and 17.0 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
+| Development sets (4,550 cases, 6,942 secrets, 18,932 look-alikes; held-out 2–9 among them) | 95.6% caught, 1.4% destroyed; 95.5% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
+| [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.9% and 3.5%. On the dev split it was tuned on, 91.4% and 1.8%: the gap shows how much of the tuning doesn't carry over to new repositories |
+| Six more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5, 17.0 and 4.8 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
 | [GitLab's secret-detection rules](https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules), each rule's examples | 81.4% of 2,038 caught and 23% of 168 negatives hit, blind; now 88.0% and 15% |
 | Credential-handling code with no credentials ([ICSME 2026](https://doi.org/10.5281/zenodo.22942243), 5,903 snippets) | 4.6% of snippets hit, blind; now 2.0%, mostly passwords written into the code |
 | [levainbot/fp-corpus](https://github.com/levainbot/fp-corpus): log and build output, 85 planted values | 79 caught and 3 of 116 clean sections hit, blind; now 81 (the four missed: an email address, two card numbers and one key) and 4 of 116 |
@@ -229,7 +230,7 @@ measures what each adds and what each costs.
 
 1. **Values you gave it**, in every encoding output turns them into: JSON-, URL-, shell-, SQL- and HTML-escaped,
    hex, base64 at any offset, and cut short.
-2. **536 vendor token formats**: 137 maintained here and 399 from
+2. **542 vendor token formats**: 143 maintained here and 399 from
    [Betterleaks](https://github.com/betterleaks/betterleaks)' catalog (some vendors are in both).
 3. **Structure:** private keys (by their DER, under any PEM label), URL passwords, Authorization headers, cookies,
    connection strings, signed URLs, Kubernetes Secrets, CI masks, sign-in links, `.netrc`, and passwords given to
@@ -296,7 +297,7 @@ it as a `known` value: known values are hidden whatever they look like, as long 
 
 - **Behaviour tests** (`test/`, by topic): a few cases per rule or decision, cross-products of credential names,
   syntaxes and value shapes, and checks that long and repetitive inputs take linear time.
-- **The quality gate** (`pnpm check`) scores every development set and the 132 regression sets
+- **The quality gate** (`pnpm check`) scores every development set and the 138 regression sets
   (`eval/corpora/regress/README.md`: probes of each rule's edges) against a committed baseline
   (`eval/baseline.json.gz`), and fails on any case that newly leaks, is newly destroyed or is newly slow.
   `scripts/snap.ts` does the same with a sample of ordinary text from the external corpora added.

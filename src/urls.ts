@@ -36,9 +36,11 @@ const USERINFO = new RegExp(String.raw`${URL_SCHEME}:\/\/[^\s/@]*`, "y");
  * Where a URL that starts at `at` ends: at a blank, a quote, an angle bracket, a backtick, a backslash (a JSON
  * string's escaped quote), or a closing bracket it didn't open (a Markdown link's `)`); sentence punctuation at its
  * end isn't part of it (`…/reset/<token>.`). A password's brackets are (`app:p)dgbs@db`, `admin:<Harbor2291x>@host`).
- * However long the password: each look-ahead for its `@` is remembered to where it stopped (`reachesAt`).
+ * However long the password: each look-ahead for its `@` is remembered to where it stopped (`reachesAt`). With `enough`,
+ * it stops once it has read past that point (the answer is then only known to be past it): urlAround asks whether a
+ * URL reaches a position, and a line with no blank in it (a comma-separated list of hosts) reads, as one URL, to its end.
  */
-export function urlEnd(text: string, at: number): number {
+export function urlEnd(text: string, at: number, enough = Infinity): number {
 	const open = { ")": 0, "]": 0 };
 	const closerIsPassword = reachesAt(text, /[^\s"'<>`\\/@]*(@)?/y);
 	const quoteIsPassword = reachesAt(text, /[^\s"<>`\\/@,;]*(@)?/y);
@@ -49,6 +51,8 @@ export function urlEnd(text: string, at: number): number {
 	const bracketed = /<[^\s<>@"'`]+>@/y;
 	let end = at;
 	for (; end < text.length && end - at < MAX_VALUE; end++) {
+		// (Sentence punctuation read last could still be trimmed off below.)
+		if (end > enough && !/[.,;:!?]/.test(text[end - 1])) return end;
 		const c = text[end];
 		if (c === "(") open[")"]++;
 		else if (c === "[") open["]"]++;
@@ -61,14 +65,15 @@ export function urlEnd(text: string, at: number): number {
 			if (!bracketed.test(text)) break;
 			end = bracketed.lastIndex - 1;
 		} else if (
-			(c === "'" || c === '"') &&
+			/["'<>`\\]/.test(c) &&
 			quoteIsPassword(end + 1) &&
 			colon >= 0 &&
 			colon < end &&
 			end <= userinfoEnd &&
 			!endsInPort(text, end)
 		) {
-			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`, `postgres://app:Kx9m"Qv2@db`.)
+			// (In a password, before the `@` that ends it: `postgres://app:Kx9m'Qv2@db`, `postgres://app:Kx9m"Qv2@db`,
+			// `postgres://app:Qv2>Kx9m@db`; a JSON string's escape too, `app:Kx9m\u0026Qv2@db`.)
 		} else if (/[\s"'<>`\\]/.test(c)) break;
 	}
 	while (end > at && /[.,;:!?]/.test(text[end - 1])) end--;
@@ -150,7 +155,7 @@ export function urlAround(text: string, at: number, end = at, from = Math.max(0,
 	const scheme = SCHEME_BEFORE.exec(text.slice(Math.max(from, sep - SCHEME_LENGTH - 1), sep));
 	if (!scheme) return -1;
 	const start = sep - scheme[0].length;
-	return urlEnd(text, start) >= end ? start : -1;
+	return urlEnd(text, start, end) >= end ? start : -1;
 }
 
 /**
@@ -242,8 +247,11 @@ export interface Param {
 	value: Span;
 }
 
-/** A parameter's start and name: after `?`, `&` (or HTML's `&amp;`) or `#`, a name with PHP's `[]` allowed. */
-export const PARAM_START = String.raw`(?:&amp;|[?&#])`;
+/**
+ * A parameter's start and name: after `?`, `&` (or HTML's `&amp;`, or the `\u0026` and `\x26` that JSON encoders and JS
+ * write for it: Go's encoding/json escapes every `&`) or `#`, a name with PHP's `[]` allowed.
+ */
+export const PARAM_START = String.raw`(?:&amp;|\\u0026|\\x26|[?&#])`;
 export const PARAM_NAME = String.raw`[\w.\[\]-]{1,60}`;
 
 /**

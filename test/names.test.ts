@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { Redactor } from "../src/index.ts";
 import { bip39 } from "../src/named.ts";
 import { isPinName, isSettingName, isVendorClient, nameClass, phraseBefore, readPhrase } from "../src/names.ts";
-import { insertCells } from "../src/sql.ts";
+import { sqlCells } from "../src/sql.ts";
 import {
 	attributes,
 	continuesToken,
@@ -171,7 +171,7 @@ test("a cell is judged as what it holds, and a row of backticks is read once", (
 		delimitedCells('a,"b,c",d', ",").map((c) => c.text),
 		["a", "b,c", "d"],
 	);
-	const [row1] = [...insertCells(`INSERT INTO t ("a,b", password) VALUES ('x', 'y');`)];
+	const [row1] = [...sqlCells(`INSERT INTO t ("a,b", password) VALUES ('x', 'y');`)];
 	assert.equal(row1.column, "a,b");
 });
 
@@ -183,7 +183,7 @@ test("attribute keys, contractions, astral letters and long lines", () => {
 });
 
 test("rows after a comment between rows are read", () => {
-	const rows = (t: string) => [...insertCells(t)].map((c) => c.value.text);
+	const rows = (t: string) => [...sqlCells(t)].map((c) => c.value.text);
 	assert.deepEqual(rows("INSERT INTO u (name, pw) VALUES ('b', 'p1'), -- next\n ('al', 'p2');"), [
 		"'b'",
 		"'p1'",
@@ -201,7 +201,7 @@ test("rows after a comment between rows are read", () => {
 test("a dump cut short inside a row has the rows before it read", () => {
 	const cut = "INSERT INTO users (name, password) VALUES ('alice', 'Kx9mQ2pLrTvB7nWz'), ('bob', 'Tq8v";
 	assert.deepEqual(
-		[...insertCells(cut)].map((c) => c.value.text),
+		[...sqlCells(cut)].map((c) => c.value.text),
 		["'alice'", "'Kx9mQ2pLrTvB7nWz'"],
 	);
 	hidden(cut, "Kx9mQ2pLrTvB7nWz");
@@ -431,6 +431,11 @@ test("an @ before a password is part of it", () => {
 
 test("a value's last backslash joins no lines", () => {
 	hidden("DATA_DIR=C:\\data\\\nDB_PASSWORD=Harbor2291!x", "Harbor2291!x");
+	// (A Windows path with a space, a share's, a variable's or a relative one: a word with another backslash in it.)
+	for (const path of ["C:\\Program Files\\App\\", "\\\\fileserver\\share\\", "%ProgramData%\\app\\", ".\\src\\"])
+		hidden(`INSTALL_DIR=${path}\nDB_PASSWORD=Xk29fLmq81Zt\nLOG=1\n`, "Xk29fLmq81Zt");
+	// (A token wrapped with a backslash at a line's end is still joined.)
+	hidden("TOKEN=ghp\x5fZ2r9Kq4Lm7Pw1Xv8Bt\\\n3Nc6Hd0Jf5Ys2Ge9Ua\n", "3Nc6Hd0Jf5Ys2Ge9Ua");
 });
 
 test("a quantity yields to a password's name", () => {
@@ -539,6 +544,25 @@ test("an Android string resource is hidden under a secret name and kept under a 
 	kept(
 		'    <string name="kakao_native_app_key" translatable="false">4a6232c3491755dc3f0d14fb664ac71c</string>',
 		"4a6232c3491755dc3f0d14fb664ac71c",
+	);
+});
+
+test("a value named by a form's nested field or a properties file's entry key is hidden", () => {
+	const v = "Zk8mQ2pL9vRt4Hx";
+	for (const t of [
+		`<input type="text" name="user[password]" value="${v}">`,
+		`<input name="data[User][password]" value="${v}">`,
+		`user%5Bemail%5D=a%40b.io&user%5Bpassword%5D=${v}&commit=Sign+in`,
+		`GET /login?next=%2Fhome&user%5bpassword%5d=${v} HTTP/1.1`,
+		`<properties>\n<entry key="db.password">${v}</entry>\n<entry key="db.user">app</entry>\n</properties>`,
+		`<entry key='smtp.password'>${v}</entry>`,
+	])
+		hidden(t, v);
+	// (A name that only ends with a bracket is no form's field.)
+	kept('<entry key="db.url">jdbc:postgresql://db/app</entry>', "jdbc:postgresql://db/app");
+	kept(
+		"auth_token [env: TAP_GITHUB_AUTH_TOKEN] x\nrepos [env: TAP_GITHUB_REPOSITORIES] current value: ['acme/dbt', 'acme/dags']",
+		"['acme/dbt', 'acme/dags']",
 	);
 });
 
@@ -697,6 +721,40 @@ test("a PIN's name is one predicate everywhere", () => {
 	kept("GPIO_PIN=21", "21");
 });
 
+test("a numbered pin is a PIN by its name, so a board's pin under one is kept", () => {
+	for (const line of [
+		"substitutions:\n  light_platform: rp2040_pwm\n  pin1: GPIO2\n  pin2: GPIO3\n",
+		"substitutions:\n  i2s_din_pin1: GPIO33\n  i2s_din_pin2: GPIO34\n",
+	])
+		kept(line, line);
+	hidden("door_pin2: 482193", "482193");
+	hidden("pin1=7391", "7391");
+});
+
+test("a call on a shell's token sets no credential; a setter of one does", () => {
+	kept('    assert ninja_helper.shell_token("-DMASK=(1<<3)") == _q("-DMASK=(1<<3)")', "-DMASK=(1<<3)");
+	hidden('client.withToken("Kx9mQ2vLp7Rt3Wz8nB5c");', "Kx9mQ2vLp7Rt3Wz8nB5c");
+	hidden('cfg.setPassword("Tr0ub4dor&3x");', "Tr0ub4dor&3x");
+});
+
+test("a value a test names after a placeholder's words is a stand-in, read past its separators and quotes", () => {
+	for (const [line, value] of [
+		['yaml_content = """key1: value1 # inline comment\nkey2: value2"""', "value2"],
+		['        set_env({"DICT": "key1=1,key2=2"})', "key1=1,key2=2"],
+		["2. To use it as string, quote the value: key='value1,value2'", "value1,value2"],
+		["    'custom_token=value123'", "value123"],
+	])
+		kept(line, value);
+	hidden("api_key = 'value9Kx2mQ'", "value9Kx2mQ");
+	hidden("key2: Kx9mQ2vLp7,Rt3Wz8", "Kx9mQ2vLp7,Rt3Wz8");
+});
+
+test("a plural setting word is a setting too: a password's policies are no password", () => {
+	kept("passwordPolicies: ['DisablePasswordExpiration', 'DisableStrongPassword'],", "DisablePasswordExpiration");
+	kept("passwordPolicies: 'DisablePasswordExpiration,DisableStrongPassword',", "DisableStrongPassword");
+	hidden("passwordProfile: { password: 'Kx9!mQ2vLp7' },", "Kx9!mQ2vLp7");
+});
+
 test("a device's published default PIN is kept, anywhere else a PIN is hidden", () => {
 	kept("The default Bluetooth PIN is 0000 (some use 1234).", "0000");
 	hidden("pin_value=0000", "0000");
@@ -784,7 +842,7 @@ test("a reference's default is read after its operator", () => {
 });
 
 test("every dialect's insert statement is read as rows", () => {
-	const rows = (t: string) => [...insertCells(t)].map((c) => `${c.table}.${c.column}=${c.value.text}`);
+	const rows = (t: string) => [...sqlCells(t)].map((c) => `${c.table}.${c.column}=${c.value.text}`);
 	assert.deepEqual(rows('INSERT IGNORE INTO users (name, password) VALUES ("a", "p1");'), [
 		'users.name="a"',
 		'users.password="p1"',
@@ -793,6 +851,16 @@ test("every dialect's insert statement is read as rows", () => {
 	assert.deepEqual(rows("REPLACE INTO `app`.`users` (password) VALUES (3)"), ["users.password=3"]);
 	assert.deepEqual(rows('INSERT INTO "my t" (password) VALUES (4)'), ["my t.password=4"]);
 	assert.deepEqual(rows("insert into [dbo].[Users] ([Password]) values (5)"), ["Users.Password=5"]);
+	assert.deepEqual(rows("COPY public.users (id, password) FROM stdin;\n1\tKx9\n2\t\\N\n\\.\n"), [
+		"users.id=1",
+		"users.password=Kx9",
+		"users.id=2",
+		"users.password=\\N",
+	]);
+	// (The string a value gives its column, through SQL's prefixes and casts. A hash's input, `md5('…')`, is calls.ts's.)
+	const literals = (t: string) => [...sqlCells(t)].map((c) => c.value.literal?.value);
+	assert.deepEqual(literals("INSERT INTO t (a, c) VALUES (N'x1', 'x3'::text)"), ["x1", "x3"]);
+	assert.deepEqual(literals("INSERT INTO t (a, b) VALUES (now(), 'x'||'y')"), [undefined, undefined]);
 });
 
 test("a reference, a lookup's name or a stand-in under a password's name is no password", () => {
@@ -1184,6 +1252,119 @@ test("a route or screen word marks a lookup key or UI text, not a secret or a fu
 	hidden("EVENT_SECRET=hunter22", "hunter22");
 });
 
+test("an about word that names a component, a word between it and the password's, leaves the name a password's", () => {
+	for (const name of [
+		"LABEL_STUDIO_PASSWORD",
+		"EVENT_STORE_PASSWORD",
+		"MESSAGE_BROKER_PASSWORD",
+		"STATUS_DB_PASSWORD",
+		"HELP_DESK_PASSWORD",
+		"VNC_VIEW_ONLY_PASSWORD",
+		"MATCH_PASSWORD",
+		"MATCH_KEYCHAIN_PASSWORD",
+	]) {
+		assert.equal(nameClass(name), "credential", name);
+		hidden(`      - ${name}=Tr0ub4dor&3x\n`, "Tr0ub4dor&3x");
+	}
+	hidden('export MATCH_PASSWORD="Harbor2291xq"', "Harbor2291xq");
+	// (Next to the password's word, or with qualifiers between, they still mark UI text, errors and flags.)
+	for (const name of [
+		"LABEL_NEW_PASSWORD",
+		"LOGIN_PAGE_PASSWORD",
+		"ERROR_WRONG_PASSWORD",
+		"HAS_DB_PASSWORD",
+		"RESET_PASSWORD",
+	])
+		assert.equal(nameClass(name), "neutral", name);
+	kept('"MATCH_PASSWORD": "Passwords must match"', "Passwords must match");
+	kept('"LABEL_USER_PASSWORD": "User password"', "User password");
+});
+
+test("a password's word written as two words, or glued after what it belongs to, names a password", () => {
+	for (const text of [
+		"export GPG_PASS_PHRASE=Hunter2hunter2!x",
+		'key_pass_phrase = "Hunter2hunter2!x"',
+		"pass_phrase: Hunter2hunter2!x",
+		'{"Name": "Orders.Smtp.PassPhrase", "Value": "Hunter2hunter2!x"}',
+		"SmtpPassWord=Hunter2hunter2!x",
+		"pass_word: Hunter2hunter2!x",
+		"ClearTextPassword=Hunter2hunter2!x",
+		"clear_text_password: Hunter2hunter2!x",
+		"PlainTextPassword=Hunter2hunter2!x",
+		"export JKSPASS='Hunter2hunter2!x'",
+		"vpnpass=Hunter2hunter2!x",
+		"kafkapass: Hunter2hunter2!x",
+		"P12PASS=Hunter2hunter2!x",
+		"adminpw: Hunter2hunter2!x",
+		"userpw=Hunter2hunter2!x",
+		"DBPW=Hunter2hunter2!x",
+	])
+		hidden(text, "Hunter2hunter2!x");
+	// (CredData: a hex password under a glued PASS.)
+	hidden("Ctrl.hexpass = hexpass:88476859103f8069", "88476859103f8069", { path: "test/x.txt" });
+	// slapd.conf's and nslcd.conf's directives.
+	hidden('database bdb\nrootdn "cn=Manager,dc=example,dc=com"\nrootpw Hx7mQ2pL9vRt\n', "Hx7mQ2pL9vRt", {
+		command: "cat /etc/openldap/slapd.conf",
+	});
+	hidden("uri ldap://ldap.example.com\nbindpw Tq8vLm3KxR2n\n", "Tq8vLm3KxR2n", { command: "cat /etc/nslcd.conf" });
+	// (`PASS` glued to a word it makes another of, a letter or a number; `PW` after a letter, as base64 ends.)
+	for (const name of ["bypass", "compass", "lowpass", "subpass", "renderpass", "KEEPASS", "npass", "2pass", "xpw"])
+		assert.equal(nameClass(name), "neutral", name);
+	// (Nor a program or a directive about a password: an askpass helper, `getpass`, Redis' `resetpass`.)
+	for (const name of ["GIT_ASKPASS", "SSH_ASKPASS", "getpass", "resetpass"])
+		assert.equal(nameClass(name), "neutral", name);
+	kept("GIT_ASKPASS=echo git clone https://example.com/repo", "echo");
+	// A slapd.conf's directives are a config's lines, not a table under `rootpw`: the lines below it stay.
+	const slapd = [
+		"database\tmdb",
+		'suffix\t\t"dc=example,dc=com"',
+		'rootdn\t\t"cn=Manager,dc=example,dc=com"',
+		"rootpw\t\tHx7mQ2pL9vRt",
+		"#null#bind\t\ton",
+		"#~null~#directory\t@TESTDIR@/db.1.a",
+		"#indexdb#index\t\tobjectClass\teq",
+		"chase-referrals\tno",
+		"nretries\t100",
+		"",
+	].join("\n");
+	hidden(slapd, "Hx7mQ2pL9vRt");
+	for (const value of ["#null#bind", "#~null~#directory", "#indexdb#index", "chase-referrals", "nretries"])
+		kept(slapd, value);
+	kept("proxy:\n  bypass: localhost\n", "localhost");
+	kept(
+		'"contentHash": "8o5PWkx1bCfWeh8ICXXsP27ZSgL7qCIFqlSQhZS1kd5MfnjhK1yKD8FChCG5XCjkQW6iXvMALUnwtdQBGS+xpw=="',
+		"+xpw==",
+	);
+});
+
+test("an auth mode's word before AUTH leaves a login under it a credential", () => {
+	hidden("HTTP_AUTH=admin:Harbor2291xq", "Harbor2291xq");
+	hidden("http_auth: elastic:Harbor2291xq", "Harbor2291xq");
+	kept("HTTP_AUTH=basic", "basic");
+	kept("HTTP_AUTH=true", "true");
+});
+
+test("a model's input and output tokens are counts, not credentials", () => {
+	for (const name of ["input_token", "INPUT_TOKENS", "OUTPUT_TOKEN", "inputToken"])
+		assert.equal(nameClass(name), "identifier", name);
+	kept('input_token = "<s>"', "<s>");
+});
+
+test("an identifier's private variant is no key's private half", () => {
+	for (const name of ["zone_private", "host_private", "BUCKET_PRIVATE"]) assert.equal(nameClass(name), "neutral", name);
+	for (const name of ["vapidPrivate", "push_private", "VAPID_PRIVATE", "WG_PRIVATE"])
+		assert.equal(nameClass(name), "credential", name);
+	kept('zone_private = "Z2FDTNDATAQYW2"\n', "Z2FDTNDATAQYW2", { command: "terraform output" });
+});
+
+test("a bare secret's hex of 20 to 40 is a secret, a pair's public key above it", () => {
+	hidden("key: 278d425bdf160c739803\nsecret: 7ad3773142a6692b25b8\ncluster: eu\n", "7ad3773142a6692b25b8", {
+		path: "config/pusher.yml",
+	});
+	hidden('new Pusher({ key: "278d425bdf160c739803", secret: "7ad3773142a6692b25b8" })', "7ad3773142a6692b25b8");
+	hidden('{"key": "278d425bdf160c739803", "secret": "7ad3773142a6692b25b8"}', "7ad3773142a6692b25b8");
+});
+
 test("a file's name in a checksum manifest names the file, whatever words it holds", () => {
 	kept(
 		'{"files": {"token.go": "5f4dcc3b5aa765d61d8327deb882cf99", "secret.yml": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b"}}',
@@ -1353,4 +1534,156 @@ test("Bundler's name for a gem server's host holds its credentials; its other se
 		"BUNDLE_MIRROR__RUBYGEMS__ORG",
 	])
 		assert.notEqual(nameClass(name), "credential", name);
+});
+
+test("an upper-case PASS holds a password unless its value is a test's path or a short or word-like name", () => {
+	for (const text of ["SFTP_USER=bob\nPASS=zq8lw2mxr5\n", "PASS=qw8xz3vn7b", 'PASS="qw8xz3vn7b"'])
+		hidden(text, /PASS="?(\w+)/.exec(text)![1]);
+	hidden("$ msfvenom -p windows/adduser USER=backdoor PASS=ujyadfys759 -f msi -o evil.msi", "ujyadfys759", {
+		path: "r.md",
+	});
+	for (const line of ["PASS: tests/test_auth.py::test_login", "PASS: regress1", "PASS: x86_64", "PASS  src/a.test.ts"])
+		kept(line, line);
+});
+
+test("an env value ends at a redirection", () => {
+	for (const [text, rest] of [
+		["DB_PASSWORD=Winter2024!Prod > out.txt", " > out.txt"],
+		["DB_PASSWORD=Winter2024!Prod 2>&1 | tee log", " 2>&1 | tee log"],
+		["MYSQL_PWD=Winter2024!Prod mysql < in.sql", " mysql < in.sql"],
+	]) {
+		hidden(text, "Winter2024!Prod");
+		kept(text, rest);
+	}
+	// (A password's own `;` and `&`, with no command after them, stay in it.)
+	hidden("DB_PASSWORD=Tr0ub;4dor&3horse", "4dor&3horse");
+});
+
+test("XML: a value named by a name or key attribute on any element, by a <name> child, or on a line of its own", () => {
+	hidden(
+		"<configuration>\n  <property>\n    <name>fs.s3a.secret.key</name>\n    <value>Winter2024!Prod</value>\n  </property>\n</configuration>",
+		"Winter2024!Prod",
+	);
+	for (const text of [
+		'<property name="hibernate.connection.password">Winter2024!Prod</property>',
+		'<prop key="jdbc.password">Winter2024!Prod</prop>',
+		'<Parameter name="db.password">Winter2024!Prod</Parameter>',
+		"<server>\n  <id>nexus</id>\n  <password>\n    Winter2024!Prod\n  </password>\n</server>",
+	])
+		hidden(text, "Winter2024!Prod");
+	kept(
+		"<property>\n  <name>fs.s3a.endpoint</name>\n  <value>s3.eu-west-1.amazonaws.com</value>\n</property>",
+		"s3.eu-west-1.amazonaws.com",
+	);
+	kept('<property name="hibernate.connection.username">deploy_user</property>', "deploy_user");
+	// (An HTML anchor's name is a place in the page: AsciiDoc's passthrough around one in a README.)
+	kept('+++<a name="example-jwe-password">++++++</a>+++', "++++++");
+	// (Words in Markdown's bold are a placeholder, as the same words plain are.)
+	kept(
+		"<property>\n<name>javax.jdo.option.ConnectionPassword</name>\n<value>**mysql metastore DB password**</value>\n</property>",
+		"**mysql metastore DB password**",
+	);
+	hidden(
+		"<property>\n  <name>javax.jdo.option.ConnectionPassword</name>\n  <value>Rv7kTq2mWx9L</value>\n</property>",
+		"Rv7kTq2mWx9L",
+	);
+});
+
+test("a dot leader stays before the value it leads to", () => {
+	for (const label of ["password", "db_password"]) {
+		hidden(`${label} ........ Winter2024!Prod`, "Winter2024!Prod");
+		kept(`${label} ........ Winter2024!Prod`, `${label} ........ `);
+	}
+});
+
+test("a value object under a credential's key is named by the key: Spring's actuator /env, terraform output -json", () => {
+	hidden(
+		'{"properties": {"PAYMENT_GATEWAY_HMAC": {"value": "5e8addaed2a4e04c42e9c94897686a22e6316fd29b3006deb4b5e364836be4a3", "origin": "System Environment Property"}}}',
+		"5e8addaed2a4e04c42e9c94897686a22e6316fd29b3006deb4b5e364836be4a3",
+	);
+	hidden('{"app.integration.erp.credential": {"value": "EMBEe2mkr9!"}}', "EMBEe2mkr9!");
+	hidden('{"db_password": {"sensitive": false, "type": "string", "value": "Tr0ub4dor&3xQ"}}', "Tr0ub4dor&3xQ");
+	kept('{"spring.datasource.password": {"value": "******"}}', "******");
+	kept('{"app.security.token-expiry": {"value": "PT30M"}}', "PT30M");
+	kept('{"HOSTNAME": {"value": "orders-api-7d9f6c8b5-x2kq4"}}', "orders-api-7d9f6c8b5-x2kq4");
+});
+
+test("a Quarkus profile before a property's name is the line's, not the name's", () => {
+	hidden("%dev.quarkus.datasource.password=EMBEf0pw8a$", "EMBEf0pw8a$");
+	hidden("%dev.quarkus.datasource.password=devdev", "devdev");
+	kept("%test.quarkus.datasource.password=${TEST_DB_PW:test}", "${TEST_DB_PW:test}");
+});
+
+test("a release, a VCS revision, a reference and an organization are named as IDs and hashes", () => {
+	for (const name of ["SENTRY_RELEASE", "LANGFUSE_RELEASE", "RELEASE", "BUILD_VCS_NUMBER", "VCS_REVISION"])
+		assert.equal(nameClass(name), "hash", name);
+	for (const name of ["pspReference", "merchantReference", "payment_reference", "organization", "ORGANISATION"])
+		assert.equal(nameClass(name), "identifier", name);
+	for (const name of ["RELEASE_TOKEN", "SENTRY_AUTH_TOKEN", "ORGANIZATION_API_KEY"])
+		assert.equal(nameClass(name), "credential", name);
+	kept("LANGFUSE_RELEASE=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env.observability" });
+	kept("BUILD_VCS_NUMBER=0e38f1d46da738d2c1f329127d8f93f3fab0e2c2\n", "0e38f1d4", { command: "set" });
+	hidden("RELEASE_TOKEN=63a66e12bb6436fe91488485a79d81f6f8966a55\n", "63a66e12", { path: ".env" });
+});
+
+test("a config file's `key = value` lines with no section are literals, brackets and all", () => {
+	for (const v of ["Winter(2025)!!", "Summer[2024]x", "Rt5{Yu8}Io3", "Kj8;Hd3Lp9", "Qw3<Er5Ty9"]) {
+		hidden(`host = db.internal\nport = 5432\npassword = ${v}\n`, v);
+		hidden(`# db\nhost = db.internal\nuser = app\npassword = ${v}\n`, v, { command: "cat db.conf" });
+	}
+	// (CredData: lower-case passwords in a .properties file and in a sectionless block.)
+	hidden("ldap.url = ldap://x\nldap.password = gvlrxankq\nldap.base = dc=x", "gvlrxankq", {
+		path: "conf/security/a.properties",
+	});
+	hidden("datastore.user = app\ndatastore.password = rflmnnph\n", "rflmnnph", { path: "_/a.sh" });
+	// (Code's lines around it make it code: a call, a subscript, a keyword.)
+	for (const text of [
+		'host = os.environ["HOST"]\nport = 5432\npassword = get_password(user)\n',
+		"host = db.internal\nport = 5432\npassword = get_password(user)\n",
+		"const host = cfg.host\npassword = load(cfg)\n",
+	])
+		kept(text, text.match(/password = (.*)\n/)![1]);
+});
+
+test("a key and value table's row names its value by its key cell", () => {
+	hidden(
+		"INSERT INTO config (name, value) VALUES ('aws_secret_access_key', 'qT7xKp2LmZ9vRnB4sWyH8dFh6ZcQe3JaUo5GtN1c');",
+		"qT7xKp2LmZ9vRnB4sWyH8dFh6ZcQe3JaUo5GtN1c",
+	);
+	const options =
+		"INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('mailserver_pass', 'Hx7mQ2pL9vRt', 'yes'), ('siteurl', 'https://x.io', 'yes'), ('blogname', 'My Blog', 'yes');";
+	hidden(options, "Hx7mQ2pL9vRt");
+	kept(options, "https://x.io");
+	kept(options, "My Blog");
+	kept("INSERT INTO settings (key, value) VALUES ('smtp_password', '{{ smtp_pass }}');", "{{ smtp_pass }}");
+	kept("INSERT INTO settings (key, value) VALUES ('session_cookie_name', 'Hx7mQ2pL9vRtZk3v');", "Hx7mQ2pL9vRtZk3v");
+});
+
+test("a value ends where the syntax around it resumes: a page's markup, a shell expansion's close", () => {
+	for (const [text, after] of [
+		["<!-- DB_PASSWORD=Hx7mQ2pL9vRt-->", "]-->"],
+		["<td>Password: Hx7mQ2pL9vRt<br />more</td>", "]<br />more</td>"],
+		["<td>Password: Hx7mQ2pL9vRt<br>more</td>", "]<br>more</td>"],
+		["<p>password=Hx7mQ2pL9vRt</p>", "]</p>"],
+	]) {
+		const out = r().redact(text).text;
+		assert.ok(out.endsWith(after) && !out.includes("Hx7mQ2pL9vRt"), out);
+	}
+	// A shell expansion is read whole, as one word with the blanks in its brackets.
+	for (const text of [
+		"#!/bin/sh\nDB_PASSWORD=${DB_PASSWORD:-$(openssl rand -hex 16)}\nexport DB_PASSWORD\n",
+		"export SECRET_KEY=${SECRET_KEY:-$(head -c 32 /dev/urandom | base64)}\n",
+		'az webapp config appsettings set -g rg -n app --settings "DB_PASSWORD=@Microsoft.KeyVault(VaultName=kv;SecretName=db)"',
+	])
+		assert.equal(r().redact(text).text, text);
+	hidden("DB_PASSWORD=${DB_PASSWORD:-Kx9mQ2pLw7vR} ./run.sh", "Kx9mQ2pLw7vR");
+	hidden('docker run -e "DB_PASSWORD=Kx9mQ2pLw7vR;Host=db" app', "Kx9mQ2pLw7vR");
+});
+
+test("a JSON object under a plural credential's name holds credentials keyed by whose they are", () => {
+	const keys =
+		'{"securityKeys": {"S0_Legacy": "0E1C8DA2F3B54C6A9D7E8F1029384756", "S2_Unauthenticated": "5C14D038A1B2C3D4E5F60718293A4B5C"}}';
+	hidden(keys, "0E1C8DA2F3B54C6A9D7E8F1029384756");
+	hidden(keys, "5C14D038A1B2C3D4E5F60718293A4B5C");
+	kept('{"secrets": {"provider": "vault", "mode": "strict"}}', "vault");
 });

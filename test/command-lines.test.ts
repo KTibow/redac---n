@@ -38,6 +38,11 @@ test("a password flag hides its value in option, attached, list and compound for
 		hidden(line, "Xk9mQ2pLrT");
 });
 
+test("a command line under any key named for one is read as one", () => {
+	for (const key of ["CommandLine", "commandLine", "bash_command", "COMMAND_LINE", "shellCmd"])
+		hidden(`{"${key}":"mysql -u root -pQm7vTx2LpR9sWd4Nz8K shop","Cwd":"/app"}`, "Qm7vTx2LpR9sWd4Nz8K");
+});
+
 test("a program's own password option is read, catalogued or not", () => {
 	for (const line of [
 		"hydra -l admin -p Kx9mQv2Lp7Rt ssh://h",
@@ -73,6 +78,19 @@ test("a program's own password option is read, catalogued or not", () => {
 	hidden("Use -u admin:Xk9mQ2pL to log in", "Xk9mQ2pL");
 	kept("docker run --rm -u 1000:1000 -p 443:443 img", "1000:1000");
 	hidden("curl -u admin:48213579 https://x.example", "48213579");
+	// A proxy's password, and HTTPie's `-a user:password` in its clone xh and in hey.
+	for (const line of [
+		"curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com",
+		"curl --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"wget --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"xh -a admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"xhs --auth admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"hey -a admin:Hx7mQ2pL9vRt -n 100 https://x.example.com",
+	])
+		hidden(line, "Hx7mQ2pL9vRt");
+	kept("curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com", "proxyuser:");
+	kept("xh -a username:password https://pie.dev/basic-auth", "username:password");
+	kept("hey -n 100 -A application/json https://x.example.com", "application/json");
 });
 
 test("a password in a tool's own syntax is hidden: user%password, user/password@db, +login, -passout pass:, net use, device keys", () => {
@@ -87,6 +105,13 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		"printf '%s' 'qe2sLLGCUeJemSaDuso7oyLTsRv7q478' | podman login -u bob --password-stdin quay.io",
 		"qe2sLLGCUeJemSaDuso7oyLTsRv7q478",
 	);
+	// After a line's own prefix: a workflow's one-line `run:`, a Dockerfile's RUN.
+	for (const line of [
+		"  - run: echo Hx7mQ2pLvRt9 | docker login ghcr.io -u bob --password-stdin",
+		"RUN echo Hx7mQ2pLvRt9 | docker login -u bob --password-stdin",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	kept("RUN echo Hx7mQ2pLvRt9 | wc -c", "Hx7mQ2pLvRt9");
 	for (const [t, v] of [
 		["jdbc:oracle:thin:admin/s3cr3tP4ss@ora.proddb.net:1521:ORCLDB", "s3cr3tP4ss"],
 		["net use Z: \\\\server\\share /user:DOMAIN\\admin P@ssw0rd9", "P@ssw0rd9"],
@@ -99,16 +124,68 @@ test("a password in a tool's own syntax is hidden: user%password, user/password@
 		["net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
 		["net user svc Harbor#2291x /add", S],
 		["winrs -r:srv -u:admin -p:Harbor#2291x ipconfig", S],
+		// After a cmd or PowerShell prompt, whose `>` is no redirect; and schtasks' `/p` for its `/u`.
+		["C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", S],
+		["C:\\>net user svc Harbor#2291x /add", S],
+		["PS C:\\> psexec \\\\srv -u admin -p Harbor#2291x cmd", S],
+		["C:\\Users\\bob> sqlcmd -U sa -P Harbor#2291x", S],
+		["schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup /tr C:\\b.bat /sc daily", S],
+		// The remote user's `/u … /p pw` that schtasks shares with setx, taskkill, systeminfo and their kin.
+		["setx /s computer1 /u CORP\\alice /p Harbor#2291x MYPATH %PATH%", S],
+		["taskkill /s srv /u CORP\\alice /p Harbor#2291x /im app.exe", S],
+		["getmac /s srv /u CORP\\alice /p Harbor#2291x", S],
+		['schtasks /run /u "CORP\\alice" /p "Harbor#2291x" /tn Backup', S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	// (Not past an operator, nor a syntax's placeholder.)
+	kept("SCHTASKS /Query /FO csv /v /s srv /U CORP\\alice /P  | ConvertFrom-Csv", "ConvertFrom-Csv");
+	kept("schtasks /run /tn TaskName [/s computer [/u [domain\\]user /p [password]]] /?", "[password]]]");
+	kept("you do not need /s /u /p; you already gave them", "you already");
+	kept("I even tried the script with the /u and /p fields so that it runs as admin", "fields so that");
+	kept("tasklist /s srv /u CORP\\alice /p <password>", "<password>");
+	kept("C:\\Users\\bob> net use Z: \\\\srv\\share Harbor#2291x /user:CORP\\alice", "C:\\Users\\bob> net use Z:");
+	kept("schtasks /create /s srv /u bob /p Harbor#2291x /tn Backup", "/tn Backup");
 	for (const [t, v, hint] of [
 		["crypto isakmp key Harbor#2291x address 0.0.0.0", S],
 		[" ip ospf message-digest-key 1 md5 Harbor#2291x", S],
+		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key local Harbor#2291x", S],
+		["crypto ikev2 keyring KR\n peer P\n  pre-shared-key remote Harbor#2291x", S],
+		["snmp-server community Harbor#2291x view v1 RW", S],
+		// A CRLF file's lines, with a tail; and Junos' `show configuration`, which marks the secret.
+		["snmp-server community Harbor#2291x view v1 RO\r\nsnmp-server community Harbor#2291x RW\r\n", "x view"],
+		["snmp-server community Harbor#2291x RW\r\n!\r\n", "x RW"],
+		["crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n!\r\n", S],
+		["crypto isakmp key Harbor#2291x address 10.0.0.1   \n", S],
+		['    ike {\n        policy P {\n            pre-shared-key ascii-text "Harbor#2291x"; ## SECRET-DATA\n', S],
 		["SQL> connect scott/Harbor#2291x@orcl", S],
 		["rman target sys/Harbor#2291x@db", S],
 	] as [string, string, { command?: string }?][])
 		hidden(t, v, hint);
+	kept("crypto isakmp key Harbor#2291x address 0.0.0.0        \r\n", "crypto isakmp key ");
+	for (const line of ["snmp-server community public view v1 RO", "pre-shared-key is set per peer"])
+		assert.equal(r().redact(line).text, line);
 	hidden("docker exec -it oracle-db sqlplus sys/Oracle123x@ORCLPDB1 as sysdba", "Oracle123x");
+	// An Oracle login with no `@db`, before the command's next word: an option, a script, a redirect.
+	for (const line of [
+		"expdp system/Hx7mQ2pLvRt9 directory=DP dumpfile=a.dmp",
+		"impdp scott/Hx7mQ2pLvRt9 schemas=HR directory=DP",
+		"sqlldr userid=scott/Hx7mQ2pLvRt9 control=a.ctl",
+		"rman target sys/Hx7mQ2pLvRt9 nocatalog",
+		"sqlplus -S scott/Hx7mQ2pLvRt9 @/opt/run.sql arg1",
+		"sqlplus scott/Hx7mQ2pLvRt9 < run.sql",
+		"sqlplus scott/Hx7mQ2pLvRt9 <<EOF\nselect 1 from dual;\nEOF",
+	])
+		hidden(line, "Hx7mQ2pLvRt9");
+	for (const line of ["Connect input/output ports to the board", "sqlplus input/output files are written here"])
+		assert.equal(r().redact(line).text, line);
+	// A schema logged in as with its own name for a password, as a guide does, tells nothing the name doesn't.
+	for (const line of [
+		"impdp adm_cs/adm_cs remap_schema=adm_src:adm_cs directory=dpdata2 dumpfile=adm_src.dmp",
+		"expdp test01/test01 directory=out_dir dumpfile=t1_t2.dmp tables=t1,t2",
+		"sqlplus cdcpub/cdcpub @cdcdemo.sql",
+		"impdp TCL/tcl remap_schema=etppm:TCL directory=dp",
+	])
+		assert.equal(r().redact(line).text, line);
 	hidden("::add-mask::correct horse battery staple", "horse battery staple");
 	// (What a workflow masks is secret whatever its shape, a version's included.)
 	hidden('echo "::add-mask::v1.2.3"', "v1.2.3");
@@ -118,6 +195,22 @@ test("a command that wraps another still hides its password: pipes, sudo, images
 	const pw = "vbrzzeN7T9J2xk";
 	hidden(`127.0.0.1:6379> AUTH ${pw}\nOK`, pw);
 	hidden(`127.0.0.1:6379> CONFIG GET requirepass\n1) "requirepass"\n2) "${pw}"`, pw);
+	// A Redis ACL rule's password, added or removed, in a session and in an ACL file.
+	hidden(`127.0.0.1:6379> ACL SETUSER bob on >${pw} ~* +@all`, pw);
+	hidden(`ACL SETUSER bob <${pw}`, pw);
+	hidden(`user bob on >${pw} ~* +@all`, pw);
+	kept("user default on nopass ~* +@all", "nopass ~* +@all");
+	// (Not a usage's slot, a template's placeholder or a code span's closing backtick.)
+	kept('"SETUSER <username> <attribute> [<attribute> ...]",', "<attribute>");
+	for (const line of [
+		"user app on >REMITFLOW_APP_PASSWORD_PLACEHOLDER ~app:* +@all",
+		"user monitor on >PLACEHOLDER_MONITOR_PASSWORD ~* +@read",
+		"127.0.0.1:6379> ACL SETUSER default >PASSWORD_TEXT",
+	])
+		assert.equal(r().redact(line).text, line);
+	const spanned = r().redact(`Run \`ACL SETUSER default on >${pw}\` first.`).text;
+	assert.ok(!spanned.includes(pw) && spanned.endsWith("` first."), spanned);
+	kept("user bob is logged in > out.txt", "out.txt");
 	hidden(`java -Dspring.datasource.password=${pw} -jar app.jar`, pw);
 	hidden(`echo '${pw}' | sudo -S apt update`, pw);
 	hidden(`echo ${pw} | docker login -u bob --password-stdin`, pw);
@@ -240,6 +333,33 @@ test("a program's own password option takes its quoted value whole; a bare one e
 	// After a `password` word on any other command, only a password's shape.
 	kept("Avoid password re-use across accounts", "re-use");
 	kept("Store the password LastPass generated for you", "LastPass");
+});
+
+test("an option's value names no program: `dvc stage add -n hydra -p` gives a stage its parameters", () => {
+	kept("dvc stage add -n hydra -p 'params.yaml:' 'cat params.yaml'", "params.yaml:");
+	kept("dvc stage add -n medusa -p train.epochs python train.py", "train.epochs");
+	hidden("hydra -l admin -p 'Xk9(mP2vQ7' ssh://t", "Xk9(mP2vQ7");
+	hidden("Brute-force it: hydra -l admin -p Winter2024.", "Winter2024");
+});
+
+test("vault login takes one token: a changelog's sentence and a usage line after it are kept", () => {
+	for (const [line, word] of [
+		[
+			"* auth/alicloud: fix regression in vault login command that caused login to fail [[GH-19005](https://x)]",
+			"command",
+		],
+		["* auth: Fixed erroneous success message when using vault login in case of two-phase MFA", "two-phase"],
+		[
+			"* auth: Fixed missing information from table format when using vault login [[GH-15428](https://x)]",
+			"[[GH-15428]",
+		],
+		["Usage: vault login TOKEN [CONFIG K=V...]", "[CONFIG"],
+		["Usage: vault login -method=aws [CONFIG K=V...]", "[CONFIG"],
+	])
+		kept(line, word);
+	hidden("$ vault login 96ddf4bc-d217-f3ba-f9bd-017055595017", "96ddf4bc-d217-f3ba-f9bd-017055595017");
+	hidden("$ vault login correcthorse", "correcthorse");
+	hidden("$ vault login token=Kx9mQ2vLp7Rt3Wz8 lookup=false", "Kx9mQ2vLp7Rt3Wz8");
 });
 
 test("a command written as a list is read in single quotes and over CRLF and tabs, and keeps its quotes", () => {

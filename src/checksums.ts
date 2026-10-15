@@ -40,10 +40,11 @@ function base58Check(t: string, alphabet: string): number[] | undefined {
 }
 
 /**
- * The human-readable parts that name a secret, not an address: Nostr's `nsec` and `ncryptsec`, and the `sk`, `sec` and
- * `priv` that chains and tools give a private key (`sk1…`, `priv1…`), whose checksum would verify as well.
+ * The human-readable parts that name a secret, not an address: Nostr's `nsec` and `ncryptsec`, the `sk` and `sec` that
+ * chains and tools give a private key (`sk1…`), and any that says private, secret or seed (`priv1…`, Sui's
+ * `suiprivkey1…`), whose checksum would verify as well.
  */
-const SECRET_HRP = /^(?:nsec|ncryptsec|sk|sec|priv)$/;
+const SECRET_HRP = /^(?:nsec|ncryptsec|sk|sec)$|priv|secret|seed/;
 
 /** A bech32 or bech32m address (`bc1…`, `cosmos1…`, `npub1…`) whose checksum verifies; never a secret's prefix (`nsec1`). All lower case or all upper case (BIP-173); not mixed. */
 export function isBech32Address(address: string): boolean {

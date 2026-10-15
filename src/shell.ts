@@ -87,6 +87,8 @@ export interface Heredoc {
 export interface ShellGroup {
 	kind: string;
 	redirects: ShellRedirect[];
+	/** The operator after the group: `|` pipes what every command in it prints (`{ echo A=1; echo B=2; } | tee .env`). */
+	then?: ShellOperator;
 }
 
 type ShellOperator = "|" | "|&" | "||" | "&&" | ";" | "&" | "\n" | "";
@@ -462,6 +464,7 @@ export function shellCommands(
 		if (closed && !words.length) {
 			// The redirections and the operator after a group's closer are the group's.
 			closed.group.redirects.push(...redirects);
+			closed.group.then = then;
 			const last = out.at(-1);
 			if (last && out.length > closed.from) last.then = then;
 		} else if (words.length || redirects.length) {
@@ -654,11 +657,27 @@ export function wordSpan(word: ShellWord, from = 0): { start: number; end: numbe
 	let start = word.map[from];
 	let end = word.ends.at(-1)!;
 	const raw = (k: number) => word.raw[k - word.start];
-	if (word.raw.slice(start - word.start, end - word.start) !== word.text.slice(from)) {
+	// (A span that starts and ends in the same quotes, or outside any, keeps the word's quotes about it as they were: the
+	// `'\''` a single-quoted password writes its quote with, `'admin:pa'\''ss'`, leaves the closing quote out.)
+	if (
+		word.raw.slice(start - word.start, end - word.start) !== word.text.slice(from) &&
+		quoteAt(word.raw, start - word.start) !== quoteAt(word.raw, end - word.start)
+	) {
 		while (start > word.start && /["'$]/.test(raw(start - 1))) start--;
 		while (end < word.end && /["']/.test(raw(end))) end++;
 	}
 	return { start, end };
+}
+
+/** The quote a shell word's raw text is inside at `at`: `'`, `"`, or "" outside quotes. */
+function quoteAt(raw: string, at: number): string {
+	let quote = "";
+	for (let k = 0; k < at; k++) {
+		const c = raw[k];
+		if (c === "\\" && quote !== "'") k++;
+		else if (quote ? c === quote : c === "'" || c === '"') quote = quote ? "" : c;
+	}
+	return quote;
 }
 
 /** The command line an argument vector stands for, each word quoted as a shell needs it: `["bash", "-lc", "cat .env"]` → `bash -lc 'cat .env'`. */
@@ -667,11 +686,14 @@ export function shellLine(argv: string[]): string {
 }
 
 /**
- * A terminal prompt at the start of a line, before a command: a shell's `$ `, `user@host:~$ `, PowerShell's
- * `PS C:\> `, a notebook's `In [3]: !` or a cell's bare `!` before a command. Group 1 is the command.
+ * A terminal prompt at the start of a line, before a command. Group 1 is the command. A POSIX shell's, after a
+ * virtualenv's or conda's `(venv) `: `$ `, `user@host:~/app$ `, `root@3f2a9c1d:/app# `, RHEL's `[ec2-user@ip-10-0-1-5
+ * app]$ `, macOS zsh's `user@host app % `, a bare shell's `bash-5.1$ ` and `sh-4.2# `, busybox's `/app # `. PowerShell's
+ * `PS C:\> ` and `PS> `, cmd's `C:\app>` (no blank after it), a notebook's `In [3]: !` or a cell's bare `!` before a
+ * command. (Not root's bare `# `: a comment or a Markdown heading is written so.)
  */
 export const PROMPT =
-	/^[ \t]*(?:\$ |In \[\d*\]:[ \t]*!|PS [^>\n]{0,200}> |[\w.-]+@[\w.-]+:[^\n$#]{0,200}[$#] |!(?=[a-z]))[ \t]*(\S[^\n]{0,2000})/;
+	/^[ \t]*(?:(?:\([\w.-]{1,40}\)[ \t]+)?(?:\$ |[\w.-]+@[\w.-]+:[^\n$#]{0,200}[$#] |\[[\w.-]+@[\w.-]+(?:[ \t][^\]\n]{0,200})?\][$#] |[\w.-]+@[\w.-]+[ \t]\S{1,200}[ \t][%$#] |[a-z]+-\d+(?:\.\d+)*[$#] |[~/][\w./~-]{0,200}[ \t]#[ \t])|In \[\d*\]:[ \t]*!|PS(?: [^>\n]{0,200})?> |[A-Za-z]:\\[^<>|"\n]{0,200}>|!(?=[a-z]))[ \t]*(\S[^\n]{0,2000})/;
 
 /** Words before a simple command's own (`!` negates it); `then`, `do`, `else` open a group's commands. */
 const RESERVED = new Set(["!", "if", "then", "else", "elif", "do", "while", "until"]);
@@ -686,7 +708,8 @@ const WRAPPERS = new Map<string, { values?: string; long?: RegExp; operands?: nu
 		{ values: "ugCDhprtTUR", long: /^--(?:user|group|chdir|host|prompt|role|type|close-from|other-user|chroot)$/ },
 	],
 	["doas", { values: "uC" }],
-	["runuser", { values: "ugl", long: /^--(?:user|group)$/ }],
+	// (`runuser -u app cmd`; with no `-u` it is su's twin, `runuser -l app -c 'cmd'`, and its `-l` is `--login`.)
+	["runuser", { values: "ug", long: /^--(?:user|group)$/ }],
 	["env", { values: "uCS", long: /^--(?:unset|chdir|split-string)$/ }],
 	["timeout", { values: "sk", long: /^--(?:signal|kill-after)$/, operands: 1 }],
 	["nice", { values: "n", long: /^--adjustment$/ }],
@@ -712,10 +735,37 @@ export function isWrapper(word: string): boolean {
 	return WRAPPERS.has(word);
 }
 
-/** A program's name without its directory and Windows' `.exe`: `/usr/bin/grep` → `grep`, `.\\steamcmd.exe` → `steamcmd`. */
+/**
+ * A program's name without its directory and Windows' `.exe`: `/usr/bin/grep` → `grep`, `.\\steamcmd.exe` → `steamcmd`.
+ * PowerShell's and cmd's commands in the case the readers know them by, as both shells take any case (`get-content`,
+ * `TYPE`, `Select-string`).
+ */
 export function programName(word: ShellWord | undefined): string {
-	return (word?.text ?? "").replace(/^.*[/\\]/, "").replace(/\.exe$/i, "");
+	const name = (word?.text ?? "").replace(/^.*[/\\]/, "").replace(/\.exe$/i, "");
+	return WINDOWS_COMMANDS.get(name.toLowerCase()) ?? name;
 }
+
+/** PowerShell's cmdlets and aliases and cmd's builtins that the readers name, by their names in lower case. */
+const WINDOWS_COMMANDS = new Map(
+	[
+		"Get-Content",
+		"Select-String",
+		"Write-Output",
+		"Write-Host",
+		"Get-Item",
+		"Get-ChildItem",
+		"Get-Secret",
+		"gc",
+		"sls",
+		"gci",
+		"gi",
+		"type",
+		"findstr",
+		"pwsh",
+		"powershell",
+		"cmd",
+	].map((name) => [name.toLowerCase(), name]),
+);
 
 /**
  * A simple command's words from the program it runs: past assignments (`FOO=1`), reserved words (`!`, `then`, `do`)

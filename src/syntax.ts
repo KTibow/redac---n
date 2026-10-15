@@ -204,10 +204,13 @@ export function continuesToken(text: string, i: number, dash = false): boolean {
 }
 
 /**
- * A string literal's prefix: Python's `b r u f` (two of them: `rb`), C#'s `@` and `$`, Rust's `r#`. The readers of
- * calls', assignments' and names' literals find where one opens with it and a quote.
+ * A string literal's prefix: Python's `b r u f` (two of them: `rb`), C#'s `@` and `$`, Rust's `r#`, C's and C++'s `L`
+ * and `u8` (before a double quote), SQL's `N'…'` (T-SQL's Unicode string, as SSMS scripts every one), `E'…'`
+ * (Postgres' escaped string, as pg_dump writes one) and MySQL's character set, `_utf8mb4'…'` (before a single quote,
+ * as SQL quotes a string: a password may start `N"`). The readers of calls', assignments' and names' literals
+ * find where one opens with it and a quote.
  */
-export const STRING_PREFIX = String.raw`r#+|[rRbBuUfF]{1,2}|@\$?|\$@?`;
+export const STRING_PREFIX = String.raw`r#+|(?:u8|L)(?=")|[rRbBuUfF]{1,2}|(?:[NE]|_[A-Za-z][A-Za-z0-9]{1,15})(?=')|@\$?|\$@?`;
 
 /** A contraction's apostrophe (`Here's`, `don't`, `you'll`), which prose writes and no quote is: test its source, or replace it. */
 export const CONTRACTION = /(?<=[A-Za-z])['’](?=(?:s|t|ll|re|ve|d|m)\b)/gi;
@@ -218,7 +221,9 @@ export const CONTRACTION = /(?<=[A-Za-z])['’](?=(?:s|t|ll|re|ve|d|m)\b)/gi;
  */
 export function isContraction(text: string, i: number): boolean {
 	const word = /[A-Za-z]+$/.exec(text.slice(Math.max(0, i - 20), i))?.[0];
-	return !!word && !/^[rRbBuUfF]{1,2}$/.test(word) && /^(?:s|t|ll|re|ve|d|m)\b/i.test(text.slice(i + 1, i + 4));
+	return (
+		!!word && !/^(?:[rRbBuUfF]{1,2}|[NE])$/.test(word) && /^(?:s|t|ll|re|ve|d|m)\b/i.test(text.slice(i + 1, i + 4))
+	);
 }
 
 /** How many backslashes run right before `at`: an odd count escapes the character at `at`. */

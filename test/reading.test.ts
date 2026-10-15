@@ -121,6 +121,21 @@ test("spaces of other widths, full-width signs and line continuations, and backs
 	assert.equal(normalize("PASSWORD：x＝y").text, "PASSWORD:x=y");
 	assert.equal(normalize("a&amp;b \\t c").text, "a&b \\t c");
 	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
+	// An entity escaped twice (JSON in an attribute escaped twice) is the character.
+	assert.equal(normalize("{&amp;quot;a&amp;quot;:1} &amp;amp;lt;").text, '{"a":1} <');
+});
+
+test("typographic quotes, as autocorrect writes pasted JSON and config, are read as the straight ones", () => {
+	assert.equal(normalize("“password”: ‘x’ „y“").text, `"password": 'x' "y"`);
+	hidden("{\n  “username”: “bob”,\n  “password”: “Winter2024!kz”\n}", "Winter2024!kz");
+	hidden("“api_key” = “Kx9mQ2pLrT7vW4nB”", "Kx9mQ2pLrT7vW4nB");
+	hidden("DB_PASSWORD=‘Tr0ub4dor&3xQ’", "Tr0ub4dor&3xQ");
+	// (The quotes themselves stay as written around the placeholder, and prose keeps its apostrophes.)
+	kept("{“password”: “Winter2024!kz”}", "“password”: “");
+	kept("The password’s rules don’t change: “at least 12 characters”.", "“at least 12 characters”");
+	// (An apostrophe inside a word quotes nothing: a locale's label for the password, Corsican's.)
+	assert.equal(normalize("chjave d’accessu").text, "chjave d’accessu");
+	kept("  login_activities:\n    authentication_methods:\n      password: chjave d’accessu\n", "chjave d’accessu");
 });
 
 test("wrapped base64 with a prefix on the first line and a suffix on the last", () => {
@@ -145,9 +160,9 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 	const bytes = Buffer.from(`API_KEY=${key}\nDEBUG=1\n`);
 	const hex = (b: Buffer) => b.toString("hex");
 	const ascii = (b: Buffer) => [...b].map((c) => (c >= 32 && c < 127 ? String.fromCharCode(c) : ".")).join("");
-	const rows = (fn: (row: Buffer, offset: number) => string) =>
-		Array.from({ length: Math.ceil(bytes.length / 16) }, (_, k) =>
-			fn(bytes.subarray(k * 16, k * 16 + 16), k * 16),
+	const rows = (fn: (row: Buffer, offset: number) => string, width = 16) =>
+		Array.from({ length: Math.ceil(bytes.length / width) }, (_, k) =>
+			fn(bytes.subarray(k * width, k * width + width), k * width),
 		).join("\n");
 	const pairs = (b: Buffer, size: number, swap = false) =>
 		(hex(b).match(new RegExp(`.{1,${size * 2}}`, "g")) ?? []).map((g) =>
@@ -161,6 +176,12 @@ test("hex dumps of a secret are hidden whole, in each tool's layout", () => {
 		hexdump: rows((b, o) => `${o.toString(16).padStart(7, "0")} ${pairs(b, 2, true).join(" ")}`),
 		"hexdump -C": rows((b, o) => `${o.toString(16).padStart(8, "0")}  ${pairs(b, 1).join(" ")}  |${ascii(b)}|`),
 		"od -A x -t x1z": rows((b, o) => `${o.toString(16).padStart(6, "0")} ${pairs(b, 1).join(" ")}  >${ascii(b)}<`),
+		"od -An -tx1": rows((b) => ` ${pairs(b, 1).join(" ")}`),
+		"xxd -g 8": rows((b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 8).join(" ").padEnd(33)}  ${ascii(b)}`),
+		"xxd -c 32 -g1": rows(
+			(b, o) => `${o.toString(16).padStart(8, "0")}: ${pairs(b, 1).join(" ").padEnd(95)}  ${ascii(b)}`,
+			32,
+		),
 	};
 	for (const [tool, dump] of Object.entries(dumps)) {
 		const out = r().redact(`$ ${tool} build.bin\n${dump}\n`).text;
@@ -302,6 +323,48 @@ test("merged findings: a whole line gives way to a sure finding inside it; a val
 	assert.ok(!covered(merge([at(0, 10, "a")]), 5, 15));
 });
 
+test("a format's token is the span where a value read to the next blank runs past it", () => {
+	const tok = "ghp\x5f0MDkfSKa7K7EeAKNsT3RLsNg5Wt5QRZ3XEna";
+	const R = new Redactor({ fingerprintKey: "test" });
+	const tag = R.redact(tok).text;
+	for (const [text, after] of [
+		[`GITHUB_TOKEN=${tok};git push origin main`, ";git push origin main"],
+		[`export TOKEN=${tok};ls`, ";ls"],
+		[`token=${tok}&q=foo&page=2&sort=desc`, "&q=foo&page=2&sort=desc"],
+		[`wget https://x.io/a?token=${tok}#top`, "#top"],
+		[`token=${tok}.`, "."],
+		[`TOKEN=${tok},next`, ",next"],
+	]) {
+		const out = R.redact(text).text;
+		assert.ok(out.endsWith(`${tag}${after}`), out);
+	}
+	// A token that stops where its format stops but the text goes on in token characters is hidden with its tail.
+	for (const tail of ["%2Bab12", ".abc123", "-extra9"]) {
+		const out = R.redact(`token=${tok}${tail} done`).text;
+		assert.ok(!out.includes(tail), out);
+	}
+});
+
+test("an unquoted value ends at the settings after it in a list with no blank between", () => {
+	const R = new Redactor({ fingerprintKey: "test" });
+	const pw = "Kx9mQ2vL8nRt4zWp";
+	const tag = `#${R.fingerprint(pw)}]`;
+	for (const [text, rest] of [
+		[`password=${pw};username=bob`, ";username=bob"],
+		[`DB_PASSWORD=${pw},DB_HOST=db,DB_PORT=5432`, ",DB_HOST=db,DB_PORT=5432"],
+		[`user=bob;password=${pw};port=22`, ";port=22"],
+		[`secret=${pw}&redirectUri=https://app.example.com/cb`, "&redirectUri=https://app.example.com/cb"],
+	]) {
+		const out = R.redact(text).text;
+		assert.ok(out.endsWith(`${tag}${rest}`), out);
+	}
+	// A password's own punctuation is not a list: hidden whole.
+	for (const value of ["86)68/C{,C=wyhJH9", "W;FHFj=7agoi1q%!#Fo", "Nakp&nDiqWJ-K=nW", "Kx9mQ2;vL8nRt=4zWp!x"])
+		hidden(`DB_PASSWORD=${value}`, value);
+	// Nor is a value that is a list itself, or a URL.
+	hidden("DSN=host=db;password=Kx9mQ2vL8nRt4zWp;port=5432", "Kx9mQ2vL8nRt4zWp");
+});
+
 test("a long finding a read bound may have cut runs on to its word's end, through PHP's `\\/`", () => {
 	const token = b62(3000);
 	const f = { start: 0, end: 2500, kind: "token", rule: "named:assign", confidence: 0.95 };
@@ -323,6 +386,11 @@ test("a long finding ends at an escape, so escaped JSON around it still parses",
 test("terminal colours and entities around a value don't hide it", () => {
 	hidden("export AWS=\x1b[1mAKI\x41QZGOQKYPAR27BIHL\x1b[0mxyz", "QZGOQKYPAR27BIHL");
 	hidden("<password>Vq7m&lt;Zp2xK</password>", "Zp2xK");
+	// (JSON in an attribute escaped twice.)
+	hidden(
+		'<div data-config="{&amp;quot;user&amp;quot;:&amp;quot;bob&amp;quot;,&amp;quot;password&amp;quot;:&amp;quot;Xk29fLmq81Zt&amp;quot;}"></div>',
+		"Xk29fLmq81Zt",
+	);
 });
 
 test("values learned one at a time are all found, before and after the index is rebuilt whole", () => {
@@ -406,6 +474,46 @@ test("tag characters and other invisible characters outside the basic plane are 
 	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
 });
 
+test("a value written with its quotes' escapes is learned and tagged as the program reads it", () => {
+	const tag = (text: string, hint = {}) => /#(\w+)\]/.exec(r().redact(text, { hint }).text)?.[1];
+	for (const [raw, forms] of [
+		[
+			"Tr0ub4dor'3xK9mQ",
+			[
+				"db_password: 'Tr0ub4dor''3xK9mQ'\n",
+				"CREATE USER app WITH PASSWORD 'Tr0ub4dor''3xK9mQ';\n",
+				"const password = 'Tr0ub4dor\\'3xK9mQ';\n",
+				"export DB_PASSWORD='Tr0ub4dor'\\''3xK9mQ'\n",
+			],
+		],
+		["Tr0ub4dor$3xK9mQ", ['export DB_PASSWORD="Tr0ub4dor\\$3xK9mQ"\nexport PORT=5432\n']],
+		[
+			'Tr0ub4dor"3xK9mQ',
+			['{"password": "Tr0ub4dor\\"3xK9mQ"}', '{"body": "{\\"password\\": \\"Tr0ub4dor\\\\\\"3xK9mQ\\"}"}'],
+		],
+		["Pa$$w0rd x9Kq", ["mysql --password=Pa\\$\\$w0rd\\ x9Kq -u root\n"]],
+	] as const) {
+		const expected = tag(`DB_PASSWORD=${JSON.stringify(raw)}\n`);
+		for (const text of forms) {
+			assert.equal(tag(text, { path: "setup.sh" }), expected, text);
+			const red = r();
+			red.learn(text, { hint: { path: "setup.sh" } });
+			assert.ok(!red.redact(`The login fails with ${raw} again.`).text.includes(raw), text);
+		}
+	}
+	// (A shell's single quotes hold no escapes: its backslash is the value's own.)
+	assert.equal(tag("export DB_PASSWORD='Tr0ub4dor\\3xK9mQ'\n"), tag('DB_PASSWORD="Tr0ub4dor\\\\3xK9mQ"\n'));
+});
+
+test("a known token cut short takes no path before it, only what its value is made of", () => {
+	const red = new Redactor({ fingerprintKey: "t", known: ["ghp_Zq8vK2mX9pLw4RtYabcdefghijKLMN"] });
+	const out = red.redact("see https://api.github.com/repos/o/r/ghp_Zq8vK2mX9pLw4Rt and more").text;
+	assert.ok(out.startsWith("see https://api.github.com/repos/o/r/[REDACTED part of"), out);
+	// (A value with `/` in it goes on through one.)
+	const slash = new Redactor({ fingerprintKey: "t", known: ["Zq8vK2mX9pLw4Rt/YabcdefghijKLMNxyz"] });
+	assert.ok(!slash.redact("see Zq8vK2mX9pLw4Rt/Yabcdefghij and more").text.includes("Yabcdefghij"));
+});
+
 test("a login under a name that says so teaches its password too; a base64 key or a signature is not split", () => {
 	const redactor = r();
 	redactor.learn("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n", { hint: { path: ".env" } });
@@ -425,4 +533,12 @@ test("a login under a name that says so teaches its password too; a base64 key o
 	const php =
 		"$url = 'https://cloud.laravel.com/api/jobs/test-job-id?signature=abc:test-job-id';\n$this->assertSame('test-job-id', $job->id);\n";
 	kept(php, "assertSame('test-job-id'");
+});
+
+test("a value ends at the settings after it only where their names read as names", () => {
+	kept('docker run -e "DB_PASSWORD=Kx9mQ2pLw7vR;Host=db" app', "Host=db");
+	for (const pw of ["2FayNFA;jAnr=_@wpj", "ywLhJ&mjW;uKj=JApMnWbN6g"]) {
+		hidden(`  password: "${pw}"\n`, pw.split(/[;&]/).pop()!);
+		hidden(`      - POSTGRES_PASSWORD=${pw}\n`, pw.split(/[;&]/).pop()!);
+	}
 });

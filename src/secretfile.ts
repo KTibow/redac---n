@@ -10,6 +10,7 @@ import {
 	holdsOnlySecrets,
 	isConfigFileName,
 	isSecretFile,
+	pipes,
 	printsSecret,
 	printsSecretFile,
 } from "./commands.ts";
@@ -89,6 +90,13 @@ function isBareVendorWord(name: string): boolean {
 	return /^[A-Z][A-Z0-9]{2,30}$/.test(name);
 }
 
+/**
+ * What a setting names in numbers and lower-case words: a platform (`linux/amd64`, `linux/arm64/v8`), a size
+ * (`1920x1080`), a port and its protocol (`8080/tcp`, `5000-5010/udp`).
+ */
+const PLATFORM_OR_MEASURE =
+	/^[a-z][a-z0-9_.-]{0,30}(?:\/[a-z0-9][a-z0-9_.-]{0,30}){1,3}$|^\d+x\d+$|^\d+(?:-\d+)?\/(?:tcp|udp|sctp)$/;
+
 /** A host's name, and its port: `db.internal:5432`, `abc123def456.ngrok.io`. */
 const HOST = /^[\w-]+(?:\.[a-z][\w-]*)+(?::\d+)?$/;
 
@@ -103,6 +111,7 @@ function isSettingShaped(v: string): boolean {
 		isPasswordlessUrl(v) ||
 		/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/.test(v) ||
 		/^v?\d+(?:[.:-]\d+)*$/.test(v) ||
+		PLATFORM_OR_MEASURE.test(v) ||
 		HOST.test(v) ||
 		isWordySetting(v) ||
 		isIdentifierShaped(v) ||
@@ -220,8 +229,10 @@ function isOneValueLine(line: string): boolean {
 	const nameShaped =
 		named !== undefined && /^(?:[a-z_][a-z0-9_.-]*|[A-Z_][A-Z0-9_.-]*|[a-z]+(?:[A-Z][a-z]+)+)$/.test(named);
 	if (line.length > 1000 || /[=:]\s|:\/\//.test(line) || nameShaped) return false;
-	// One token in brackets is the value, brackets and all: `{Kd8pQ2zX9mL}`.
-	if (/^(?:\[[^\s\]]*\]|\{[^\s}]*\}|<[^\s>]*>)$/.test(line) && !/[:,=]/.test(line)) return true;
+	// One token in brackets is the value, brackets and all: `{Kd8pQ2zX9mL}`. (Not an empty document, `{}`, `[]`, nor an
+	// INI file's section, `[default]`, `[core]`: its name reads as a setting's.)
+	if (/^(?:\[[^\s\]]+\]|\{[^\s}]+\}|<[^\s>]+>)$/.test(line) && !/[:,=]/.test(line))
+		return !(line.startsWith("[") && isSettingShaped(line.slice(1, -1)));
 	// (A netrc entry is read by its keywords, spacedKeywords: `machine github.com login x password ${GITHUB_TOKEN}`.)
 	const structured =
 		/^#[ \t!#]|^\[[^\]]*\]$|^\{[\s\S]*\}$|^<[\s\S]*>$|^["{[][\s\S]*[:,]|^(?:machine[ \t]+\S+|default)[ \t]+(?:login|password|account)[ \t]/.test(
@@ -309,7 +320,10 @@ function tableRows(text: string, out: Finding[]) {
 		/^(?:[ \t]*[│|┃║][ \t]*|[ \t]*)([\w.\-/@]{1,200})(?:[ \t]{2,}|[ \t]*[│|┃║][ \t]*)([^\s│|┃║](?:[^│|┃║\r\n]{0,4000}?[^\s│|┃║])?)[ \t]*(?:[│|┃║][^\r\n]*)?\r?$/dgm,
 	)) {
 		const [, name, value] = m;
+		// (A value that starts with `=` or a `:` is a padded assignment's, `db_password    = "…"` in a tfvars file: the
+		// assignments' reader reads it whole.)
 		if (
+			/^(?:=|:(?!\/\/))/.test(value) ||
 			!isCredentialName(name) ||
 			isNotSecret(value) ||
 			isPlaceholder(value) ||
@@ -378,10 +392,10 @@ function cookiesTxt(text: string, out: Finding[]) {
 	}
 }
 
-/** htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or `{SSHA}`. (Not `admin:$ADMIN_PASSWORD`: a variable.) */
+/** htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or LDAP's `{SSHA}…`. (Not `admin:$ADMIN_PASSWORD`.) */
 function htpasswd(text: string, out: Finding[]) {
 	for (const m of text.matchAll(
-		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{SSHA\}[\w+/=]{10,200})[ \t]*$/dgm,
+		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{[A-Z][A-Z\d-]{1,20}\}[\w+/=.$-]{10,300})[ \t]*$/dgm,
 	))
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "password hash", rule: "file:hash", confidence: 1 });
 }
@@ -511,14 +525,20 @@ export function findPrintedSecret(text: string): Finding[] {
 	const out: Finding[] = [];
 	const add = (start: number, end: number) =>
 		out.push({ start, end, kind: "credential", rule: "command:prints-secret", confidence: 1 });
-	// `--output text` rows: SSM's value follows its type, Secrets Manager's is the fourth field.
+	// `--output text` rows: SSM's value follows its type (a `PARAMETER` row, or `get-parameters`' `PARAMETERS`), Secrets
+	// Manager's is the fourth field.
 	for (const m of text.matchAll(
-		/^(?:PARAMETER\t[^\n]*?\t(?:SecureString|String|StringList)\t([^\t\n]+)\t\d+|arn:aws:secretsmanager:[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\t\n]+)(?:\t[^\n]*)?)\r?$/dgm,
+		/^(?:PARAMETERS?\t[^\n]*?\t(?:SecureString|String|StringList)\t([^\t\n]+)\t\d+|arn:aws:secretsmanager:[^\t\n]+\t[^\t\n]*\t[^\t\n]*\t([^\t\n]+)(?:\t[^\n]*)?)\r?$/dgm,
 	)) {
 		const [start, end] = at(m, m[1] !== undefined ? 1 : 2);
 		add(start, end);
 	}
 	if (out.length) return out;
+	// Output in an env file's lines (`heroku config:get -s`, `netlify env:list --plain`, a pulled `.env` read back): read
+	// as that file, each value by its name, so a `NEXT_PUBLIC_…` setting stays.
+	const lines = text.split("\n").filter((l) => l.trim());
+	if (lines.length && lines.every((l) => /^[ \t]*(?:export[ \t]+)?[A-Za-z_][\w.]*=/.test(l)))
+		return findInSecretFile(text, {});
 	// (A path is where a credential is, not one: `GOOGLE_APPLICATION_CREDENTIALS=/workspace/secrets/sa.json`.)
 	const notSecret = (line: string) =>
 		isInert(line) ||
@@ -533,12 +553,21 @@ export function findPrintedSecret(text: string): Finding[] {
 	const quote = firstValue === first.value ? 0 : 1;
 	if (firstValue && !notSecret(firstValue) && !/^[{[]$/.test(firstValue) && readsAsValue(firstValue))
 		add(first.start + quote, first.start + first.value.length - quote);
-	for (const m of text.slice(firstEnd).matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
-		const value = jsonString(m[1]) ?? m[1];
-		const q = value === m[1] ? 0 : 1;
+	// (Up to a blank line: what follows one is no longer the command's output, `Perfect!` from whoever ran it. A markup
+	// tag's closer ends the output too, `</tool_result>`, on its own line or after the last one, `honeybear</output>`; an
+	// opener, `<output>`, is the harness's wrapper, not a value.)
+	const blank = /\n[ \t]*\r?\n/.exec(text.slice(firstEnd));
+	const rest = text.slice(firstEnd, blank ? firstEnd + blank.index : text.length);
+	for (const m of rest.matchAll(/^[ \t]*(\S{6,})[ \t]*\r?$/dgm)) {
+		const closed = /<\/[A-Za-z][\w:.-]*>$/.exec(m[1]);
+		const token = closed ? m[1].slice(0, closed.index) : m[1];
+		if (/^<[A-Za-z][\w:.-]*>$/.test(token)) continue;
+		const value = jsonString(token) ?? token;
+		const q = value === token ? 0 : 1;
 		// (A message's tokens are not values; `[`/`{` start a JSON document's lines.)
-		if (isMessageToken(value) || /^[{[]/.test(value) || notSecret(value)) continue;
-		add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[1] - q);
+		if (value.length >= 6 && !isMessageToken(value) && !/^[{[]/.test(value) && !notSecret(value))
+			add(firstEnd + at(m, 1)[0] + q, firstEnd + at(m, 1)[0] + token.length - q);
+		if (closed) break;
 	}
 	return out;
 }
@@ -579,7 +608,7 @@ function readsAsValue(line: string): boolean {
  * Whether a line is a JSON document whole: an object, an array, or a string that holds one (output encoded once more,
  * `--query SecretString`'s `"{\"password\": …}"`). A string that holds anything else is a value (jsonString).
  */
-function isJsonDocument(line: string): boolean {
+export function isJsonDocument(line: string): boolean {
 	if (!/^(?:[{[].*[}\]]|".*")$/.test(line)) return false;
 	try {
 		const v = JSON.parse(line);
@@ -777,7 +806,7 @@ function writtenToSecretFile(commands: CommandRun[]): { sections: FileSection[];
 	for (let k = 0; k < commands.length; k++) {
 		const c = commands[k];
 		pipeline.push(c);
-		if ((c.then === "|" || c.then === "|&") && commands[k + 1]?.host === c.host) continue;
+		if (pipes(c) && commands[k + 1]?.host === c.host) continue;
 		// Where it writes: a redirection's file (`>`, `>>`, `>|`, `&>`, `>&`), its groups' included, and `tee`'s.
 		// (A descriptor, `2>&1`, `>&-`, is no secret file's name.)
 		const targets = pipeline.flatMap((p) => {
@@ -805,9 +834,11 @@ function writtenToSecretFile(commands: CommandRun[]): { sections: FileSection[];
 				}
 				for (const r of p.redirects) if (r.op === "<<<" && r.target) sections.push({ ...wordSpan(r.target), part });
 			}
-			const first = simpleCommand(pipeline[0].words);
-			const program = programName(first[0]);
-			if (program === "echo" || program === "printf") {
+			// (Each of the echoes that start it, a group's several: `{ echo A=1; echo B=2; } | tee .env`.)
+			for (const p of pipeline) {
+				const first = simpleCommand(p.words);
+				const program = programName(first[0]);
+				if (program !== "echo" && program !== "printf") break;
 				const args = first.slice(1).filter((w) => !/^-[neE]+$/.test(w.text));
 				const operands = program === "printf" && args.length > 1 ? args.slice(1) : args;
 				for (const w of operands) if (w.text) sections.push({ ...wordSpan(w), part });

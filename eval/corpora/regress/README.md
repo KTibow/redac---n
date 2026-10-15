@@ -19,6 +19,12 @@ Run `node eval/check.ts --update` to accept a change on purpose (and say why in 
 fixed entries are before you do. `scripts/snap.ts` measures the same sets (with a real-text sample on top), for diffing two
 versions by hand. `eval/run.ts` and `eval/all.ts` do not use these sets.
 
+The `r16-*` sets are different in origin: each was written from real public text of one area (network device configs,
+database and directory auth, coding agents' commands and outputs, Windows shells, code and config readers, request
+bodies and session logs), after that text decided which of the area's rules stay. They copy the real occurrences'
+syntax and surroundings, with every credential replaced by an invented value of the same shape and no third-party
+text kept; so unlike the others, their cases are real input shapes, and a leak in one is a real leak.
+
 Because the sets are tied to the rule version a review probed, a case may stop being interesting when its rule is
 redesigned. Delete such a case, then run `check.ts --update`.
 

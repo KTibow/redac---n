@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" width="760" height="460" role="img" aria-labelledby="t d">
-<title id="t">Held-out test set: secrets caught vs. look-alikes destroyed</title><desc id="d">redac---n guessing off: 90.9% of secrets caught, 1.1% of keep values lost; redac---n guessing confident: 93.0% of secrets caught, 3.0% of keep values lost; redac---n guessing eager: 93.2% of secrets caught, 3.2% of keep values lost; gitleaks: 54.6% of secrets caught, 1.5% of keep values lost; betterleaks: 67.0% of secrets caught, 1.7% of keep values lost; kingfisher: 43.1% of secrets caught, 0.5% of keep values lost; trufflehog: 38.5% of secrets caught, 0.4% of keep values lost; noseyparker: 42.1% of secrets caught, 1.5% of keep values lost; detect-secrets: 47.2% of secrets caught, 15.2% of keep values lost; credsweeper: 70.1% of secrets caught, 15.2% of keep values lost; union(all 7): 84.2% of secrets caught, 28.6% of keep values lost; union(all but detect-secrets): 83.1% of secrets caught, 16.9% of keep values lost; gitleaks+betterleaks+kingfisher: 70.6% of secrets caught, 2.2% of keep values lost</desc>
+<title id="t">Held-out test set: secrets caught vs. look-alikes destroyed</title><desc id="d">redac---n guessing off: 90.5% of secrets caught, 0.9% of keep values lost; redac---n guessing confident: 92.6% of secrets caught, 2.9% of keep values lost; redac---n guessing eager: 92.8% of secrets caught, 3.0% of keep values lost; gitleaks: 54.6% of secrets caught, 1.5% of keep values lost; betterleaks: 67.0% of secrets caught, 1.7% of keep values lost; kingfisher: 43.1% of secrets caught, 0.5% of keep values lost; trufflehog: 38.5% of secrets caught, 0.4% of keep values lost; noseyparker: 42.1% of secrets caught, 1.5% of keep values lost; detect-secrets: 47.2% of secrets caught, 15.2% of keep values lost; credsweeper: 70.1% of secrets caught, 15.2% of keep values lost; union(all 7): 84.2% of secrets caught, 28.6% of keep values lost; union(all but detect-secrets): 83.1% of secrets caught, 16.9% of keep values lost; gitleaks+betterleaks+kingfisher: 70.6% of secrets caught, 2.2% of keep values lost</desc>
 <style>
 .bg { fill: #fcfcfb; } .accent { fill: #2a78d6; } .accent-line { stroke: #2a78d6; } .other { fill: #898781; }
 .hollow { fill: none; stroke: #898781; } .chain { fill: none; stroke: #c3c2b7; stroke-width: 1.5; }
@@ -53,7 +53,7 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <line class="axis" x1="56" x2="736" y1="408" y2="408"/>
 <text x="736" y="450" text-anchor="end">text that must survive but was redacted (lower is better, √ scale) →</text>
 <text transform="translate(14 408) rotate(-90)">secrets caught (higher is better) →</text>
-<polyline fill="none" class="accent-line" stroke-width="2" points="183.64059086206942,108.90531347674198 272.5676772508076,98.46957161242875 278.1937486206931,97.52086780658203"/>
+<polyline fill="none" class="accent-line" stroke-width="2" points="171.4552585205683,110.80272108843525 265.6171632148547,100.36697922412208 271.4248319264723,99.41827541827541"/>
 <circle cx="624.92" cy="74" r="6" class="accent"/><text x="635.92" y="78" class="ours">redac---n</text>
 <circle cx="624.92" cy="94" r="5" class="other"/><text x="635.92" y="98">other scanners</text>
 <circle cx="209.94034469409104" cy="287.26162897591473" r="5" class="other ring" stroke-width="2"><title>gitleaks: 54.6% caught, 1.5% lost</title></circle>
@@ -66,12 +66,12 @@ text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #525
 <circle cx="719.6120496050027" cy="141.47747747747746" r="5" class="other ring" stroke-width="2"><title>union(all 7): 84.2% caught, 28.6% lost</title></circle>
 <circle cx="565.5944718414523" cy="147.16970031255744" r="5" class="other ring" stroke-width="2"><title>union(all but detect-secrets): 83.1% caught, 16.9% lost</title></circle>
 <circle cx="239.2256589830112" cy="208.51921309064167" r="5" class="other ring" stroke-width="2"><title>gitleaks+betterleaks+kingfisher: 70.6% caught, 2.2% lost</title></circle>
-<circle cx="183.64059086206942" cy="108.90531347674198" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing off: 90.9% caught, 1.1% lost</title></circle>
-<circle cx="272.5676772508076" cy="98.46957161242875" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing confident: 93.0% caught, 3.0% lost</title></circle>
-<circle cx="278.1937486206931" cy="97.52086780658203" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing eager: 93.2% caught, 3.2% lost</title></circle>
-<text x="288.1937486206931" y="101.52086780658203" text-anchor="start" class="ours">guessing eager</text>
-<text x="264.5676772508076" y="88.46957161242875" text-anchor="end" class="ours">guessing confident</text>
-<text x="173.64059086206942" y="112.90531347674198" text-anchor="end" class="ours">guessing off</text>
+<circle cx="171.4552585205683" cy="110.80272108843525" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing off: 90.5% caught, 0.9% lost</title></circle>
+<circle cx="265.6171632148547" cy="100.36697922412208" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing confident: 92.6% caught, 2.9% lost</title></circle>
+<circle cx="271.4248319264723" cy="99.41827541827541" r="6" class="accent ring" stroke-width="2"><title>redac---n guessing eager: 92.8% caught, 3.0% lost</title></circle>
+<text x="281.4248319264723" y="103.41827541827541" text-anchor="start" class="ours">guessing eager</text>
+<text x="257.6171632148547" y="90.36697922412208" text-anchor="end" class="ours">guessing confident</text>
+<text x="161.4552585205683" y="114.80272108843525" text-anchor="end" class="ours">guessing off</text>
 <text x="709.6120496050027" y="145.47747747747746" text-anchor="end">all seven combined</text>
 <text x="555.5944718414523" y="151.16970031255744" text-anchor="end">all but detect-secrets</text>
 <text x="249.2256589830112" y="212.51921309064167" text-anchor="start">gitleaks + Betterleaks + Kingfisher</text>

@@ -78,6 +78,21 @@ test("inJwk reads the object's own kty, and a symmetric key's k stays secret", (
 	assert.ok(inJwk(text, text.indexOf('"k"'), text.indexOf('"k"') + 3));
 	const k = b62(43);
 	hidden(`{"kty":"oct","k":"${k}","alg":"HS256"}`, k);
+	// An RSA-4096 private key's last members, 3,000 characters from its `{`, in a JWKS.
+	const [d, p, q, dp, dq, qi] = [683, 342, 342, 342, 342, 342].map(b62);
+	const jwks = `{"keys":[{"kty":"RSA","n":"${b62(683)}","e":"AQAB","d":"${d}","p":"${p}","q":"${q}","dp":"${dp}","dq":"${dq}","qi":"${qi}"}]}`;
+	for (const v of [d, p, q, dp, dq, qi]) hidden(jwks, v);
+	// In YAML, unquoted, in a mapping with a `kty`; and a `d` in a mapping without one is kept.
+	const modulus = b62(342);
+	const yaml = `jwks:\n  - kty: RSA\n    kid: signing-2026\n    n: ${modulus}\n    e: AQAB\n    d: ${d}\n    p: ${p}\n    qi: ${qi}\n`;
+	for (const v of [d, p, qi]) hidden(yaml, v);
+	kept("dimensions:\n  w: 640\n  d: depthOfFieldSetting\n", "depthOfFieldSetting");
+	// The same reader takes a JS object literal's lines with no braces around them (CredData).
+	hidden(
+		"      d: 'AL123tYK7y-iViaReLOHe7XxKNSeoUMk4RRmcP6nSVuZrYJHtyYPak4gUmWB6A_GzED3zXkrkcssZEzHrYQILw5c',\n      kty: 'EC',\n      crv: 'P-256',",
+		"AL123tYK7y-iViaReLOHe7XxKNSeoUMk4RRmcP6nSVuZrYJHtyYPak4gUmWB6A_GzED3zXkrkcssZEzHrYQILw5c",
+		{ path: "test/a.mjs" },
+	);
 });
 
 test("string literals are read by their grammar: JSON's, a Python repr's, and only where JSON's syntax stands around them", () => {
@@ -153,13 +168,26 @@ test("a phrase one word per line, deeply indented, is found", () => {
 	}
 });
 
-test("a phrase is found on its own line, after a label anywhere on its line, in curly quotes and before a 13th word", () => {
+test("a phrase is found on its own line, after a label or a command on its line, numbered, in curly quotes and before a 13th word", () => {
 	const forms: ((p: string[]) => string)[] = [
 		([p]) => `Here is the seed for the old one\n${p}`,
 		([p]) => `Seed phrase: ${p}`,
 		([p]) => `Copy this seed phrase: ${p}`,
 		([p]) => `My seed is “${p}”`,
 		([p]) => `${p}. Keep it safe`,
+		// Quoted after list words that start the line, a command's; numbered `1) word`, one a line.
+		([p]) => `echo "${p}" | wallet import`,
+		([p]) => `save salt '${p}'`,
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `${i + 1}) ${w}`)
+				.join("\n"),
+		([p]) =>
+			p
+				.split(" ")
+				.map((w, i) => `(${i + 1}) ${w}`)
+				.join("\n"),
 		// Several, one a line: past 30 words, and past 48.
 		(p) => p.slice(0, 3).join("\n"),
 		(p) => p.join("\n"),
@@ -334,6 +362,27 @@ test("a Secret's fields that name no credential and hold a word, a boolean or a 
 	assert.ok(!out.includes("Harbor2291x"));
 });
 
+test("a Secret's base64 passphrase is judged as the same text written plain; a single word is kept", () => {
+	const data = (key: string, plain: string) =>
+		`apiVersion: v1\nkind: Secret\nmetadata:\n  name: app\ndata:\n  ${key}: ${Buffer.from(plain).toString("base64")}\n`;
+	for (const [key, plain] of [
+		["redis", "lamp-otter-marble-quill"],
+		["admin", "correct-horse-battery-staple"],
+		["value", "lamp-otter-marble-quill"],
+		["ldap", "lamp-otter-marble-quill"],
+	])
+		hidden(data(key, plain), Buffer.from(plain).toString("base64"));
+	for (const [key, plain] of [
+		["type", "git"],
+		["mode", "production"],
+		["insecure", "false"],
+		["server", "mycluster.example.com"],
+		["sslmode", "require"],
+		["merchant-account", "AcmeECOM"],
+	])
+		kept(data(key, plain), Buffer.from(plain).toString("base64"));
+});
+
 test("a cookie's value is read quoted, and ends at an escaped line break", () => {
 	const g = new Redactor({ guessing: "off" });
 	const quoted = g.redact('Cookie: session="Zq8Vn3Kx9mQv2Lp7Rt"; theme=dark').text;
@@ -474,6 +523,18 @@ test("a connection string's template, reference or code is no password; its lite
 	assert.deepEqual(findStructure("Server=db;Database=app;User Id=sa;Password=settings.Database.Password;"), []);
 	hidden("Driver={ODBC Driver 18 for SQL Server};Server=db;Uid=sa;Pwd={Harbor2291x!};", "Harbor2291x!");
 	assert.ok(!ruled("Server=db;Uid=sa;Pwd=Xk9fPq2LmZ8bW4kY=").includes("Xk9fPq2LmZ8bW4kY="));
+	// The tokens a deployment replaces (Octopus, Azure DevOps' Replace Tokens), in JSON or bare; a literal stays hidden.
+	for (const token of ["#{DbPassword}#", "#{Db.Password}", "__DbPassword__", "@@DbPassword@@"]) {
+		kept(`{"Default": "Server=#{DbServer}#;Database=app;User Id=app;Password=${token};"}`, token, {
+			path: "appsettings.json",
+		});
+		kept(`Server=db;Database=app;User Id=app;Password=${token};`, token);
+	}
+	hidden("Server=db;Database=app;User Id=app;Password=__Hx7mQ2pL9vRt__;", "Hx7mQ2pL9vRt");
+});
+
+test("an env line's password keeps its own ;", () => {
+	hidden("DB_PASSWORD=Hx7m;Q2pL9vRt", "Q2pL9vRt");
 });
 
 test("a Secret's config file, certificates, public keys, endpoint and base64 settings are kept, its credentials hidden", () => {
@@ -536,4 +597,36 @@ test("a ConfigMap listed beside a Secret keeps its values, in YAML and in JSON",
 		const out = ruled(text);
 		assert.ok(out.includes(value) && !out.includes(secret), out);
 	}
+});
+
+test("an Authorization value is hidden inside its brackets and quotes, the same whichever wrap it", () => {
+	// Go prints a header as `Authorization:[<value>]`, Markdown as Authorization: `<value>`.
+	const token = "Zq8mK2vXp4Rt7NwY3cLd9HsB";
+	const tags = new Set<string>();
+	for (const [before, after] of [
+		["map[Accept:[*/*] Authorization:[", "] User-Agent:[curl/8.4.0]]"],
+		["Authorization: `", "`"],
+		["Authorization: (", ")"],
+		["Authorization: '", "'"],
+		["Authorization: ", ""],
+	]) {
+		const text = `${before}${token}${after}`;
+		const spans = findStructure(text).filter((f) => f.rule === "structure:authorization");
+		assert.deepEqual(
+			spans.map((f) => text.slice(f.start, f.end)),
+			[token],
+			text,
+		);
+		const out = r().redact(text).text;
+		assert.ok(out.startsWith(`${before}[REDACTED`) && out.endsWith(`]${after}`), out);
+		tags.add(/#\w+/.exec(out)![0]);
+	}
+	assert.equal(tags.size, 1);
+});
+
+test("a URL password that starts with $ is a password unless the name after it reads as a variable's", () => {
+	for (const pw of ["$Zq8mK2vXp4", "$uperS3cretPw", "$Tr0ng9ass"])
+		hidden(`DATABASE_URL=postgres://admin:${pw}@db.internal.example.com:5432/app`, pw);
+	for (const reference of ["$DB_PASSWORD", "$dbPassword", "$pass", "$MYSQL_ROOT_PASSWORD"])
+		kept(`DATABASE_URL=postgres://admin:${reference}@db.internal.example.com:5432/app`, reference);
 });

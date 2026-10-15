@@ -22,6 +22,15 @@ const END_LINE = new RegExp(ARMOR("END"), "y");
 /** Where an END line may start. */
 const END_START = /-{4,5} ?END /y;
 
+const ARMOR_LINE = new RegExp(ARMOR("(BEGIN|END)"), "g");
+
+/** Whether a text ends inside an armored block: its last BEGIN or END line is a BEGIN (the END is still to come). */
+export function endsInBlock(text: string): boolean {
+	let last: string | undefined;
+	for (const m of text.matchAll(ARMOR_LINE)) last = m[1];
+	return last === "BEGIN";
+}
+
 /** The BEGIN lines of a text, each with its label, in order. */
 export function* beginLines(text: string): Generator<{ start: number; end: number; label: string }> {
 	for (const m of text.matchAll(new RegExp(ARMOR("BEGIN"), "g")))
@@ -139,6 +148,9 @@ function pemBody(text: string, begin: number, from: number): PemBody {
 		} else {
 			while (j < text.length && isArmorChar(text.charCodeAt(j))) j++;
 			run = j - lineFrom;
+			// (Base64 has `=` only as its padding, at the end: `password=Zq7m…` after a cut certificate, or on its BEGIN
+			// line in a log, is a setting.)
+			if (/=[^=]/.test(text.slice(lineFrom, j))) break;
 			// (A blank line separates the headers from the material; once material has begun, it ends the block.)
 			if (run === 0 && (material > 0 || !breakAt(text, j))) break;
 		}

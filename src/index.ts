@@ -291,7 +291,7 @@ export class Redactor {
 				...f,
 				start: n.map[f.start],
 				end: f.end > f.start ? n.ends[f.end - 1] : n.map[f.start],
-				value: f.value ?? n.text.slice(f.start, f.end),
+				value: secretValue(n.text, f),
 			}));
 			// An escaped value in markup (`<password>Vq7m&lt;Zp2</password>`, `value="a&quot;b"`): decoded, its `<` or `"`
 			// ends what the XML and attribute readers read, so the names are also read where it's written. (Escaped code in
@@ -355,10 +355,16 @@ export class Redactor {
 			);
 		};
 		const decoded = merge(extra);
+		// (Where both passes read a value from the same place, the decoded one says where it ends: read raw, Go's
+		// `client_secret=…\u0026grant_type=…` runs on through the escaped `&`.)
+		const decodedStarts = new Set(extra.map((f) => f.start));
 		return merge([
 			...found.filter(
 				(f) =>
-					isVouched(f.rule) || layerOf(f.rule) === "repeat" || !insideLiteral(f) || overlaps(decoded, f.start, f.end),
+					isVouched(f.rule) ||
+					layerOf(f.rule) === "repeat" ||
+					!insideLiteral(f) ||
+					(overlaps(decoded, f.start, f.end) && !decodedStarts.has(f.start)),
 			),
 			...extra,
 		]);
@@ -384,7 +390,7 @@ export class Redactor {
 		const out: Finding[] = [];
 		for (const { decoded, map } of decodings) {
 			for (const f of this.detectNormalized(decoded, { ...options, hint: {} }, depth + 1))
-				out.push({ ...f, start: map[f.start], end: map[f.end], value: f.value ?? decoded.slice(f.start, f.end) });
+				out.push({ ...f, start: map[f.start], end: map[f.end], value: secretValue(decoded, f) });
 		}
 		return out;
 	}
@@ -463,7 +469,7 @@ export class Redactor {
 					: this.detectNormalized(decoded, { guessing: "off", encoded: encoded + 1 }, 0).some((f) => !isGuess(f.rule));
 			found.push(...findEncoded(text, inner), ...findHexDumps(text, inner));
 		}
-		found = merge(wrapped(text, found));
+		found = merge(wrapped(text, found), text);
 		if (on.has("random")) {
 			// (Guessing as asked, but in a secret file, the hint's or one written inside the text, always: there the model
 			// isn't guessing whether secrets are present, it tells the file's generated values from its settings.)

@@ -8,6 +8,7 @@ import { naturalness } from "./charlm.ts";
 import { lineEnd, lineStart } from "./lines.ts";
 import { asciiSet, longRuns } from "./runs.ts";
 import { keepReason } from "./policy.ts";
+import { isJsonDocument } from "./secretfile.ts";
 import type { Finding } from "./types.ts";
 import { hasThreeClasses } from "./values.ts";
 
@@ -130,6 +131,9 @@ function isGeneratedToken(token: string): boolean {
 		/^[\w.-]+@[\w.-]+$|^https?:/.test(token)
 	)
 		return false;
+	// (Nor a JSON object or array, which its quotes and braces give three classes: a JWT's header on a line of its own,
+	// `cut -d. -f1` of a token, is `{"alg":"HS256","typ":"JWT"}`.)
+	if (isJsonDocument(token)) return false;
 	if (
 		keepReason(token, { start: 0, end: token.length, kind: "random token", rule: "unnamed", confidence: 0.8 }) !==
 		undefined
@@ -253,11 +257,10 @@ function isLineAlone(text: string, start: number, end: number): boolean {
  */
 export function findHexDumps(text: string, inner: (decoded: string) => boolean): Finding[] {
 	const out: Finding[] = [];
-	if (!/[0-9a-f]{4}/i.test(text)) return out;
-	// Offset-prefixed dumps: runs of lines `<offset>[:] <hex groups> [ascii]`.
-	for (const m of text.matchAll(
-		/(?:^[0-9a-f]{6,8}:?(?:[ \t]{1,4}[0-9a-f]{2,4}){1,16}[^\n]{0,80}(?:\n|$)){1,100000}/gim,
-	)) {
+	if (!/[0-9a-f]{4}|[0-9a-f]{2}[ \t][0-9a-f]{2}[ \t][0-9a-f]{2}/i.test(text)) return out;
+	// Offset-prefixed dumps: runs of lines `<offset>[:] <hex groups> [ascii]`. (Groups of any whole number of bytes up to
+	// 16, and any number of them with an ASCII column of any width: `xxd -g 8`, `xxd -c 32 -g1`.)
+	for (const m of text.matchAll(/(?:^[0-9a-f]{6,8}:?(?:[ \t]{1,4}(?:[0-9a-f]{2}){1,16})[^\n]*(?:\n|$)){1,100000}/gim)) {
 		const words: string[] = [];
 		let bytes = "";
 		const lines = m[0].split("\n").filter((l) => l);
@@ -270,7 +273,7 @@ export function findHexDumps(text: string, inner: (decoded: string) => boolean):
 			const body = line.replace(/^[0-9a-f]{6,8}:?[ \t]+/i, "");
 			let digits = 0;
 			for (const t of body.split(/[ \t]+/)) {
-				if (!/^(?:[0-9a-f]{2}|[0-9a-f]{4}|[0-9a-f]{8})$/i.test(t) || digits + t.length > step * 2) break;
+				if (!/^(?:[0-9a-f]{2}){1,16}$/i.test(t) || digits + t.length > step * 2) break;
 				if (t.length === 4) words.push(t.slice(2) + t.slice(0, 2));
 				bytes += t;
 				digits += t.length;
@@ -314,13 +317,14 @@ export function findHexDumps(text: string, inner: (decoded: string) => boolean):
 		runStart = -1;
 		lines = 0;
 	};
-	for (const m of text.matchAll(/^(?:[0-9a-f]{2}){1,100}\r?$/gim)) {
+	// (Also bytes apart, with no offsets: `od -An -tx1`'s ` 44 42 5f …`.)
+	for (const m of text.matchAll(/^[ \t]*(?:[0-9a-f]{2}[ \t]?){1,100}\r?$/gim)) {
 		if (runStart >= 0 && m.index === runEnd + 1) {
 			runEnd = m.index + m[0].length;
 			lines++;
 		} else {
 			flush();
-			if (m[0].trimEnd().length < 16) continue;
+			if (m[0].replace(/\s+/g, "").length < 16) continue;
 			runStart = m.index;
 			runEnd = m.index + m[0].length;
 			lines = 1;

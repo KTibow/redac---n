@@ -199,6 +199,8 @@ test("a block cut short ends with its material: before a blank line, a word, or 
 		"\nÜbersicht",
 		"…\nmore output",
 		"... [truncated]",
+		// (A setting's `=` inside a line: base64 has one only as its padding, at the end.)
+		"\npassword=Zq7mT4vXe9Lp2Ra8\n",
 	])
 		assert.deepEqual(
 			armoredBlocks(cut + after).map((b) => [b.end, b.material]),
@@ -206,6 +208,12 @@ test("a block cut short ends with its material: before a blank line, a word, or 
 			after,
 		);
 	hidden(`${privateKeyLines().slice(0, 6).join("\n")}… [truncated]`, privateKeyLines()[5].slice(10, 40));
+	// A password after a certificate's material or its BEGIN line is no certificate's, and is hidden.
+	for (const text of [
+		"-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIUFNZS8ANV/sEN0YkNH2JHIMIDffAwDQYJKoZIhvcNAQEL\npassword=Zq7mT4vXe9Lp2Ra8\n",
+		"2026-10-15T10:00:01Z ERROR tls: cannot parse -----BEGIN CERTIFICATE----- password=Zq7mT4vXe9Lp2Ra8\n",
+	])
+		hidden(text, "Zq7mT4vXe9Lp2Ra8");
 	// (A key as an array of lines: the BEGIN line's string ends at its quote and comma.)
 	const array = `"key": [\n${lines.map((l) => `  "${l}",`).join("\n")}`;
 	assert.deepEqual(
@@ -260,4 +268,29 @@ test("an OpenSSL text dump's private value is hidden", () => {
 	const dump = `read EC key\nPrivate-Key: (256 bit)\npriv:\n${priv}\npub:\n${bytes(65)}\nASN1 OID: prime256v1\n`;
 	const out = new Redactor({ guessing: "off" }).redact(dump).text;
 	assert.ok(!out.includes(priv.split("\n")[1].trim()), out);
+});
+
+test("a PuTTY key's private lines are hidden flush or indented, with trailing blanks, and its public lines kept", () => {
+	const b64 = (n: number) => randomBytes(n).toString("base64").slice(0, 64);
+	const publicLines = Array.from({ length: 2 }, () => b64(48));
+	const privateLines = Array.from({ length: 3 }, () => b64(48));
+	const ppk = [
+		"PuTTY-User-Key-File-2: ssh-rsa",
+		"Encryption: none",
+		"Comment: imported-openssh-key",
+		"Public-Lines: 2",
+		...publicLines,
+		"Private-Lines: 3",
+		...privateLines,
+		"Private-MAC: 4f1a2b3c4d5e6f708192a3b4c5d6e7f801234567",
+	];
+	for (const text of [
+		ppk.join("\n"),
+		`Here is the .ppk file:\n\n${ppk.map((l) => `    ${l}`).join("\n")}\n`,
+		ppk.map((l) => `${l}  `).join("\r\n"),
+	]) {
+		const out = new Redactor({ guessing: "off" }).redact(text).text;
+		for (const line of privateLines) assert.ok(!out.includes(line.slice(0, 40)), out);
+		assert.ok(out.includes("Private-MAC:"), out);
+	}
 });

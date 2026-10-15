@@ -49,6 +49,11 @@ const PASSWORD_LANGUAGES: [name: string | undefined, spellings: string[]][] = [
 			"parole",
 			"slaptažodis",
 			"fjalëkalimi",
+			"fjalëkalim",
+			"salasõna",
+			"lykilorð",
+			"nenosiri",
+			"zaporka",
 			"kupuhipa",
 			"focal faire",
 			"mật khẩu",
@@ -136,7 +141,7 @@ const CREDENTIAL_WORDS = new Set([
 ]);
 /** Single words that end in a credential word: PGPASSWORD, AUTHKEY, WRITEKEY, APITOKEN. */
 const CREDENTIAL_SUFFIX =
-	/(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|TOKEN|SECRET|APIKEY|AUTH|AUTHKEY|WRITEKEY|READKEY|SECRETKEY|PRIVATEKEY|ACCESSKEY|SESSID|SESSIONID|PASS|PWD|APPKEY|MASTERKEY|SIGNINGKEY|ENCRYPTIONKEY|LICENSEKEY|DEVKEY|USERKEY)$/;
+	/(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|TOKEN|SECRET|APIKEY|AUTH|AUTHKEY|WRITEKEY|READKEY|SECRETKEY|PRIVATEKEY|ACCESSKEY|SESSID|SESSIONID|PASS|PWD|PW|APPKEY|MASTERKEY|SIGNINGKEY|ENCRYPTIONKEY|LICENSEKEY|DEVKEY|USERKEY)$/;
 /** Last words that describe a form of the word before: `client-key-data`, `SECRET_B64`, `secret_key_base`. */
 const WRAPPER_WORDS = new Set([
 	"DATA",
@@ -154,6 +159,7 @@ const WRAPPER_WORDS = new Set([
 	"BYTES",
 	"PLAIN",
 	"PLAINTEXT",
+	"CLEARTEXT",
 ]);
 /** Last words that only qualify the word before: `API_KEY_V2`, `DB_PASSWORD_PROD`. */
 const QUALIFIER_WORDS =
@@ -301,6 +307,7 @@ const NOT_CREDENTIAL_BEFORE = lookup<Set<string>>({
 		"COUNT",
 		"LEXER",
 		"PARSER",
+		"SHELL",
 		"CANCELLATION",
 		"CANCEL",
 		"INPUT",
@@ -367,7 +374,6 @@ const NOT_CREDENTIAL_BEFORE = lookup<Set<string>>({
 		"ALWAYS",
 		"STRICT",
 		"NEEDS",
-		"HTTP",
 		"SASL",
 		"LDAP",
 		"OIDC",
@@ -411,6 +417,8 @@ const IDENTIFIER_WORDS = new Set([
 	"ACCOUNT",
 	"TENANT",
 	"ORG",
+	"ORGANIZATION",
+	"ORGANISATION",
 	"TEAM",
 	"CHANNEL",
 	"STYLE",
@@ -418,6 +426,7 @@ const IDENTIFIER_WORDS = new Set([
 	"UUID",
 	"GUID",
 	"REF",
+	"REFERENCE",
 	"KIND",
 	"TYPE",
 	"MODE",
@@ -480,6 +489,9 @@ const HASH_WORDS = new Set([
 	"COMMIT",
 	"REV",
 	"REVISION",
+	// (A release is the build's commit or version: Sentry's, Langfuse's, Bugsnag's `SENTRY_RELEASE=<sha>`.)
+	"RELEASE",
+	"VCS",
 	"FINGERPRINT",
 	"CRC",
 	"CRC32",
@@ -583,6 +595,7 @@ const ABOUT_WORDS = new Set([
 	"VALIDATION",
 	"VALIDATOR",
 	"POLICY",
+	"POLICIES",
 	"RULE",
 	"RULES",
 	"ICON",
@@ -608,7 +621,6 @@ const ABOUT_WORDS = new Set([
 	"FAILED",
 	"FAILURE",
 	"MISMATCH",
-	"MATCH",
 	"CHANGED",
 	"RESET",
 	"EMPTY",
@@ -633,13 +645,35 @@ const ABOUT_WORDS = new Set([
 /** About words that can also say what a credential belongs to. */
 const ROUTE_WORDS = new Set(["PAGE", "SCREEN", "ROUTE", "VIEW", "EVENT", "HANDLER", "DIALOG", "MODAL", "STATUS"]);
 /**
+ * About words that are also nouns a component is named with, its name's first half (`LABEL_STUDIO_PASSWORD`,
+ * `EVENT_STORE_PASSWORD`, `MESSAGE_BROKER_PASSWORD`, `STATUS_DB_PASSWORD`, `HELP_DESK_PASSWORD`): they make a name
+ * about its credential only next to its word, or with qualifiers between (`LABEL_NEW_PASSWORD`, `LOGIN_PAGE_PASSWORD`).
+ */
+const NOUN_ABOUT_WORDS = new Set([
+	...ROUTE_WORDS,
+	"LABEL",
+	"LABELS",
+	"MSG",
+	"MESSAGE",
+	"MESSAGES",
+	"TEXT",
+	"RULE",
+	"RULES",
+	"POLICY",
+	"HELP",
+]);
+/**
  * Shell variables whose names end in a credential word but hold something else (`PWD`, `OLDPWD`),
  * bare upper-case `KEY` and `AUTH` (loop keys, auth modes) and `PASS`, `XPASS` (`PASS: test name`, a test runner's
  * verdicts; named.ts still reads `PASS=value`).
  */
 const NOT_CREDENTIAL_NAMES = new Set(["PWD", "OLDPWD", "AUTH", "KEY", "PASS", "XPASS"]);
 
-/** The words of a name in upper case: `clientSecret` → CLIENT, SECRET; `x-api-key` → X, API, KEY. */
+/**
+ * The words of a name in upper case: `clientSecret` → CLIENT, SECRET; `x-api-key` → X, API, KEY. A compound some
+ * write as two words is one (`PassPhrase`, `pass_word`, `ClearTextPassword` → CLEARTEXT, PASSWORD), as it is written
+ * glued: its halves alone say something else (`PHRASE` a seed phrase, `TEXT` UI text).
+ */
 export function words(name: string): string[] {
 	// (Accents dropped first, so `contraseña` is CONTRASENA and `hasło` HASLO, as CREDENTIAL_WORDS spells them.)
 	return name
@@ -649,6 +683,10 @@ export function words(name: string): string[] {
 		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
 		.replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
 		.toUpperCase()
+		.replace(
+			/(?<![\p{L}\p{N}])(?:(PASS)[^\p{L}\p{N}]+(WORD|WD|PHRASE|CODE)|(CLEAR|PLAIN)[^\p{L}\p{N}]+(TEXT))(?![\p{L}\p{N}])/gu,
+			"$1$2$3$4",
+		)
 		.split(/[^\p{L}\p{N}]+/u)
 		.filter(Boolean);
 }
@@ -924,15 +962,14 @@ const PASSWORD_WORDS = new Set([
 
 /**
  * Whether a name's word names a password: "password" in any language, or one glued to the word before it (`PGPASSWORD`,
- * `adminpasswd`, `DBPASSCODE`); the short `PASS`, `PWD` and Redis's `AUTH` glued only after what they belong to
- * (`REDISPASS`, `ROOTPWD`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
+ * `adminpasswd`, `DBPASSCODE`); the short `PASS`, `PWD`, `PW` and Redis's `AUTH` glued only after what they belong to
+ * (`REDISPASS`, `JKSPASS`, `ROOTPWD`, `rootpw`, `masterauth`; not `bypass`, `OAuth`), as isCredentialWord reads them.
  */
 function isPasswordWord(word: string): boolean {
 	if (PASSWORD_WORDS.has(word)) return true;
-	const glued = /(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|PASS|PWD|AUTH)$/.exec(word);
+	const glued = /(PASSWORD|PASSWD|PASSPHRASE|PASSCODE|PASS|PWD|PW|AUTH)$/.exec(word);
 	if (!glued) return false;
-	const head = word.slice(0, glued.index);
-	return /^PASS(?:WORD|WD|PHRASE|CODE)$/.test(glued[1]) || PASSWORD_OWNERS.has(head) || isVendorName(head);
+	return /^PASS(?:WORD|WD|PHRASE|CODE)$/.test(glued[1]) || ownsGlued(word.slice(0, glued.index), glued[1]);
 }
 
 /**
@@ -1025,7 +1062,8 @@ const PIN_SETTING =
  * named for what it opens (`alarm_code`). namesPasswordOrPin, the name readers and the prose readers all ask this one.
  */
 export function isPinName(name: string): boolean {
-	const w = words(name);
+	// (A numbered one is one too: `pin1`, `door_pin2`.)
+	const w = words(name).map((x) => x.replace(/(?<=^PIN)\d+$/, ""));
 	const at = w.findIndex(
 		(x, i) => (x === "PIN" && !NOT_CREDENTIAL_BEFORE.PIN!.has(w[i - 1] ?? "")) || x === "PINCODE" || x === "PASSCODE",
 	);
@@ -1138,15 +1176,94 @@ const PASSWORD_OWNERS = new Set([
 ]);
 
 /**
+ * Words `PASS` ends glued to them that are no password's owner: English words (`bypass`, `compass`, `overpass`,
+ * `trespass`), filters (`lowpass`, `bandpass`), a renderer's or a compiler's passes (`subpass`, `renderpass`,
+ * `multipass`, `numpass`), passes that admit a person (`daypass`, `boardingpass`) or products (`KeePass`, `LastPass`,
+ * `gopass`, `NordPass`), and programs or directives about a password (`GIT_ASKPASS`, `getpass`, Redis' `resetpass`).
+ */
+const NOT_PASSWORD_OWNERS = new Set([
+	"BY",
+	"COM",
+	"ENCOM",
+	"OVER",
+	"UNDER",
+	"TRES",
+	"SUR",
+	"RE",
+	"PRE",
+	"OUT",
+	"MIS",
+	"LOW",
+	"HIGH",
+	"BAND",
+	"ALL",
+	"NOTCH",
+	"SUB",
+	"MULTI",
+	"SINGLE",
+	"FIRST",
+	"SECOND",
+	"THIRD",
+	"FINAL",
+	"LAST",
+	"NEXT",
+	"PREV",
+	"ONE",
+	"TWO",
+	"DOUBLE",
+	"NUM",
+	"MAX",
+	"MIN",
+	"RENDER",
+	"DEPTH",
+	"SHADOW",
+	"LIGHT",
+	"BLUR",
+	"DRAW",
+	"BOARDING",
+	"SEASON",
+	"BATTLE",
+	"HALL",
+	"DAY",
+	"BUS",
+	"RAIL",
+	"SKI",
+	"FAST",
+	"EASY",
+	"EZ",
+	"BACKSTAGE",
+	"KEE",
+	"GO",
+	"NORD",
+	"EN",
+	"PROTON",
+	"NO",
+	"ASK",
+	"GET",
+	"RESET",
+]);
+
+/**
+ * Whether `PASS`, `PWD`, `PW` or `AUTH` glued after `head` names a password or an auth string: after what it belongs to
+ * (PASSWORD_OWNERS, a vendor's name); `PASS`, the commonest, after any other word that's no part of another
+ * (NOT_PASSWORD_OWNERS): `JKSPASS`, `vpnpass`, `kafkapass`, `p12pass`. (Not after a letter or a number alone: `npass`,
+ * `2pass`; nor `PW` after a letter, as base64 ends, `…GS+xpw==`.)
+ */
+function ownsGlued(head: string, suffix: string): boolean {
+	if (suffix === "PW" && head.length < 2) return false;
+	if (PASSWORD_OWNERS.has(head) || isVendorName(head)) return true;
+	return suffix === "PASS" && /^[A-Z][A-Z0-9]+$/.test(head) && !NOT_PASSWORD_OWNERS.has(head);
+}
+
+/**
  * Whether one word of a name is a credential word: `PASSWORD`, `TOKEN`, `KEY`, or one glued to it, `PGPASSWORD`,
- * `APITOKEN`, `WRITEKEY`. The short `PASS`, `PWD` and `AUTH` count glued only after what they belong to (PASSWORD_OWNERS).
+ * `APITOKEN`, `WRITEKEY`. The short `PASS`, `PWD`, `PW` and `AUTH` count glued only after what they belong to (ownsGlued).
  */
 function isCredentialWord(word: string): boolean {
 	if (CREDENTIAL_WORDS.has(word)) return true;
 	const glued = CREDENTIAL_SUFFIX.exec(word);
 	if (!glued) return false;
-	const head = word.slice(0, glued.index);
-	return !/^(?:PASS|PWD|AUTH)$/.test(glued[1]) || PASSWORD_OWNERS.has(head) || isVendorName(head);
+	return !/^(?:PASS|PWD|PW|AUTH)$/.test(glued[1]) || ownsGlued(word.slice(0, glued.index), glued[1]);
 }
 
 export type NameClass = "credential" | "hash" | "identifier" | "neutral" | "public";
@@ -1341,10 +1458,12 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		return "identifier";
 	// An alarm's, a door's or a keypad's code is a PIN; `vapidPrivate`, `push_private`: the private half of a key pair.
 	// (A key's private half named as a camel-case hump or after a separator, `vapidPrivate`, `VAPID_PRIVATE`; not a word
-	// that ends so, `isprivate`, `semiprivate`.)
+	// that ends so, `isprivate`, `semiprivate`; nor an identifier's, `zone_private`.)
 	if (
 		isPinName(name) ||
-		(/^[a-z][a-z0-9]*(?:Private|[_-]private)$|^[A-Za-z][A-Za-z0-9]*[_-]PRIVATE$/.test(name) && !ABOUT_WORDS.has(w[0]))
+		(/^[a-z][a-z0-9]*(?:Private|[_-]private)$|^[A-Za-z][A-Za-z0-9]*[_-]PRIVATE$/.test(name) &&
+			!ABOUT_WORDS.has(w[0]) &&
+			!IDENTIFIER_WORDS.has(w[0]))
 	)
 		return "credential";
 	if (isPublicName(name, core)) return "public";
@@ -1419,9 +1538,26 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		(core.length >= 2 &&
 			/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(core.at(-2)!) &&
 			/^(TOKEN|KEY)$/.test(last));
+	// (A noun about word followed by another that names what the credential belongs to names a component; not a credential
+	// phrase's first word, `LOGIN_PAGE_APP_PASSWORD`.)
 	const about =
-		core.some((x) => ABOUT_WORDS.has(x) && !(fullPhrase && ROUTE_WORDS.has(x))) ||
-		/^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
+		core.some(
+			(x, i) =>
+				ABOUT_WORDS.has(x) &&
+				!(fullPhrase && ROUTE_WORDS.has(x)) &&
+				!(
+					NOUN_ABOUT_WORDS.has(x) &&
+					core
+						.slice(i + 1, -1)
+						.some(
+							(y) =>
+								!ABOUT_WORDS.has(y) &&
+								!QUALIFIER_WORDS.test(y) &&
+								!isCredentialWord(y) &&
+								!/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(y),
+						)
+				),
+		) || /^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
 	if (!about && isCredentialWord(last) && !(last === "PAT" && core.length > 1 && !PAT_OWNERS.has(core.at(-2)!)))
 		return "credential";
 	// A credential's word first, then whose it is: `PASSWORD_DB`, `TOKEN_GITHUB`, `SECRET_STRIPE`, `password_for_db`; not
@@ -1434,7 +1570,7 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 	if (
 		HASH_WORDS.has(last) ||
 		/^(SHA|MD|BLAKE|CRC)\d*$/.test(last) ||
-		(last === "ID" && core.some((x) => HASH_WORDS.has(x)))
+		(/^(?:ID|NUMBER|NUM)$/.test(last) && core.some((x) => HASH_WORDS.has(x)))
 	)
 		return "hash";
 	if (IDENTIFIER_WORDS.has(last)) return "identifier";

@@ -301,6 +301,10 @@ test("a one-line file of an address, a path or a published example holds no pass
 	const pgpass = "auth-db.internal:5432:app:app_user:Harbor2291x\n";
 	kept(pgpass, "auth-db.internal:5432:app:app_user:", { path: "~/.pgpass" });
 	hidden(pgpass, "Harbor2291x", { path: "~/.pgpass" });
+	// (A certificate's text dump in a .pem holds lines of hex pairs, no .pgpass line.)
+	const dump =
+		"Certificate:\n    Data:\n                Modulus:\n                    00:a6:64:ac:ae:9b:ad:5a:ca:3e:1f:eb:bb:f3:7b:\n                    f2:36:d0:9e:e7:f3:f4:0d:9f:97:11:f8:28:fb:d6:\n                    d9:08:ae:c7:ca:f4:1a:bb:07:58:c8:59:69:8f:85:\n                Exponent: 65537 (0x10001)\n";
+	assert.equal(r().redact(dump, { hint: { path: "ca.pem" } }).text, dump);
 });
 
 test("bin/rails credentials:show prints secrets", () => {
@@ -760,4 +764,250 @@ test("in a secret file a session's ID is hidden under anyone's name, a terminal'
 	const listing =
 		"TERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nITERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nWT_SESSION=3c1d2e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\nXDG_SESSION_ID=2\nDESKTOP_SESSION=ubuntu\nSESSION_STORE=redis\n";
 	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
+});
+
+test("a command run as another user prints what that command prints, and so do find's and xargs' printers", () => {
+	const env = "APP_NAME=shop\nSALT=k2Lm9Qx\nPORT=8080\n";
+	for (const command of [
+		"su -c 'cat .env' app",
+		"su - app -c 'cat ~/.env'",
+		"runuser -l app -c 'cat .env'",
+		"find . -maxdepth 2 -name .env | xargs grep SALT",
+		"find . -name .env -exec grep -H SALT {} +",
+		`node -e "console.log(require('fs').readFileSync('.env', 'utf8'))"`,
+		`python3 -c "from pathlib import Path; print(Path('.env').read_text())"`,
+	])
+		hidden(env, "k2Lm9Qx", { command });
+	// (Listing, counting and editing in place print none of it, and a script that reads a file to change it prints what
+	// it says.)
+	for (const command of [
+		"find . -name '*.key' | xargs grep -l ENCRYPTED | head -5",
+		"find . -name .env -exec grep -c SALT {} +",
+		"grep -R -o 'secret' . > /app/secret.txt && find . -type f -exec sed -i 's/secret/X/g' {} + && echo done",
+		"cat > /tmp/fix.py <<'PY'\nfrom pathlib import Path\np = Path('.env')\ntext = p.read_text()\nPY",
+	])
+		kept(env, "k2Lm9Qx", { command });
+	hidden('su - backup -c "mysqldump -u root -pS3cr3tPassw0rdX1 appdb > /backup/app.sql"', "S3cr3tPassw0rdX1");
+});
+
+test("a script that prints a generated key or a credential's variable prints a credential", () => {
+	const hex = "9f2b7c1d4e8a03b56c7d9e1f2a4b6c8d0e3f5a7b9c1d2e4f6a8b0c3d5e7f9a1b";
+	for (const command of [
+		`node -p "require('crypto').randomBytes(32).toString('hex')"`,
+		`python3 -c "import os; print(os.urandom(32).hex())"`,
+		`php -r "echo bin2hex(random_bytes(32));"`,
+	])
+		hidden(`${hex}\n`, hex, { command });
+	for (const command of [
+		"Write-Host $env:DB_PASSWORD",
+		`python3 -c "import os; print(os.environ['DB_PASSWORD'])"`,
+		`node -e "console.log(process.env.DB_PASSWORD)"`,
+	])
+		hidden("Hx7mQ2pLvRt9zK", "Hx7mQ2pLvRt9zK", { command });
+	kept("8080", "8080", { command: `python3 -c "import os; print(os.environ['PORT'])"` });
+	// (A script that makes an ID with a generator, or reads a credential to use it, prints what it says it does.)
+	for (const command of [
+		`python3 -c "import os, subprocess\nuser = os.urandom(8).hex()\nsubprocess.run(['useradd', user])\nprint('sent')"`,
+		`sed -i "s/os.urandom(3)/os.urandom(4)/" camera.py`,
+		`node -e "\nconst ws = connect();\ntype(process.env.DB_PASSWORD);\nconsole.log('submitted');\n"`,
+	])
+		kept("submitted\n", "submitted", { command });
+});
+
+test("a jq filter's key name and a list of keys are no secret file", () => {
+	for (const path of [".private_key", "keys.txt", "monkey.txt"]) assert.ok(!isSecretFile(path), path);
+	hidden("curl -sS --proxy-user svc_build:Tz4nQ8vLm2Xe https://registry.npmjs.org/-/ping", "Tz4nQ8vLm2Xe");
+});
+
+const ENV = "APP_NAME=shop\nDEBUG=false\nSALT=k2Lm9Qx\nADMIN_PASS=Zq7vK2mP\n";
+
+test("Windows' commands read a secret file in any case, findstr too, and a backslashed path is a Windows path", () => {
+	for (const command of [
+		"get-content .env",
+		"Get-content .env",
+		"TYPE .env",
+		"Select-string SALT .env",
+		"findstr SALT .env",
+		"findstr /i salt .env",
+		"findstr KEY C:\\app\\.env",
+		"cat apps\\web\\.env.local",
+		"cat config\\secrets.yml",
+		"more backend\\.env.production",
+		"sls KEY apps\\web\\.env.local",
+		"cat %USERPROFILE%\\.ssh\\id_rsa",
+	])
+		hidden(ENV, "k2Lm9Qx", { command });
+	for (const command of [
+		"get-content README.md",
+		"findstr TODO notes.txt",
+		"cat apps\\web\\README.md",
+		"TYPE notes.txt",
+	])
+		kept(ENV, "k2Lm9Qx", { command });
+});
+
+test("xargs and fd hand a secret file to a printer", () => {
+	for (const command of [
+		"find . -name '.env*' | xargs -I {} cat {}",
+		"find . -name '.env*' | xargs -n 1 cat",
+		"find . -name .env | xargs -P 4 cat",
+		"find . -name .env | xargs -I {} sh -c 'echo {}; cat {}'",
+		"fd .env -x cat",
+	])
+		hidden(ENV, "k2Lm9Qx", { command });
+	for (const command of [
+		"find . -name '*.md' | xargs -n 1 cat",
+		"xargs -n 1 -a hosts.txt echo",
+		"find . -name .env | xargs -n 1 wc -l",
+		"find . -name .env | xargs -I {} sh -c 'echo {}; wc -l {}'",
+	])
+		kept(ENV, "k2Lm9Qx", { command });
+});
+
+test("cmd's and PowerShell's variables, environment drive and expressions print a credential", () => {
+	for (const command of [
+		"echo %APP_SECRET%",
+		"cmd /c echo %APP_SECRET%",
+		"echo ${env:APP_SECRET}",
+		"Write-Output $Env:APP_SECRET",
+		"(Get-Item Env:APP_SECRET).Value",
+		"$env:DB_PASSWORD",
+		"$cred.GetNetworkCredential().Password",
+		"Get-Secret DbPassword -AsPlainText",
+	])
+		assert.ok(printsSecret(command), command);
+	for (const command of [
+		"echo %PATH%",
+		"Get-Content Env:PATH",
+		"$env:COMPUTERNAME",
+		"$cred.UserName",
+		"(Get-Item Env:PATH).Value",
+		"Get-Secret DbPassword",
+		// (A dictionary's keys are its names.)
+		"$hash.Keys",
+		"(Get-Command -Name Test-MrParameter).Parameters.Keys",
+		"$_.Key",
+	])
+		assert.ok(!printsSecret(command), command);
+	hidden("PS> $cred.GetNetworkCredential().Password\nC0r4l&96\nPS> ", "C0r4l&96");
+	kept("PS> $env:COMPUTERNAME\nBUILD-AGENT-07\nPS> ", "BUILD-AGENT-07");
+	kept("PS> $p.Keys\nPowerShell\nNotepad\n\nPS> $p.PowerShell\n", "Notepad");
+	// (A member of the drive's items prints that member: `.Name` prints names.)
+	kept("PS /home/user01> (Get-Item -Path Env:hOM[E]).Name\nHOME\n", "HOME");
+	kept("PS> (Get-ChildItem Env:).Name\nAPI_TOKEN\nPATH\n", "API_TOKEN");
+	// (One variable named in full is judged by its name.)
+	kept("72f988bf-86f1-41af-91ab-2d7cd011db47\n", "72f988bf-86f1-41af-91ab-2d7cd011db47", {
+		command: "(Get-Item Env:AZURE_TENANT_ID).Value",
+	});
+	kept(
+		"Name                           Value\n----                           -----\nTEST                           test value\n",
+		"test value",
+		{
+			command: "Get-ChildItem env:TEST",
+		},
+	);
+	// (`Get-ChildItem Env:` and `Get-Item Env:NAME` print a table of names and values, read as printenv's listing.)
+	const table = "Name                           Value\n----                           -----\n";
+	for (const command of ["Get-ChildItem Env:", "gci env:", "Get-Item Env:APP_SECRET"]) {
+		const text = `${table}APP_SECRET                     k2Lm9QxZ8\nPATH                           C:\\Windows\n`;
+		hidden(text, "k2Lm9QxZ8", { command });
+		kept(text, "C:\\Windows", { command });
+	}
+});
+
+test("aws ssm get-parameters' PARAMETERS rows hide every row's value", () => {
+	const rows =
+		"PARAMETERS\tarn:aws:ssm:us-east-1:123456789012:parameter/app/db_pw\ttext\t1728900000.0\t/app/db_pw\tSecureString\tHx7mQ2pL9vRt\t3\n" +
+		"PARAMETERS\tarn:aws:ssm:us-east-1:123456789012:parameter/app/api\ttext\t1728900000.0\t/app/api\tSecureString\tZq7Lm2Kx9Pw\t1\n";
+	for (const command of [
+		"aws ssm get-parameters-by-path --path /app --with-decryption --output text",
+		"aws ssm get-parameters --names /app/db_pw /app/api --with-decryption --output text",
+	]) {
+		hidden(`$ ${command}\n${rows}`, "Hx7mQ2pL9vRt");
+		hidden(`$ ${command}\n${rows}`, "Zq7Lm2Kx9Pw");
+		kept(`$ ${command}\n${rows}`, "/app/db_pw");
+	}
+});
+
+test("a credential command's output ends at a blank line or a markup tag", () => {
+	for (const after of ["\n\nPerfect!\n", "\n</tool_result>\n", "\n\nAssistant\nexit_code=0\n"]) {
+		const text = `$ gh auth token\ngho\x5faB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5${after}`;
+		hidden(text, "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH3jL5");
+		for (const word of after.trim().split("\n")) kept(text, word);
+	}
+	// (A harness's wrapper, `<output>`, opens the output; its closer glued to the last line ends it.)
+	const wrapped = "<returncode>0</returncode>\n<output>\nPassword: 1998\nhoneybear</output>";
+	hidden(wrapped, "honeybear", { command: "pass show app/db" });
+	kept(wrapped, "<output>", { command: "pass show app/db" });
+	hidden("$ op read op://v/i/f\nAdmin: bob\nmonkeykingdom\n", "monkeykingdom");
+});
+
+test("a secret file's platforms, sizes and ports are settings, under a bare word too", () => {
+	for (const [line, value] of [
+		["PLATFORM=linux/amd64", "linux/amd64"],
+		["ARCH=linux/arm64/v8", "linux/arm64/v8"],
+		["RESOLUTION=1920x1080", "1920x1080"],
+		["PORTS=8080/tcp", "8080/tcp"],
+		["RANGE=5000-5010/udp", "5000-5010/udp"],
+	])
+		kept(`NODE_ENV=production\n${line}\n`, value, { command: "cat .env" });
+	for (const [line, value] of [
+		["STRIPE=Summer2024!", "Summer2024!"],
+		["OPENAI=Ab3/xY9+kL2m", "Ab3/xY9+kL2m"],
+	])
+		hidden(`NODE_ENV=production\n${line}\n`, value, { command: "cat .env" });
+});
+
+test("an empty document and an INI section are no one-line secret file; one token in brackets is", () => {
+	for (const [text, command] of [
+		["{}\n", "cat ~/.docker/config.json"],
+		["[]\n", "cat secrets.json"],
+		["[default]\n", "head -1 ~/.aws/credentials"],
+		["[profile.prod]\n", "head -1 ~/.aws/credentials"],
+	])
+		kept(text, text.trim(), { command });
+	hidden("{Kd8pQ2zX9mL}\n", "Kd8pQ2zX9mL", { command: "cat ~/.vault_pass" });
+	hidden("[Kd8pQ2zX9mL]\n", "Kd8pQ2zX9mL", { command: "cat ~/.vault_pass" });
+});
+
+test("htpasswd's LDAP-scheme hashes are read as its crypt hashes are", () => {
+	for (const hash of [
+		"{SHA}qUqP5cyxm6YcTAhz05Hph5gvu9M=",
+		"{SSHA}W6ph5Mm5Pz8GgiULbPgzG37mj9gZm9v",
+		"{SSHA512}W6ph5Mm5Pz8GgiULbPgzG37mj9gZm9vW6ph5Mm5Pz8GgiULbPgzG37mj9g",
+		"$apr1$x9Kd2mQ7$abcdefghijklmnopqrstuv",
+	]) {
+		const out = r().redact(`bob:${hash}\ncarol:${hash}\n`, { hint: { path: "/etc/nginx/.htpasswd" } }).text;
+		assert.ok(!out.includes(hash.slice(-12)), out);
+		assert.ok(out.includes("bob:") && out.includes("carol:"), out);
+	}
+});
+
+test("a secret file's padded assignments are read as assignments, so a reference among them stays", () => {
+	const tfvars = [
+		'grafana_admin_pass  = "Kx9mQ2pLw7vR"',
+		'db_password         = "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf"',
+		'api_key_secret_id   = "projects/468039570476/secrets/vllm-api-key/versions/latest"',
+		'region              = "us-central1"',
+	].join("\n");
+	const path = { path: "infra/envs/prod/terraform.tfvars" };
+	hidden(tfvars, "Kx9mQ2pLw7vR", path);
+	kept(tfvars, "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-AbCdEf", path);
+	kept(tfvars, "projects/468039570476/secrets/vllm-api-key/versions/latest", path);
+	// (A table that a secret manager prints still has its values: `vault kv get`.)
+	hidden("Key              Value\n---              -----\nclient_secret    Kx9mQ2pLw7vRtZ8n\n", "Kx9mQ2pLw7vRtZ8n", {
+		command: "vault kv get secret/app",
+	});
+});
+
+test("a command that prints a secret file's lines has them read as that file, name by name", () => {
+	const out =
+		"CLOUDINARY_URL=cloudinary://293633814225778:QbHn4SnyUiS6r_FY4XBPpMmW1YN@tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop\nNEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products\n";
+	const hint = { command: "vercel env pull .env.local && cat .env.local | grep -i cloudinary" };
+	hidden(out, "QbHn4SnyUiS6r_FY4XBPpMmW1YN", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET=unsigned_products", hint);
+	kept(out, "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=tulipa-shop", hint);
+	hidden("STRIPE_SECRET_KEY=Kx9mQ2pLw7vRtZ8nB4cYd3Hq\nAPP_ENV=prod\n", "Kx9mQ2pLw7vRtZ8nB4cYd3Hq", {
+		command: "heroku config -s",
+	});
 });

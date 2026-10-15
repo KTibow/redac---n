@@ -8,6 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { KnownValues } from "../src/known.ts";
 import { b62, r } from "./helpers.ts";
 import { assertLinear } from "./timing.ts";
 
@@ -47,8 +48,32 @@ test("a stream releases text while it reads a long base64 finding", () => {
 	);
 });
 
+test("values learned one at a time, each found after, cost about what they cost learned all at once", () => {
+	// (A long session learns from each tool result and redacts the next: its index isn't built again whole every few
+	// values, which made 2,000 values cost some 80 times what they cost at once.)
+	const values = Array.from({ length: 2000 }, (_, i) => `Pw${i.toString(36)}#x9qLm2Zk`);
+	const time = (findEach: boolean) => {
+		const t = performance.now();
+		const known = new KnownValues();
+		for (const v of values) {
+			known.add(v);
+			if (findEach) known.find("ok");
+		}
+		known.find("ok");
+		return performance.now() - t;
+	};
+	const atOnce = Math.min(time(false), time(false));
+	const inTurn = time(true);
+	assert.ok(inTurn < 20 * Math.max(atOnce, 20), `${inTurn.toFixed(0)} ms in turn, ${atOnce.toFixed(0)} ms at once`);
+});
+
 test("a long run of blanks before a block scalar costs linear time", () => {
 	assertLinear("blanks before a block scalar", (n) => r().redact(`${" ".repeat(n)}k: |`), 20_000);
+});
+
+test("a device config line's long run of trailing blanks costs linear time", () => {
+	for (const line of ["crypto isakmp key Kx9q address", "snmp-server community Kx9q view v RO"])
+		assertLinear(line, (n) => r().redact(`${line}${" \t".repeat(n)};x`), 10_000);
 });
 
 test("heredocs in heredocs' bodies cost linear time", () => {
@@ -90,4 +115,32 @@ test("a large state file read as a secret file costs about what its text costs r
 	const plain = best(() => r().detect(state));
 	const file = best(() => r().detect(state, { hint: { path: "infra/terraform.tfstate", secretFile: true } }));
 	assert.ok(file < 1.5 * plain, `${file.toFixed(0)} ms as a secret file, ${plain.toFixed(0)} ms plainly`);
+});
+
+test("a value repeated on many lines costs no more than as many different values", () => {
+	// (Each repeat is looked at for a client SDK it's passed to; a text that calls none needs no look.)
+	const lines = (value: (i: number) => string) =>
+		"kind: Secret\ndata:\n" + Array.from({ length: 100 }, (_, i) => `  a: ${value(i)}\n`).join("");
+	const time = (text: string) => {
+		let best = Infinity;
+		for (let i = 0; i < 3; i++) {
+			const t = performance.now();
+			r().redact(text);
+			best = Math.min(best, performance.now() - t);
+		}
+		return best;
+	};
+	const same = time(lines(() => ")".repeat(1000)));
+	const different = time(lines((i) => String.fromCharCode(33 + (i % 90)).repeat(1000)));
+	assert.ok(same < 3 * Math.max(different, 20), `${same.toFixed(0)} ms repeated, ${different.toFixed(0)} ms different`);
+});
+
+test("a line of URLs with no blank between them costs linear time", () => {
+	// (Each URL's reader reads, as one URL, to the line's end: asked whether a URL reaches a token, it stops once it does.)
+	for (const separator of [",", ";", "|"])
+		assertLinear(
+			`URLs joined by ${separator}`,
+			(n) => r().redact(`http://elasticsearch-node-01.prod.example.com:9200${separator}`.repeat(n)),
+			300,
+		);
 });

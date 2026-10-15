@@ -6,7 +6,7 @@
  * 2. What a tool puts in front of lines: a file viewer's line numbers (`     12→`, `cat -n`), `grep -n`'s
  *    `path:12:`, a diff hunk's markers.
  * 3. What spells a character or a string another way: shell line continuations (`--password \` then the value on
- *    the next line), HTML entities (`&quot;`, `&#35;`), full-width punctuation and spaces of other widths, and a
+ *    the next line), HTML entities (`&quot;`, `&#35;`), full-width punctuation, typographic quotes and spaces of other widths, and a
  *    string literal split in pieces (`"xoxb-12ab" "34cd"`, `'sk-' + '…'`), joined.
  *
  * Each pass sees the lines the one before it leaves (a coloured diff's `ESC[32m+API_TOKEN=…` starts with its `+`;
@@ -114,8 +114,12 @@ const PREFIXED = /(?:^|\n)[\w./@+-]{1,200}\.\w{1,10}[:-]\d{1,7}[:-]|(?:^|\n)@@ -
 const LINE_NUMBER = /^(?:[ \t]*\d{1,7}→| +\d{1,7}\t)/gm;
 const HAS_LINE_NUMBER = new RegExp(LINE_NUMBER.source, "m");
 
-/** A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). */
-export const PGPASS = /^[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
+/**
+ * A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). Not a line of bytes in
+ * hex pairs, as `openssl x509 -text` prints a certificate's modulus (`f2:36:d0:9e:e7:…`).
+ */
+export const PGPASS =
+	/^(?![ \t]*(?:[0-9A-Fa-f]{2}:){5})[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
 
 /** `grep -n` and `rg -n`: `path:12:` before a match, `path-13-` before a context line. */
 const GREP_PREFIX = /^([\w./@+-]{1,200}\.[\w]{1,10})[:-](\d{1,7})[:-]/gm;
@@ -152,7 +156,7 @@ const NEEDS_PASS_TWO = (text: string) =>
 	HAS_LINE_NUMBER.test(text) || PREFIXED.test(text) || LINE_END_MARK_TEST.test(text);
 const NEEDS_PASS_THREE = (text: string) =>
 	INLINE_TAG_TEST.test(text) ||
-	/[\u00a0\u2000-\u200a\u202f\u3000\uff1a\uff1d]|\\\r?\n/.test(text) ||
+	/[\u00a0\u2000-\u200a\u2018\u2019\u201c-\u201e\u202f\u3000\uff1a\uff1d]|\\\r?\n/.test(text) ||
 	ENTITY.test(text) ||
 	JOINT.test(text);
 
@@ -421,8 +425,10 @@ function literalJoints(text: string): Map<number, number> {
 			if (/(?:^|\s)--?[A-Za-z][\w-]*(?:[ \t=]|$)/.test(before)) continue;
 			if (/%[-+ #0-9.]*[sdvqf]|\{\d*\}/.test(m[2])) continue;
 			if (m[1] === "'" && /content-security-policy|-src\b/i.test(text.slice(start, lineEnd(text, m.index)))) continue;
-			// Across a line break with no operator: inside parentheses (Python), or a C initializer after `=`.
+			// Across a line break with no operator: inside parentheses (Python), or a C initializer after `=`, whose next
+			// piece is indented under it (a shell line's quoted value ends its line: `export PW="…"` then `"$DIR/run.sh"`).
 			if (/\n/.test(s[0]) && !/[(=][ \t]*$/.test(before) && !/[(=,][ \t]*\r?$/.test(above)) continue;
+			if (/\n/.test(s[0]) && !/\n[ \t]+$/.test(s[0]) && !/\([ \t]*$/.test(before)) continue;
 		}
 		// The next piece is more of the string, not a name: `"…"="…"` lines (a .reg file, an INI) don't join.
 		if (/^[ \t]*[=:]/.test(text.slice(next.lastIndex, next.lastIndex + 20))) continue;
@@ -447,12 +453,13 @@ function unspell(text: string): Normalized {
 			continue;
 		}
 		// A line continuation: the backslash and newline vanish, joining the lines as a shell, a C macro or a string
-		// does (`--password \`, `TOKEN=AbCd\` then `EfGh`). Not a Windows path's last backslash (`DATA_DIR=C:\data\`)
-		// nor a Markdown hard break (`**Host:** db\` then `**Password:** …`): a line that begins with no token there.
+		// does (`--password \`, `TOKEN=AbCd\` then `EfGh`). Not a Windows path's last backslash (`DATA_DIR=C:\data\`,
+		// `C:\Program Files\App\`, `\\server\share\`, `%ProgramData%\app\`: a word with another backslash in it), nor a
+		// Markdown hard break (`**Host:** db\` then `**Password:** …`): a line that begins with no token there.
 		if (c === 92 && (text[i + 1] === "\n" || (text[i + 1] === "\r" && text[i + 2] === "\n"))) {
 			const next = text[i + 1] === "\r" ? i + 3 : i + 2;
 			const line = text.slice(lineStart(text, i), i);
-			const windowsPath = /(?:^|[\s=:"'])[A-Za-z]:\\[^\s]*$/.test(line);
+			const windowsPath = /\\\S*$/.test(line);
 			const hardBreak = !/[ \t]$/.test(line) && !/^[\w"'$\s-]/.test(text[next] ?? "");
 			if (!windowsPath && !hardBreak) {
 				w.separate();
@@ -470,10 +477,19 @@ function unspell(text: string): Normalized {
 		}
 		if (c === 38) {
 			const m = ENTITY_AT.exec(text.slice(i, i + 12));
-			const ch = m ? entityChar(m) : undefined;
+			let ch = m ? entityChar(m) : undefined;
 			if (m && ch !== undefined) {
-				w.emit(ch, i, i + m[0].length);
-				i += m[0].length;
+				// (An entity escaped again, `&amp;quot;` in an attribute escaped twice, is the character it stands for.)
+				let end = i + m[0].length;
+				for (let depth = 0; ch === "&" && depth < 3; depth++) {
+					const inner = ENTITY_AT.exec(`&${text.slice(end, end + 11)}`);
+					const innerChar = inner ? entityChar(inner) : undefined;
+					if (!inner || innerChar === undefined) break;
+					ch = innerChar;
+					end += inner[0].length - 1;
+				}
+				w.emit(ch, i, end);
+				i = end;
 				continue;
 			}
 		}
@@ -487,6 +503,17 @@ function unspell(text: string): Normalized {
 		// Full-width colon and equals sign.
 		if (c === 0xff1a || c === 0xff1d) {
 			w.emit(c === 0xff1a ? ":" : "=", i, i + 1);
+			i++;
+			continue;
+		}
+		// Typographic quotes, as a word processor's or a chat app's autocorrect writes them in pasted JSON and config
+		// (`“password”: “…”`, German `„…“`): the straight quotes the syntax means. (Not an apostrophe inside a word, which
+		// quotes nothing: Corsican `chjave d’accessu`, `it’s`.)
+		if (
+			(c === 0x2018 || c === 0x2019 || (c >= 0x201c && c <= 0x201e)) &&
+			!(c === 0x2019 && /\p{L}/u.test(text[i - 1] ?? "") && /\p{L}/u.test(text[i + 1] ?? ""))
+		) {
+			w.emit(c <= 0x2019 ? "'" : '"', i, i + 1);
 			i++;
 			continue;
 		}

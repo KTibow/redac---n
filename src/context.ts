@@ -7,7 +7,7 @@ import { lastText, lowerBound } from "./lines.ts";
 import { isGenericName, mentionsCredential, nameClass, type NameClass, phraseBefore, readPhrase } from "./names.ts";
 import { inJwk } from "./json.ts";
 import { publicBlocks } from "./publickeys.ts";
-import { insertCells, type SqlCell } from "./sql.ts";
+import { sqlCells, type SqlCell } from "./sql.ts";
 import {
 	backslashesBefore,
 	delimitedCells,
@@ -105,11 +105,11 @@ export class Doc {
 		return k >= 0 && at < this.armor.ends[k];
 	}
 
-	/** The cell of an SQL `INSERT` row whose value holds `[start, end)`, read as sql.ts reads rows. */
+	/** The cell of an SQL row (`INSERT`, `COPY`) whose value holds `[start, end)`, read as sql.ts reads rows. */
 	sqlCell(start: number, end: number): SqlCell | undefined {
 		if (!this.cells) {
 			// (Values in the order they appear, so their starts are sorted.)
-			this.cells = [...insertCells(this.text)].sort((a, b) => a.value.start - b.value.start);
+			this.cells = [...sqlCells(this.text)].sort((a, b) => a.value.start - b.value.start);
 			this.cellStarts = this.cells.map((c) => c.value.start);
 		}
 		const cell = this.cells[lowerBound(this.cellStarts!, start + 1) - 1];
@@ -172,7 +172,10 @@ export interface Context {
 	 * on the line: "your new API key for the git server: <t>".
 	 */
 	hashPhrase: boolean;
-	/** The previous URL path segment, for `/hooks/<token>`, `/webhook/<token>`. */
+	/**
+	 * The previous URL path segment, for `/hooks/<token>`, `/webhook/<token>`; in a URL, or a request's target after its
+	 * method (`POST /hooks/<token> HTTP/1.1`).
+	 */
 	pathParent: string;
 	/** A phrase that hands over a value: "here's your key", "Token created:", "use this one". */
 	handover: boolean;
@@ -248,8 +251,18 @@ const CALL = new RegExp(
 const PROSE =
 	/\b([A-Za-z][\w-]{0,30})(?:[ \t]{1,3}(?:is|was|=|:)[ \t]{0,3}|:[ \t]{1,3}|[ \t]{1,3}(?:of|for)[ \t][^:]{0,40}:[ \t]{0,3})["'`*]{0,2}$/;
 const TABLE = /^[ \t│|]{0,10}([A-Za-z_][\w.-]{0,80})(?:[ \t]{2,80}|[ \t]{0,80}[│|][ \t]{0,10})$/;
-const HASH_PREFIX =
-	/(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:sha(?:1|224|256|384|512)|md5|blake2b?|blake3|crc32|h1|integrity|xxh\d*)[:=\-][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$/i;
+/** A hash algorithm's name: `sha256`, `sha-256` (HTTP's), `md5`, `blake3`. */
+const HASH_ALGORITHM = String.raw`(?:sha-?(?:1|224|256|384|512)|md5|blake2b?|blake3|crc32|xxh\d*)`;
+/**
+ * A hash's or a digest's name right before the token. (HTTP's digest fields, RFC 9530, write the digest as a structured
+ * field's byte sequence, `Content-Digest: sha-256=:<base64>:`; tools write the algorithm or the encoding in brackets
+ * after a label, `Hash (sha256): `, `Checksum (base64): `; BSD's checksum tools the file's name after the algorithm,
+ * `SHA256 (app.tar.gz) = `.)
+ */
+const HASH_PREFIX = new RegExp(
+	String.raw`(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:${HASH_ALGORITHM}|h1|integrity)[:=\-]:?[ \t]?$|(?<![A-Za-z0-9])(?:hash|checksum|digest|${HASH_ALGORITHM})[ \t]*\([^()\n]{1,100}\)[ \t]?[:=][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$`,
+	"i",
+);
 
 /** The text before the last `name` in `left` (none when the name came from elsewhere, a sibling or a header). */
 function textBefore(left: string, name: string): string {
@@ -289,6 +302,19 @@ function isBlobLine(doc: Doc, start: number, end: number, i: number): boolean {
 		if (parent && nameClass(parent) === "credential") return false;
 	}
 	return true;
+}
+
+/** A line holding one token alone, or as a list's item: `- Kx9mQ2…`. */
+const LONE_TOKEN_LINE = /^[ \t]*(?:[-*•][ \t]+)?["'`]?[A-Za-z0-9+/=_.-]{16,}["'`]?[ \t]*\r?$/;
+
+/**
+ * The line above line `i`, or above the lines of lone tokens line `i` ends (keys handed over one per line: "Here are
+ * your new API keys:" over three of them).
+ */
+function listHead(doc: Doc, i: number, above: string): string {
+	let k = i - 1;
+	while (k > 0 && k >= i - 20 && LONE_TOKEN_LINE.test(doc.line(k))) k--;
+	return k < i - 1 ? doc.line(k) : above;
 }
 
 /**
@@ -397,8 +423,14 @@ function nameFromLeft(left: string, url: string | undefined): { name: string; sy
 	const trimmed = left.trimStart();
 	if (trimmed === "" || /^[-*•>+][ \t]*["'`]?$/.test(trimmed) || /^["'`]$/.test(trimmed))
 		return { name: "", syntax: /^[-*•]/.test(trimmed) ? "list" : "bare" };
-	// `Authorization: Bearer <token>`: the scheme word sits between name and value.
-	if ((m = /^[ \t]{0,8}([A-Za-z][\w-]{1,60}):[ \t]{1,4}(?:[A-Za-z][\w-]{0,20}[ \t]{1,3})?$/.exec(left)))
+	// `Authorization: Bearer <token>`: the scheme word sits between name and value; or parameters and version tags do,
+	// `webhook-signature: v1,<sig>`, `Stripe-Signature: t=…,v1=<sig>`.
+	if (
+		(m =
+			/^[ \t]{0,8}([A-Za-z][\w-]{1,60}):[ \t]{1,4}(?:[A-Za-z][\w-]{0,20}[ \t]{1,3}|(?:[\w-]{1,20}(?:=[^\s,;]{0,40})?[,;][ \t]*)+(?:[\w-]{1,20}=)?)?$/.exec(
+				left,
+			))
+	)
 		return { name: m[1], syntax: /^[A-Z]/.test(m[1]) || /-/.test(m[1]) ? "header" : "assign" };
 	if ((m = FLAG.exec(left))) return { name: m[1].replace(/^-+/, ""), syntax: "flag" };
 	if ((m = XML_TEXT.exec(left))) return { name: m[1], syntax: "xml" };
@@ -456,6 +488,9 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 	// An item of a list under a name (`api_keys:` then `- <key>` lines): the list's name.
 	if (!name && /^[ \t]*(?:[-*•][ \t]*["'`]?|["'`])$/.test(left)) name = listName(doc, i) ?? "";
 
+	// A request's target after its method, as access logs and HTTP dumps print it (`"POST /hooks/<token> HTTP/1.1"`): a
+	// URL's path, not a file's.
+	const requestPath = !inUrl && /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)[ \t]+\/[^\s"]*$/.test(left);
 	const fsPath =
 		!inUrl &&
 		(/(?:^|[\s"'`=:(,\[])(?:~|\.{1,2}|[A-Za-z]:)?(?:[\\/][\w.@+-]{1,80}){1,30}[\\/]$/.test(left) ||
@@ -543,8 +578,10 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		const before = phraseBefore(textBefore(left, name), 4);
 		({ name, class: cls } = readPhrase(before, name));
 	}
-	const pathParent = inUrl ? (/\/([^/\s?#]{1,60})\/$/.exec(left)?.[1] ?? "") : "";
-	const leftAndAbove = identifierWords(`${above}\n${left}`);
+	const pathParent = inUrl || requestPath ? (/\/([^/\s?#]{1,60})\/$/.exec(left)?.[1] ?? "") : "";
+	// (A query parameter's credential words are its own name's: `?api_key=…&profile=<id>` says nothing of the profile.)
+	const ownLeft = syntax === "query" && name ? left.replace(/[?&][^?&\s"'=]+=[^&\s"']*(?=&[^&]*$)/g, "") : left;
+	const leftAndAbove = identifierWords(`${above}\n${ownLeft}`);
 	return {
 		name,
 		nameClass: cls,
@@ -565,7 +602,7 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		sqlCell,
 		handover:
 			HANDOVER.test(identifierWords(left.slice(-200))) ||
-			(left.trim() === "" && HANDOVER.test(identifierWords(above.slice(-200)))),
+			(left.trim() === "" && HANDOVER.test(identifierWords(listHead(doc, i, above).slice(-200)))),
 		inUrl,
 		fsPath,
 		armored: armoredAt(doc, start, left),

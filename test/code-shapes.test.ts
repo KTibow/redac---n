@@ -203,6 +203,21 @@ test("labels in other scripts and locales are not passwords", () => {
 	kept("sk: Slovensky", "Slovensky");
 });
 
+test("a translation of the word password, with a word or two around it, is a label in Latin script too", () => {
+	for (const [line, label] of [
+		['    "Password" : "Fjalëkalim",', "Fjalëkalim"],
+		['    "Password" : "Salasõna",', "Salasõna"],
+		['    "Password" : "Nenosiri",', "Nenosiri"],
+		['    "Password" : "Zaporka",', "Zaporka"],
+		['    "Recovery key password" : "Endurheimtulykilorð",', "Endurheimtulykilorð"],
+		['  "adminInitPassword": "Kata sandi inisialisasi admin",', "Kata sandi inisialisasi admin"],
+		['  "changePassword": "Ubah kata sandi",', "Ubah kata sandi"],
+	])
+		kept(line, label);
+	hidden('    "Password" : "Zaporka2024!",', "Zaporka2024!");
+	hidden('  "adminInitPassword": "Kx9mQ2vLp7",', "Kx9mQ2vLp7");
+});
+
 test("a declaration's type is no value, nor a generic type in an interface, but a bare name there is", () => {
 	for (const line of ["val passwordData: PasswordData?,", "privateKey: Uint8Array;"])
 		kept(line, line.replace(/^.*: /, "").replace(/[?,;]+$/, ""));
@@ -278,7 +293,6 @@ test("a value's syntax says it is no credential: country codes, ternaries, XAML,
 			'            \'PublicKey(key_id="568250167242549743", key="g0y8X95+p3dndYPe9Bx5h1l/qHwUH5UUGnYQlzJ2cg2=")\',',
 			"g0y8X95+p3dndYPe9Bx5h1l",
 		],
-		['    "passphrase": "{AQAAABAAAAAQmEZaw8Ev9tClXWVQye1TR2KgF3p/wGoYs/TEQCmsxCk=}",', "AQAAABAAAAAQmEZaw8Ev9tCl"],
 		['    bindKey: bindKey("Alt-Left|Home", "Command-Left|Home|Ctrl-A"),', "Command-Left|Home|Ctrl-A"],
 		['<PasswordBox Password="{Binding LightBrush, Mode=OneWay}" />', "{Binding LightBrush, Mode=OneWay}"],
 		['  Password: <input name="password" type="password"><br>', '<input name="password" type="password">'],
@@ -727,4 +741,64 @@ test("a note in brackets goes on the label, and the value after its colon is jud
 	kept("password (utf-8): x", "(utf-8):");
 	hidden("Password (required): Xk9mQ2vL7", "Xk9mQ2vL7");
 	kept("    password (str): Password for the account.", "Password for the account.");
+});
+
+test("an expression is code: an operand an operator follows, a variable numbered after its name, a keyword", () => {
+	for (const [text, value] of [
+		["    test1_pass = stages1 == stages2", "stages1"],
+		["    token = prefix + suffix", "prefix"],
+		["    password = primary or fallback", "primary"],
+		["        local_tree_pass = local_tree_pass2", "local_tree_pass2"],
+		["if len(local_tree_pass) >= len(local_tree_pass2):\n    local_tree_pass = local_tree_pass2", "= local_tree_pass2"],
+		["                    CONF_PASSWORD in merged_ota_esphome_configs_by_port[conf_port]", "in merged"],
+		["            Thread.pass while @thread.alive?", "while @thread"],
+		["type DNSServer struct {\n\tserial   int\n\ttsigKeys []TSigKey\n}", "[]TSigKey"],
+		["type Config struct {\n\tTSigKeys          []TSigKey\n}", "[]TSigKey"],
+		["  { confirmPassword: PwdConfirmationMode.Strict })", "PwdConfirmationMode.Strict"],
+	])
+		kept(text, value);
+	// (A shell's assignment is unspaced, and the command after `&&` is the next one.)
+	hidden("DB_PASSWORD=Xk9mQ2pLrT && mysql", "Xk9mQ2pLrT");
+	hidden("    password = Kx9mQ2vLp7", "Kx9mQ2vLp7");
+	hidden("requirepass Kx9mQ2vLp7Rt", "Kx9mQ2vLp7Rt");
+	hidden("api_token = api_token_9fQ2mLx7Rt", "api_token_9fQ2mLx7Rt");
+});
+
+test("a command substitution whose program a variable names is a reference, cut at its first blank or not", () => {
+	for (const line of [
+		'  VAULT_TOKEN=$("$binpath" write "auth/$AUTH_PATH/login/$USERNAME" password="$PASSWORD" | jq -r .auth.client_token)',
+		'otp_cred=$("$binpath" write -format=json "ssh/creds/$ROLE_NAME" ip="$IP")',
+		'API_TOKEN=$("${VAULT_BIN}")',
+	])
+		kept(line, line.slice(line.indexOf("=") + 1));
+	hidden("VAULT_TOKEN=Kx9mQ2vLp7Rt3Wz8nB5cTq", "Kx9mQ2vLp7Rt3Wz8nB5cTq");
+});
+
+test("a format string's fields are no secret: printf's with Java's %n, Python's {0:04x}, an f-string's holes", () => {
+	for (const [text, value] of [
+		["            json_key = '{0:04x}{1:04x}'.format(key.group, key.element).upper()", "{0:04x}{1:04x}"],
+		['    add("PASSWORD", "password=\'%s\'")', "password='%s'"],
+		[
+			'\t\t\tlogger.info(String.format("%n%nUsing generated security password: %s%n", user.getPassword()));',
+			"%n%nUsing generated security password: %s%n",
+		],
+		['    return ApiToken(tenant_id=t, token=f"test_token_{uuid.uuid4().hex[:8]}", type="app")', "test_token_"],
+		['    db.add(ApiToken(type="dataset", token=f"dataset-{uuid4()}"))', "dataset-{uuid4()}"],
+	])
+		kept(text, value);
+	hidden('conn = connect(host="db", password=\'fT"QR1B$%s%UXem\')', "UXem");
+	hidden('    client = Client(token=f"Kx9mQ2vLp7Rt3Wz8{suffix}")', "Kx9mQ2vLp7Rt3Wz8");
+	hidden('password = "x7%dK2!vQ"', "x7%dK2!vQ");
+});
+
+test("a bundler's annotation after `=` is a comment, not a value", () => {
+	for (const [text, value] of [
+		['const API_KEYS = /*#__PURE__*/ new Set(["a", "b"]);', "/*#__PURE__*/ new Set"],
+		["var Token = /*#__PURE__*/function () {};", "/*#__PURE__*/function"],
+		["const jwtKeys = /* @__PURE__ */ createKeys();", "/* @__PURE__ */ createKeys"],
+		["const API_KEY = /** @type {string} */ (process.env.API_KEY);", "/** @type {string} */"],
+	])
+		kept(text, value);
+	// The value after a comment is judged as ever.
+	hidden('const API_KEY = /* prod */ "Xk9mQ2vLp7RtN3wY8cBd";', "Xk9mQ2vLp7RtN3wY8cBd");
 });

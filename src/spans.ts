@@ -66,9 +66,10 @@ export function isLearnable(f: Finding, value: string, minConfidence = 0.9): boo
  * The secret a finding covers, as the program reads it, so one secret written two ways gets one tag and is learned
  * once: its recorded value (a known value whichever way it was written, a literal split in pieces joined, a JSON
  * escape decoded); or the text it spans, read through a URL's percent-encoding (a userinfo's `Harbor2291%21x`, a
- * query's `%26`, `+` a blank), a double-quoted string's escapes (`"Ab\"cd9"`, `\u0041`), or a shell's backslashes
- * outside quotes (`Harbor2291\!x`). (Not a single-quoted string's: a shell's has no escapes, a SQL one doubles its
- * quote, and `'a''b'` is `ab` to a shell.)
+ * query's `%26`, `+` a blank), a double-quoted string's escapes (JSON's, `"Ab\"cd9"`, `\u0041`, or else a shell's,
+ * `"Ab\$cd9"`), a single-quoted one's quote written inside it (YAML's and SQL's `'Ab''cd9'`, a shell's `'Ab'\''cd9'`,
+ * JavaScript's and Python's `'Ab\'cd9'`), or a shell's backslashes outside quotes (`Harbor2291\!x`, `Ab\ cd9`).
+ * (A single-quoted string's other backslashes stay: a shell's has no escapes.)
  */
 export function secretValue(text: string, f: { start: number; end: number; value?: string }): string {
 	if (f.value !== undefined) return f.value;
@@ -85,9 +86,16 @@ export function secretValue(text: string, f: { start: number; end: number; value
 	if (raw.includes("\\") && /"$/.test(before)) {
 		try {
 			return JSON.parse(`"${raw}"`);
-		} catch {} // not JSON's escapes: the text as it is
+		} catch {} // not JSON's escapes: a shell's, or the text as it is
+		return raw.replace(/\\([$`"\\])/g, "$1");
 	}
-	if (/\\[^\w\s]/.test(raw) && !/["'`]$/.test(before)) return raw.replace(/\\([^\w\s])/g, "$1");
+	if (/'$/.test(before) && raw.includes("'")) {
+		// (`\'` is no shell's, whose single quotes hold no escapes: a language's that has them, `\\` included.)
+		if (/'\\''/.test(raw)) return raw.replace(/'\\''/g, "'");
+		if (/\\'/.test(raw)) return raw.replace(/\\(['\\])/g, "$1");
+		return raw.replace(/''/g, "'");
+	}
+	if (/\\[^\w\n]/.test(raw) && !/["'`]$/.test(before)) return raw.replace(/\\([^\w\n])/g, "$1");
 	return raw;
 }
 
@@ -157,8 +165,32 @@ function preferNarrower(findings: Finding[]): Finding[] {
 	});
 }
 
+/**
+ * A token's character, where a format that stops before it may have been cut and its tail is still secret: a
+ * percent-encoded one too (a session token's `%2B` in a URL); a dot only inside a token (`hvs.…`), not a sentence's
+ * full stop.
+ */
+const TOKEN_CHAR = /^(?:[\w+/=~-]|\.\w|%[0-9A-Fa-f])/;
+
+/**
+ * Whether `f`, starting with or inside a format's token `token`, runs past it only by reading on into what follows it
+ * (`ghp_…;git push`, `ghp_…&q=foo`, `ghp_…#top`): an unquoted value read to the next blank. The format's regex bounds
+ * the token, so the rest is the text after it, not more of the secret. (A finding that starts before the token, a
+ * quote or a prefix, or a token that stops before a token character, may have been cut: those widen.)
+ */
+function runsPastToken(text: string | undefined, token: Finding, f: Finding): boolean {
+	return (
+		text !== undefined &&
+		layerOf(token.rule) === "format" &&
+		token.confidence > f.confidence &&
+		f.start >= token.start &&
+		f.end > token.end &&
+		!TOKEN_CHAR.test(text.slice(token.end, token.end + 3))
+	);
+}
+
 /** Overlapping findings as one span each, every field but the span the most confident one's. */
-function union(findings: Finding[]): Finding[] {
+function union(findings: Finding[], text?: string): Finding[] {
 	const sorted = [...findings].sort((a, b) => a.start - b.start || b.end - a.end);
 	const out: Finding[] = [];
 	for (const f of sorted) {
@@ -166,6 +198,11 @@ function union(findings: Finding[]): Finding[] {
 		const last = out.at(-1);
 		if (!last || f.start >= last.end) {
 			out.push({ ...f });
+			continue;
+		}
+		if (runsPastToken(text, last, f)) continue;
+		if (runsPastToken(text, f, last)) {
+			out[out.length - 1] = { ...f };
 			continue;
 		}
 		const end = Math.max(last.end, f.end);
@@ -228,12 +265,51 @@ export function trimmedToValue(text: string, f: Finding): Finding {
 	}
 	if (end - start > 1 && /[,;]/.test(text[end - 1]) && /^[ \t]+[A-Za-z_][\w.-]*=/.test(text.slice(end, end + 80)))
 		end--;
+	else if (layerOf(f.rule) === "named" && !/["'`]/.test(q ?? "")) end = start + nextSetting(text.slice(start, end));
 	return start === f.start && end === f.end ? f : { ...f, start, end };
+}
+
+/**
+ * Settings that end an unquoted value read to the next blank: `;`, `,` or `&`, a name of a word's shape (lower case,
+ * upper case or camel case, at least two letters), `=` and a plain value, to the end (`;username=bob`,
+ * `,DB_HOST=db,DB_PORT=5432`, `&page=2&sort=desc`). A password's own punctuation seldom reads that way to its end
+ * (`86)68/C{,C=wyhJH9`, `Nakp&nDiqWJ-K=nW`).
+ */
+const SETTINGS_AFTER =
+	/[;,&](?=[\w.-]*[A-Za-z][\w.-]*[A-Za-z])(?:[a-z][a-z0-9]*(?:[_.-][a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*|[a-z]+(?:[A-Z][a-z0-9]+)+)=[\w.:/@+-]*(?=[;,&]|$)/y;
+
+/**
+ * Where an unquoted value read to the next blank ends at the settings after it of a list it is in, with no blank
+ * between (`password=Kx9…;username=bob`, `A=…,B=db`): the value's length up to there, or all of it. Not in a value that
+ * is itself a list of settings or a URL (an `=` or `?` before), whose own separators these are (`DSN=host=db;password=…`),
+ * and not after a value too short to be one.
+ */
+const readsAsName = (setting: string) =>
+	naturalness(
+		setting
+			.slice(1, setting.indexOf("="))
+			.replace(/[_.-]+/g, " ")
+			.toLowerCase(),
+	) > 0;
+
+function nextSetting(value: string): number {
+	const list = value.search(/=+[^=;,&]|\?|:\/\//);
+	const separators = /[;,&]/g;
+	for (let m; (m = separators.exec(value)) && (list < 0 || m.index < list);) {
+		if (m.index < 6) continue;
+		let at = m.index;
+		SETTINGS_AFTER.lastIndex = at;
+		// (A setting's name reads as words, `username`, `DB_HOST`; a random password's `;jAnr=` or `;uKj=` doesn't.)
+		for (let s; at < value.length && (s = SETTINGS_AFTER.exec(value)) && readsAsName(s[0]);)
+			at = SETTINGS_AFTER.lastIndex;
+		if (at === value.length) return m.index;
+	}
+	return value.length;
 }
 
 /** Findings merged into one span each, sorted; with `text`, kept off escape sequences. (The inputs aren't changed.) */
 export function merge(findings: Finding[], text?: string): Finding[] {
-	return union(preferNarrower(text ? findings.map((f) => onEscapes(text, f)) : findings));
+	return union(preferNarrower(text ? findings.map((f) => onEscapes(text, f)) : findings), text);
 }
 
 /** The first of `sorted` (merged, sorted by start) that ends after `start`, by binary search. */

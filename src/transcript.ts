@@ -1,10 +1,10 @@
 /**
  * Redacting a whole transcript or request body: any JSON value, typically a list of chat messages in
- * the Anthropic or OpenAI format. Two passes:
+ * the Anthropic, OpenAI or Gemini format. Two passes:
  *
  * 1. Every string is scanned, with the command or path of the tool call that produced it as a hint
- *    (a `tool_result` is matched to its `tool_use` by id), and every confident finding is learned as a
- *    known value.
+ *    (a `tool_result` is matched to its `tool_use` by id, a Gemini `functionResponse` to its `functionCall` too), and
+ *    every confident finding is learned as a known value.
  * 2. Every string is redacted, so a secret found once (`API_KEY=…` in a `cat .env`) is also hidden where
  *    it appears with no context at all (the model echoing it, a later `curl` using it).
  *
@@ -25,20 +25,26 @@ import { isLearnable, isNeverSecretShape, loginPassword, merge, secretValue } fr
 import { occurrences } from "./repeats.ts";
 import { isCredentialName } from "./names.ts";
 import { isNamedSecret } from "./named.ts";
+import { KnownValues } from "./known.ts";
 import type { Finding, Guessing, Hint } from "./types.ts";
 
 /** Keys whose values are IDs the provider minted (`toolu_01Ab…`, `chatcmpl-B9…`): one token, no spaces. */
-const ID_KEYS = new Set(["id", "tool_use_id", "tool_call_id", "call_id"]);
+const ID_KEYS = new Set(["id", "tool_use_id", "tool_call_id", "call_id", "file_id"]);
 /** Keys whose values are opaque blobs the provider signed or encrypted, which no one reads. */
 const OPAQUE_KEYS = new Set(["signature", "thoughtSignature", "thought_signature", "encrypted_content"]);
-/** Keys whose values are a short enum or a model name (`assistant`, `end_turn`, `image/png`, `claude-sonnet-4-5-20250929`). */
+/**
+ * Keys whose values are a short enum, a model's or a tool's name (`assistant`, `end_turn`, `image/png`,
+ * `claude-sonnet-4-5-20250929`, `run_shell_command`).
+ */
 const ENUM_KEYS = new Set([
 	"type",
 	"role",
 	"model",
+	"name",
 	"stop_reason",
 	"finish_reason",
 	"media_type",
+	"mimeType",
 	"object",
 	"status",
 	"mime_type",
@@ -118,9 +124,19 @@ function isEnvelope(o: Record<string, unknown>): boolean {
 		(typeof o.type === "string" && BLOCK_TYPES.has(o.type)) ||
 		typeof o.tool_call_id === "string" ||
 		typeof o.tool_use_id === "string" ||
+		// (OpenAI Responses' items of a tool call and its output, whatever the tool: `shell_call`, `custom_tool_call_output`.)
+		typeof o.call_id === "string" ||
 		(typeof o.object === "string" && typeof o.model === "string")
 	);
 }
+
+/**
+ * Keys of an envelope's object that hold its blocks: a tool result's `content` (MCP's `resource` and `resource_link`
+ * blocks, a server tool's `bash_code_execution_result`), a document's `source`, an MCP resource block's `resource`, a
+ * Responses output's `output`. An object there is a block too when it has a `type` of an enum's shape, whatever the type
+ * (an allow-list of them falls behind every new tool), and so is an MCP `resource`, which has none.
+ */
+const BLOCK_KEYS = new Set(["content", "source", "resource", "output"]);
 
 /** Keys of tool inputs that hold what a tool writes to the file at its path (`Write`, `create_file`, `str_replace`). */
 const CONTENT_KEYS = new Set(TOOL_CONTENT_KEYS);
@@ -234,6 +250,8 @@ interface Leaf {
 	isKey?: boolean;
 	/** For text decoded from base64: the encoding of its redacted form back. */
 	encode?: (redacted: string) => string;
+	/** Set when its object says nothing more about it than its text does (see Scope.lone): detected alone. */
+	lone?: boolean;
 }
 
 /** Hints for tool results, from the tool calls that produced them, by tool call id. */
@@ -244,7 +262,8 @@ function toolHints(value: unknown): Map<string, Hint> {
 		const o = v as Record<string, unknown>;
 		// Anthropic: {type: "tool_use", id, input: {...}}. OpenAI: {id, type: "function", function: {arguments: "<json>"}}.
 		// OpenAI Responses: {type: "function_call", call_id, arguments}; {type: "local_shell_call", call_id, action: {command: [...]}}.
-		let input: unknown = o.input ?? o.action ?? o.arguments;
+		// Gemini: {functionCall: {id, name, args: {...}}} (the id is the client's: Gemini CLI and pydantic-ai send one).
+		let input: unknown = o.input ?? o.action ?? o.arguments ?? o.args;
 		const fn =
 			o.function && typeof o.function === "object" ? (o.function as Record<string, unknown>).arguments : undefined;
 		if (fn !== undefined && fn !== null) input = fn;
@@ -314,11 +333,13 @@ function base64Text(
 	x: string,
 ): { text: string; encode: (redacted: string) => string } | undefined {
 	const uri = BASE64_URI.exec(x);
-	const textual = uri
-		? TEXT_MEDIA_TYPE.test(uri[1])
-		: key === "data" && typeof o.media_type === "string" && TEXT_MEDIA_TYPE.test(o.media_type.split(";")[0].trim());
+	const type = uri
+		? uri[1]
+		: key === "data" && typeof o.media_type === "string"
+			? o.media_type.split(";")[0].trim()
+			: "";
 	const payload = uri ? uri[3] : x;
-	const text = textual ? decodeBase64Text(payload) : undefined;
+	const text = TEXT_MEDIA_TYPE.test(type) ? decodeBase64Text(payload) : undefined;
 	return text === undefined
 		? undefined
 		: { text, encode: (redacted) => (uri ? `data:${uri[1]}${uri[2]}` : "") + encodeBase64Text(redacted, payload) };
@@ -338,6 +359,13 @@ const TOOL_INPUT_KEYS = new Set(["input", "arguments", "parameters", "args", "ac
 interface Scope {
 	hint: Hint;
 	free: boolean;
+	/** Set under an envelope's BLOCK_KEYS, and inside what is there: an object here with an enum's `type` is a block. */
+	block?: boolean;
+	/**
+	 * Set for a member of an envelope whose other members are structure (`{role, content}`, `{type: "text", text}`), under
+	 * a key that names no credential: its object, serialized, adds nothing to what its text says alone.
+	 */
+	lone?: boolean;
 	decoded?: { text: string; encode: (redacted: string) => string };
 }
 
@@ -392,18 +420,23 @@ function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean
 				hint,
 				key,
 				parent,
+				lone: scope.lone,
 			});
 			return;
 		}
 		if (!v || typeof v !== "object" || repeat || Array.isArray(v)) return;
 		const o = v as Record<string, unknown>;
 		if (keepThinking && (o.type === "thinking" || o.type === "redacted_thinking")) return "skip";
-		// A tool result inherits the hint of its call; OpenAI tool messages carry `tool_call_id`.
+		// A tool result inherits the hint of its call; OpenAI tool messages carry `tool_call_id`, a Responses output
+		// (`…_call_output`) its call's `call_id`.
 		const id = (o.tool_use_id ??
 			o.tool_call_id ??
-			(o.type === "function_call_output" || o.type === "local_shell_call_output" ? o.call_id : undefined)) as
-			string | undefined;
-		const hint = typeof id === "string" && hints.has(id) ? hints.get(id)! : scope.hint;
+			(typeof o.type === "string" && o.type.endsWith("_call_output") ? o.call_id : undefined)) as string | undefined;
+		let hint = typeof id === "string" && hints.has(id) ? hints.get(id)! : scope.hint;
+		// Gemini's `functionResponse`: its call's, by id. (One with no id gets none: the clients sending these requests,
+		// Gemini CLI and pydantic-ai, give each call an id.)
+		const gemini = key === "functionCall" || key === "functionResponse";
+		if (key === "functionResponse" && typeof o.id === "string" && hints.has(o.id)) hint = hints.get(o.id)!;
 		// Base64 media: `{type: "base64", media_type, data}`, `image_url: {url: "data:…"}`.
 		const media =
 			o.type === "base64" ||
@@ -413,7 +446,19 @@ function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean
 			o.type === "document";
 		// A tool input that writes a file: its content is judged as that file (`.env` content as a secret file).
 		const writes = TOOL_PATH_KEYS.map((k) => o[k]).find((x) => typeof x === "string") as string | undefined;
-		const envelope = !scope.free && isEnvelope(o);
+		const envelope =
+			!scope.free &&
+			(isEnvelope(o) ||
+				gemini ||
+				(!!scope.block && (typeof o.type === "string" ? ENUM_VALUE.test(o.type) : key === "resource")));
+		// (An object's `input`, `arguments` or `action` is a tool's input when the object is a tool call, which has a name or
+		// a type: a Responses request's `input` is its list of messages.)
+		const call = typeof o.name === "string" || typeof o.type === "string";
+		// (How many members are text that isn't structure: one alone is the envelope's text, a message's or a block's.)
+		const texts = envelope
+			? Object.entries(o).filter(([k, x]) => (typeof x === "string" || typeof x === "number") && !isStructure(k, x))
+					.length
+			: Infinity;
 		// (An attached file's name: Anthropic's `document` block, OpenAI's `input_file` part and Chat Completions' `file`.)
 		const name =
 			!hint.path && (o.type === "document" || o.type === "input_file" || "file_data" in o)
@@ -453,7 +498,13 @@ function collect(value: unknown, hints: Map<string, Hint>, keepThinking: boolean
 				(typeof x === "string" && MEDIA_URI.test(x))
 			)
 				return undefined;
-			return { hint: childHint, free: scope.free || TOOL_INPUT_KEYS.has(k) };
+			return {
+				hint: childHint,
+				free: scope.free || (call && TOOL_INPUT_KEYS.has(k)),
+				// (Down through what a block holds: a shell output's `{stdout, outcome: {type: "exit"}}`.)
+				block: envelope ? BLOCK_KEYS.has(k) : scope.block,
+				lone: texts <= 1 && !isCredentialName(k),
+			};
 		};
 	});
 	return leaves;
@@ -588,24 +639,28 @@ export function redactValue<T>(
 	const found = (leaf: Leaf): Finding[] => {
 		const alone = redactor.detect(leaf.text, { hint: leaf.hint, guessing: options.guessing });
 		const ctx =
-			leaf.hint.command === undefined && leaf.hint.path === undefined ? leafContext(leaf, serialized) : undefined;
+			!leaf.lone && leaf.hint.command === undefined && leaf.hint.path === undefined
+				? leafContext(leaf, serialized)
+				: undefined;
 		if (!ctx) return alone;
 		let inParent = inParents.get(ctx.text);
 		if (!inParent) inParents.set(ctx.text, (inParent = redactor.detect(ctx.text, { guessing: options.guessing })));
-		const end = ctx.at + leaf.text.length;
+		const end = ctx.at + ctx.length;
 		const mine = inParent
 			.filter((f) => f.start >= ctx.at && f.end <= end)
-			.map((f) => ({ ...f, start: f.start - ctx.at, end: f.end - ctx.at }));
+			.map((f) => ({ ...f, start: ctx.toLeaf(f.start - ctx.at, false), end: ctx.toLeaf(f.end - ctx.at, true) }));
 		return mine.length ? merge([...alone, ...mine]) : alone;
 	};
 	const judged = (leaf: Leaf) => {
-		const ctx = leafContext(leaf, serialized);
+		// (Placed once a finding is to be judged: most leaves have none.)
+		let ctx: LeafContext | undefined | null = null;
 		// (The key names only a finding that is the whole leaf; inside a longer text, the name is the text's own.)
 		return (f: Finding) => {
+			if (ctx === null) ctx = leafContext(leaf, serialized);
 			const name = f.name ?? (f.start === 0 && f.end === leaf.text.length ? leaf.key : undefined);
 			const g = name ? { ...f, name } : f;
 			return ctx
-				? redactor.judge(ctx.text, { ...g, start: f.start + ctx.at, end: f.end + ctx.at })
+				? redactor.judge(ctx.text, { ...g, start: ctx.at + ctx.toContext(f.start), end: ctx.at + ctx.toContext(f.end) })
 				: redactor.judge(leaf.text, g);
 		};
 	};
@@ -613,10 +668,13 @@ export function redactValue<T>(
 	// this value's other leaves only.
 	// (Learned all at once after the pass: adding values rebuilds the short-value matcher, once per batch.)
 	const learned: [string, string][] = [];
+	const first: Finding[][] = [];
 	for (const leaf of leaves) {
 		const keep = judged(leaf);
 		if (isNamedKeySecret(leaf, keep) && !isNeverSecretShape(leaf.text)) learned.push([leaf.text, leaf.key]);
-		for (const f of found(leaf).filter(keep)) {
+		const here = found(leaf);
+		first.push(here);
+		for (const f of here.filter(keep)) {
 			const secret = secretValue(leaf.text, f);
 			if (!isLearnable(f, secret)) continue;
 			learned.push([secret, f.kind]);
@@ -627,12 +685,19 @@ export function redactValue<T>(
 	const remember = options.learn !== false;
 	if (remember) for (const [value, label] of learned) redactor.addKnown(value, label);
 	const seen = remember ? undefined : new Map(learned.map(([value, kind]) => [value, { kind, value }]));
+	// (A leaf is detected again only where a value learned here turns up in it, in any form: elsewhere, what pass 1 found
+	// is what detection finds now.)
+	let fresh: KnownValues | undefined;
+	if (remember && learned.length) {
+		fresh = new KnownValues();
+		for (const [value, label] of learned) fresh.add(value, label);
+	}
 	// Pass 2: redact, into one deep copy of the value.
 	let out: unknown = leaves.length ? cloneJson(value) : value;
 	const findings: TranscriptFinding[] = [];
 	// (Object keys hidden: the key's text, and what it is replaced by.)
 	const renames = new Map<string, string>();
-	for (const leaf of leaves) {
+	for (const [i, leaf] of leaves.entries()) {
 		const keep = judged(leaf);
 		if (isNamedKeySecret(leaf, keep)) {
 			findings.push({
@@ -654,7 +719,7 @@ export function redactValue<T>(
 			);
 			continue;
 		}
-		const here = found(leaf).filter(keep);
+		const here = (fresh?.find(leaf.text).length ? found(leaf) : first[i]).filter(keep);
 		const r = redactor.apply(leaf.text, seen?.size ? merge([...here, ...occurrences(leaf.text, seen, here)]) : here);
 		if (!r.findings.length) continue;
 		for (const f of r.findings) findings.push({ ...f, path: leaf.path, ...(leaf.isKey ? { inKey: true } : {}) });
@@ -677,15 +742,55 @@ export function redactValue<T>(
 }
 
 /**
- * The leaf's object serialized, or its list of strings (an argv: `["docker", "login", "-p", "…"]`), and where the leaf's
- * text starts in it; undefined when it can't be placed exactly.
+ * Where a leaf's text stands in its context: it starts at `at`, and is `length` long there, as JSON writes it; with
+ * positions mapped between the two (a quote, a backslash or a control character is written escaped:
+ * `{"name":"DB_PASSWORD","value":"Tr0ub4dor\\"x9…"}`).
  */
-function leafContext(
-	leaf: Leaf,
-	serialized: WeakMap<object, string | undefined>,
-): { text: string; at: number } | undefined {
+interface LeafContext {
+	text: string;
+	at: number;
+	length: number;
+	/** A position in the leaf's text, in the written text (from `at`). */
+	toContext(i: number): number;
+	/** A position in the written text (from `at`), in the leaf's text: inside an escape, its start, or with `after`, its end. */
+	toLeaf(i: number, after: boolean): number;
+}
+
+/** A leaf's text placed at `at` in its context, as JSON writes it (`written`, without its quotes). */
+function placed(text: string, context: string, at: number, written: string): LeafContext {
+	if (written.length === text.length)
+		return { text: context, at, length: text.length, toContext: (i) => i, toLeaf: (i) => i };
+	// (Where each character is written: a code point as JSON writes it, a valid surrogate pair as it is, a lone one escaped.)
+	const starts: number[] = [];
+	let w = 0;
+	for (const ch of text) {
+		starts.push(w);
+		if (ch.length === 2) starts.push(w + 1);
+		w += JSON.stringify(ch).length - 2;
+	}
+	starts.push(w);
+	return {
+		text: context,
+		at,
+		length: written.length,
+		toContext: (i) => starts[i],
+		// (The last leaf position written at or before `i`; with `after`, the first at or after it.)
+		toLeaf: (i, after) => {
+			const j = starts.findLastIndex((s) => s <= i);
+			return after && starts[j] < i ? j + 1 : j;
+		},
+	};
+}
+
+/**
+ * The leaf's object serialized, or its list of strings (an argv: `["docker", "login", "-p", "…"]`), and where the leaf's
+ * text stands in it; undefined when it can't be placed exactly.
+ */
+function leafContext(leaf: Leaf, serialized: WeakMap<object, string | undefined>): LeafContext | undefined {
 	const parent = leaf.parent;
-	if (!parent || JSON.stringify(leaf.text) !== `"${leaf.text}"`) return undefined;
+	if (!parent) return undefined;
+	const literal = JSON.stringify(leaf.text);
+	const written = literal.slice(1, -1);
 	if (Array.isArray(parent)) {
 		const index = leaf.path.at(-1);
 		if (typeof index !== "number" || parent.length > 200 || !parent.every((x) => typeof x === "string"))
@@ -693,7 +798,9 @@ function leafContext(
 		if (!serialized.has(parent)) serialized.set(parent, JSON.stringify(parent));
 		const text = serialized.get(parent)!;
 		const at = 1 + parent.slice(0, index).reduce((n, x) => n + JSON.stringify(x).length + 1, 0) + 1;
-		return text.length <= 20_000 && text.slice(at, at + leaf.text.length) === leaf.text ? { text, at } : undefined;
+		return text.length <= 20_000 && text.slice(at, at + written.length) === written
+			? placed(leaf.text, text, at, written)
+			: undefined;
 	}
 	if (leaf.key === undefined) return undefined;
 	// (Once per object: a big object's leaves share it. Past 20,000 characters, or with a cycle, no context.)
@@ -719,9 +826,9 @@ function leafContext(
 	}
 	const text = serialized.get(parent);
 	if (text === undefined) return undefined;
-	const needle = `${JSON.stringify(leaf.key)}:"${leaf.text}"`;
+	const needle = `${JSON.stringify(leaf.key)}:${literal}`;
 	const i = text.indexOf(needle);
-	return i < 0 ? undefined : { text, at: i + needle.length - 1 - leaf.text.length };
+	return i < 0 ? undefined : placed(leaf.text, text, i + needle.length - 1 - written.length, written);
 }
 
 /**
