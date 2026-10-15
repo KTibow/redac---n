@@ -1060,7 +1060,7 @@ const USER_PASSWORD = /^(?:curl|curlie|xh|xhs|http|https|httpie|wget|grpcurl|hey
  */
 function cliPasswords(text: string, out: Finding[]) {
 	if (
-		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|mkpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
+		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body|proxy-user)|\/p:|password[ \t]|sshpass|htpasswd|mkpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
 			text,
 		)
 	)

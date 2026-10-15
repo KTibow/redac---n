@@ -37,6 +37,8 @@ const SECRET_FILE = [
 	// Password and PIN files: Ansible's vault_pass, `db_password.txt`, `~/.pin`, Docker and Compose secret files, pppd's.
 	/^\.?vault[_-]?pass(?:word)?(?:\.txt)?$/i,
 	/(?:^|[_.-])(?:pass(?:word|wd|phrase|code)?|secret|token|pin(?:[_-]?code)?)(?:\.txt)?$/i,
+	// (A key's file, `secret_key.txt`, `api-key`; not a jq filter's `.private_key`.)
+	/^(?:\w[\w-]*[_-])?(?:secret|api|private|access|auth|master|signing|encryption)[_-]?key(?:\.txt)?$/i,
 	/^(?:pap|chap)-secrets(?:[-_.][\w-]+)?$/,
 	/^(_netrc|rclone\.conf|cookies\.txt|keystore\.properties|wp-config\.php|\.?htpasswd|redis\.conf|sentinel\.conf|users\.acl|keyfile|userlist\.txt)$/i,
 	/(^|[-_.])secrets?(\.[\w-]{1,40})?\.(json|ya?ml|toml|env|ini|properties)$/i,
@@ -152,7 +154,7 @@ const SECRET_TOOLS = new RegExp(
 );
 /** What a command reads or calls that is a secret, wherever it sits in the command: a random device, a language's generator. */
 const SECRET_SOURCES =
-	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto\.randomBytes/;
+	/\/dev\/u?random\b|get_random_secret_key|secrets\.token_(?:hex|urlsafe|bytes)|SecureRandom\.(?:hex|base64|urlsafe_base64)|crypto(?:["']\))?\.randomBytes|os\.urandom\(|\brandom_bytes\(|openssl_random_pseudo_bytes/;
 
 /** A shell's name: `bash`, `sh`, `zsh`. */
 export const SHELL = /^(?:ba|z|da|k)?sh$/;
@@ -377,6 +379,14 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 		const k = words.findIndex((w) => /^\/[ck]$/i.test(w.text));
 		return k > 0 ? from(words, k + 1) : undefined;
 	}
+	// `su - app -c 'cat .env'`, and runuser's twin of it, `runuser -l app -c …` (no `-u`, so no wrapper): the command
+	// string `-c` (`--command`) gives, as a shell's.
+	const runuser = programName(c.words.find((w) => !/^[A-Za-z_]\w*=/.test(w.text))) === "runuser";
+	if (program === "su" || runuser) {
+		const own = program === "su" ? words : c.words;
+		const k = own.findIndex((w) => /^(?:-c|--command)$/.test(w.text));
+		return k > 0 ? own[k + 1] && wordSource(own[k + 1]) : undefined;
+	}
 	const sub = subcommand(words);
 	if (/^(?:kubectl|oc)$/.test(program) && sub[0]?.text === "exec") {
 		const dashes = sub.findIndex((w) => w.text === "--");
@@ -393,10 +403,19 @@ function innerCommand(c: ShellCommand, text: string): Source | undefined {
 					: sub
 				: undefined;
 	if (exec?.[0]?.text === "exec") return from(exec, afterOptions(exec, 1, VALUE_OPTIONS["docker exec"]) + 1);
+	// `docker compose run [options] SERVICE [COMMAND…]`, a one-off container of the service.
+	if (exec?.[0]?.text === "run" && exec !== sub)
+		return from(exec, afterOptions(exec, 1, VALUE_OPTIONS["docker run"]) + 1);
 	// `docker run [options] IMAGE [COMMAND…]`, `kubectl run NAME --image=IMAGE [--command] -- …`: the command after the
 	// image; with none, the arguments go to the image's entrypoint, a tool's for a tool's image (`curlimages/curl -b …`).
 	if (/^(?:docker|podman|nerdctl)$/.test(program) && sub[0]?.text === "run") {
 		const k = afterOptions(sub, 1, VALUE_OPTIONS["docker run"]);
+		// (`--entrypoint cat IMAGE /app/.env`: the words after the image are the given program's arguments.)
+		const given = sub.findIndex((w, i) => i < k && /^--entrypoint(?:=|$)/.test(w.text));
+		if (given > 0) {
+			const program = sub[given].text.includes("=") ? sub[given].text.slice(13) : sub[given + 1]?.text;
+			return program && k + 1 < sub.length ? entrypoint(program, sub[k + 1].start) : undefined;
+		}
 		const tool = ENTRYPOINT_TOOLS[imageName(sub[k]?.text ?? "")];
 		if (!tool || (k + 1 < sub.length && !sub[k + 1].text.startsWith("-"))) return from(sub, k + 1);
 		return k + 1 < sub.length ? entrypoint(tool, sub[k + 1].start) : undefined;
@@ -476,7 +495,7 @@ export function printsSecretFile(command: string): boolean {
  * variable or a substitution (`cat "$f"`, `cat $(find …)`, `echo "$line"`), a script's `open(…).read()`.
  */
 const PRINTER =
-	/-exec[ \t]+(?:cat|tac|head|tail|less|more|bat|nl)\b|\bxargs[ \t]+(?:-\S+[ \t]+)*(?:cat|tac|head|tail|less|more|bat|nl)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)/;
+	/-exec[ \t]+(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)\b|\bxargs[ \t]+(?:-\S+[ \t]+)*(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\(/;
 
 /**
  * A secret file printed by a route the pipeline reader doesn't follow: named to `find … -exec cat {}`, `xargs cat`, a
@@ -589,7 +608,8 @@ function readsSecretFile(c: ShellCommand): boolean {
 	const files = /^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
 		? searchedFiles(rest)
 		: rest.filter((t) => !t.startsWith("-"));
-	return files.some((t) => isSecretFile(t));
+	// (A glob's trailing wildcard, `cat .env*`, takes in the file it starts with.)
+	return files.some((t) => isSecretFile(t.replace(/[*?]+$/, "")));
 }
 
 /**
@@ -776,7 +796,11 @@ function printsCredential(c: ShellCommand): boolean {
 	const program = programName(words[0]);
 	const args = words.slice(1);
 	if (program === "printenv") return args.length === 1 && isCredentialName(args[0].text);
-	if (program !== "echo" && program !== "printf") return false;
+	// (A script given on the command line that prints a credential's variable: `python3 -c "print(os.environ['TOKEN'])"`,
+	// `node -e "console.log(process.env.TOKEN)"`.)
+	if (INTERPRETER.test(program) && PRINTS.test(line))
+		return [...line.matchAll(ENV_READ)].some((m) => isCredentialName(m[1] ?? m[2]));
+	if (program !== "echo" && program !== "printf" && !/^write-(?:host|output)$/i.test(program)) return false;
 	// (printf prints its format and its operands alike, `printf "Token: %s\n" "$TOKEN"`, `printf "$TOKEN"`; but `-v NAME`
 	// assigns what it would print and prints nothing.)
 	const values =
@@ -787,9 +811,18 @@ function printsCredential(c: ShellCommand): boolean {
 				: args.filter((w) => w.text !== "--");
 	// (A credential's variable printed alone, `echo $DB_PASSWORD`, or inside its words, `echo "token: $GITHUB_TOKEN"`.)
 	return values.some(
-		(v) => !v.literalEnd && [...v.text.matchAll(/\$\{?([A-Za-z_]\w*)\}?/g)].some((m) => isCredentialName(m[1])),
+		(v) =>
+			!v.literalEnd && [...v.text.matchAll(/\$(?:env:)?\{?([A-Za-z_]\w*)\}?/g)].some((m) => isCredentialName(m[1])),
 	);
 }
+
+/** Interpreters that run a script given on their command line. */
+const INTERPRETER = /^(?:python[\d.]*|node|deno|bun|ruby|perl|php)$/;
+/** What prints in those scripts. */
+const PRINTS = /\b(?:print|puts|console\.log|echo|say|process\.stdout\.write)\b/;
+/** A read of an environment variable in those scripts, by its name. */
+const ENV_READ =
+	/(?:os\.environ(?:\.get)?|os\.getenv|\bENV(?:\.fetch)?|\bgetenv|\$_ENV|\$ENV)\s*[[({]\s*["']([A-Za-z_]\w*)["']|process\.env\.([A-Za-z_]\w*)/g;
 
 /** How a command-line tool takes a password. */
 export interface ToolSpec {

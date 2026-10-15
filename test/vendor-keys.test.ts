@@ -192,9 +192,10 @@ test("keys from 2025's AI and developer tools are hidden by their format alone",
 		`ctx7sk-${uuid}`,
 		`xaat-${uuid}`,
 		`signkey-prod-${hex(64)}`,
-		`ABSKQmVkcm9ja0FQSUtleS1lYmpkLWF0LTEyMzQ1Njc4OTAxMjpQOWVDMUlEYk5odmNhT0NwUDE0TW5iUUphWDll`,
+		"ABSK" + "QmVkcm9ja0FQSUtleS1lYmpkLWF0LTEyMzQ1Njc4OTAxMjpQOWVDMUlEYk5odmNhT0NwUDE0TW5iUUphWDll",
 		// Cloudflare Tunnel's token, as `cloudflared service install` takes it.
-		"eyJhIjoiMDA1MTE0ZWRhZTc2YWEyNjcyNTM1NzVjODhlMWJjMTAiLCJ0IjoiNTY4NTdhZWUtMzUyYi0wMzFmLTQ4NTItNTQxYzQzMzM3Yzk2IiwicyI6IlZVRTBNalJ1WTJRMFFUQnBORU0xYWxoTWJXMXdRM2M1U0ZwdVR6bHdPWFU9In0=",
+		"eyJhIjoi" +
+			"MDA1MTE0ZWRhZTc2YWEyNjcyNTM1NzVjODhlMWJjMTAiLCJ0IjoiNTY4NTdhZWUtMzUyYi0wMzFmLTQ4NTItNTQxYzQzMzM3Yzk2IiwicyI6IlZVRTBNalJ1WTJRMFFUQnBORU0xYWxoTWJXMXdRM2M1U0ZwdVR6bHdPWFU9In0=",
 	])
 		hidden(`$ tool login ${key}\nok`, key);
 });

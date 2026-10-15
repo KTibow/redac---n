@@ -686,7 +686,8 @@ const WRAPPERS = new Map<string, { values?: string; long?: RegExp; operands?: nu
 		{ values: "ugCDhprtTUR", long: /^--(?:user|group|chdir|host|prompt|role|type|close-from|other-user|chroot)$/ },
 	],
 	["doas", { values: "uC" }],
-	["runuser", { values: "ugl", long: /^--(?:user|group)$/ }],
+	// (`runuser -u app cmd`; with no `-u` it is su's twin, `runuser -l app -c 'cmd'`, and its `-l` is `--login`.)
+	["runuser", { values: "ug", long: /^--(?:user|group)$/ }],
 	["env", { values: "uCS", long: /^--(?:unset|chdir|split-string)$/ }],
 	["timeout", { values: "sk", long: /^--(?:signal|kill-after)$/, operands: 1 }],
 	["nice", { values: "n", long: /^--adjustment$/ }],

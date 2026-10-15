@@ -761,3 +761,46 @@ test("in a secret file a session's ID is hidden under anyone's name, a terminal'
 		"TERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nITERM_SESSION_ID=w0t0p0:6F0E2B1C-8A4D-4E5F-9B3A-2C7D1E0F4A5B\nWT_SESSION=3c1d2e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\nXDG_SESSION_ID=2\nDESKTOP_SESSION=ubuntu\nSESSION_STORE=redis\n";
 	for (const line of listing.trim().split("\n")) kept(listing, line, { command: "env" });
 });
+
+test("a command run as another user, in a one-off container or as an image's given entrypoint prints what that command prints", () => {
+	const env = "APP_NAME=shop\nSALT=k2Lm9Qx\nPORT=8080\n";
+	for (const command of [
+		"su -c 'cat .env' app",
+		"su - app -c 'cat ~/.env'",
+		"runuser -l app -c 'cat .env'",
+		"docker compose run --rm web cat .env",
+		"docker-compose run -e X=1 web cat .env",
+		"docker run --rm --entrypoint cat img /app/.env",
+		"docker run --rm --entrypoint=cat img /app/.env",
+		"cat .env*",
+		"find . -maxdepth 2 -name .env | xargs grep SALT",
+		"find . -name .env -exec grep -H SALT {} +",
+		`node -e "console.log(require('fs').readFileSync('.env', 'utf8'))"`,
+	])
+		hidden(env, "k2Lm9Qx", { command });
+	hidden('su - backup -c "mysqldump -u root -pS3cr3tPassw0rdX1 appdb > /backup/app.sql"', "S3cr3tPassw0rdX1");
+});
+
+test("a script that prints a generated key or a credential's variable prints a credential", () => {
+	const hex = "9f2b7c1d4e8a03b56c7d9e1f2a4b6c8d0e3f5a7b9c1d2e4f6a8b0c3d5e7f9a1b";
+	for (const command of [
+		`node -p "require('crypto').randomBytes(32).toString('hex')"`,
+		`python3 -c "import os; print(os.urandom(32).hex())"`,
+		`php -r "echo bin2hex(random_bytes(32));"`,
+	])
+		hidden(`${hex}\n`, hex, { command });
+	for (const command of [
+		"Write-Host $env:DB_PASSWORD",
+		`python3 -c "import os; print(os.environ['DB_PASSWORD'])"`,
+		`node -e "console.log(process.env.DB_PASSWORD)"`,
+	])
+		hidden("Hx7mQ2pLvRt9zK", "Hx7mQ2pLvRt9zK", { command });
+	kept("8080", "8080", { command: `python3 -c "import os; print(os.environ['PORT'])"` });
+});
+
+test("a key's bare file is a secret file by its name; a jq filter's key name is no file", () => {
+	for (const path of ["secret_key.txt", "api-key.txt", "run/master_key", "/etc/app/signing-key"])
+		assert.ok(isSecretFile(path), path);
+	for (const path of [".private_key", "keys.txt", "monkey.txt"]) assert.ok(!isSecretFile(path), path);
+	hidden("curl -sS --proxy-user svc_build:Tz4nQ8vLm2Xe https://registry.npmjs.org/-/ping", "Tz4nQ8vLm2Xe");
+});
