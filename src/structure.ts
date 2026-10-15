@@ -834,12 +834,14 @@ function toolPasswords(words: ShellWord[], add: AddPassword): ShellWord[] | unde
 		if (flags.includes("b") && pw) addWord(pw, pw.text);
 		return;
 	}
-	if (/^(?:http|https|httpie)$/.test(name)) {
-		// HTTPie: `-a user:password` (the part after the colon, unless it's the docs' `username:password`; `-a user`
-		// alone prompts), or with `-A bearer` the whole `-a` argument.
+	if (/^(?:http|https|httpie|xh|xhs|hey)$/.test(name)) {
+		// HTTPie and its clone xh: `-a user:password` (the part after the colon, unless it's the docs' `username:password`;
+		// `-a user` alone prompts), or with `-A bearer` the whole `-a` argument. hey takes `-a user:password` too (its
+		// `-A` is an Accept header).
 		const bearer =
-			rest.some((w, i) => /^(?:-A|--auth-type)$/.test(w.text) && /^bearer$/i.test(rest[i + 1]?.text ?? "")) ||
-			rest.some((w) => /^--auth-type=bearer$/i.test(w.text));
+			name !== "hey" &&
+			(rest.some((w, i) => /^(?:-A|--auth-type)$/.test(w.text) && /^bearer$/i.test(rest[i + 1]?.text ?? "")) ||
+				rest.some((w) => /^--auth-type=bearer$/i.test(w.text)));
 		for (let i = 0; i < rest.length; i++) {
 			const eq = /^--auth=/.exec(rest[i].text);
 			const word = eq ? rest[i] : /^(?:-a|--auth)$/.test(rest[i].text) ? rest[i + 1] : undefined;
@@ -1060,7 +1062,7 @@ const USER_PASSWORD = /^(?:curl|curlie|xh|xhs|http|https|httpie|wget|grpcurl|hey
  */
 function cliPasswords(text: string, out: Finding[]) {
 	if (
-		!/[\s"']-[upaPwUbN]|--(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|mkpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
+		!/[\s"']-[upaPwUbN]|--(?:[a-z]+-)?(?:user|pass|auth|pw|body)|\/p:|password[ \t]|sshpass|htpasswd|mkpasswd|rabbitmqctl|steamcmd|sqlplus|poetry|wandb|beeline|keytool|vault[ \t]+login|pulumi|openssl[ \t]+passwd|-a |\||<<</i.test(
 			text,
 		)
 	)

@@ -73,6 +73,19 @@ test("a program's own password option is read, catalogued or not", () => {
 	hidden("Use -u admin:Xk9mQ2pL to log in", "Xk9mQ2pL");
 	kept("docker run --rm -u 1000:1000 -p 443:443 img", "1000:1000");
 	hidden("curl -u admin:48213579 https://x.example", "48213579");
+	// A proxy's password, and HTTPie's `-a user:password` in its clone xh and in hey.
+	for (const line of [
+		"curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com",
+		"curl --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"wget --proxy-user=u:Hx7mQ2pL9vRt https://x.com",
+		"xh -a admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"xhs --auth admin:Hx7mQ2pL9vRt https://api.example.com/x",
+		"hey -a admin:Hx7mQ2pL9vRt -n 100 https://x.example.com",
+	])
+		hidden(line, "Hx7mQ2pL9vRt");
+	kept("curl --proxy-user proxyuser:Hx7mQ2pL9vRt -x http://proxy:8080 https://x.com", "proxyuser:");
+	kept("xh -a username:password https://pie.dev/basic-auth", "username:password");
+	kept("hey -n 100 -A application/json https://x.example.com", "application/json");
 });
 
 test("a password in a tool's own syntax is hidden: user%password, user/password@db, +login, -passout pass:, net use, device keys", () => {
