@@ -114,8 +114,12 @@ const PREFIXED = /(?:^|\n)[\w./@+-]{1,200}\.\w{1,10}[:-]\d{1,7}[:-]|(?:^|\n)@@ -
 const LINE_NUMBER = /^(?:[ \t]*\d{1,7}→| +\d{1,7}\t)/gm;
 const HAS_LINE_NUMBER = new RegExp(LINE_NUMBER.source, "m");
 
-/** A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). */
-export const PGPASS = /^[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
+/**
+ * A `.pgpass` line, `host:port:database:user:password` (`*` is a wildcard in the first four). Not a line of bytes in
+ * hex pairs, as `openssl x509 -text` prints a certificate's modulus (`f2:36:d0:9e:e7:…`).
+ */
+export const PGPASS =
+	/^(?![ \t]*(?:[0-9A-Fa-f]{2}:){5})[ \t]*[^:\s#][^:\s]*:(?:\d{1,5}|\*):[^:\s]+:[^:\s]+:([^\r\n]+?)\r?$/m;
 
 /** `grep -n` and `rg -n`: `path:12:` before a match, `path-13-` before a context line. */
 const GREP_PREFIX = /^([\w./@+-]{1,200}\.[\w]{1,10})[:-](\d{1,7})[:-]/gm;
