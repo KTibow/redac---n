@@ -229,7 +229,7 @@ measures what each adds and what each costs.
 
 1. **Values you gave it**, in every encoding output turns them into: JSON-, URL-, shell-, SQL- and HTML-escaped,
    hex, base64 at any offset, and cut short.
-2. **536 vendor token formats**: 137 maintained here and 399 from
+2. **542 vendor token formats**: 143 maintained here and 399 from
    [Betterleaks](https://github.com/betterleaks/betterleaks)' catalog (some vendors are in both).
 3. **Structure:** private keys (by their DER, under any PEM label), URL passwords, Authorization headers, cookies,
    connection strings, signed URLs, Kubernetes Secrets, CI masks, sign-in links, `.netrc`, and passwords given to

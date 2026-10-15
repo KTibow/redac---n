@@ -39,7 +39,7 @@ no name, format or structure around it: the key passed to `Client("…")`, a tok
 into chat. It's also wrong most often: 140 look-alikes, mostly random IDs and hashes, are destroyed by it alone,
 which is why `guessing` is a setting.
 
-**Formats** (`src/formats.ts`) recognizes 536 vendor token formats by their prefixes and shapes (`ghp_`, `sk-ant-`,
+**Formats** (`src/formats.ts`) recognizes 542 vendor token formats by their prefixes and shapes (`ghp_`, `sk-ant-`,
 `xoxb-`, `AKIA…`). On its own it catches a third of the secrets, but most of those have a name next to them too, so
 what only it catches is smaller. It almost never fires on ordinary text: 0.09 false redactions per million
 characters.

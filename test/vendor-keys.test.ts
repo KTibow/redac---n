@@ -183,3 +183,23 @@ test("a key found by its vendor's word is hidden after an assignment, and a hash
 	kept("datadog_api_key_hash: 9f86d081884c7d659a2feaa0c55ad015", "9f86d081884c7d659a2feaa0c55ad015");
 	kept("heroku_dyno: 2b0c6a4e-8f1d-4c3b-9a7e-5d2f1e0c9b8a", "2b0c6a4e-8f1d-4c3b-9a7e-5d2f1e0c9b8a");
 });
+
+test("keys from 2025's AI and developer tools are hidden by their format alone", () => {
+	const hex = (n: number) => Array.from({ length: n }, (_, i) => "0123456789abcdef"[(i * 7 + 3) % 16]).join("");
+	const uuid = "895a83c6-d274-4e15-a9d7-1f25f2f37f8e";
+	for (const key of [
+		`fc-${hex(32)}`,
+		`ctx7sk-${uuid}`,
+		`xaat-${uuid}`,
+		`signkey-prod-${hex(64)}`,
+		`ABSKQmVkcm9ja0FQSUtleS1lYmpkLWF0LTEyMzQ1Njc4OTAxMjpQOWVDMUlEYk5odmNhT0NwUDE0TW5iUUphWDll`,
+		// Cloudflare Tunnel's token, as `cloudflared service install` takes it.
+		"eyJhIjoiMDA1MTE0ZWRhZTc2YWEyNjcyNTM1NzVjODhlMWJjMTAiLCJ0IjoiNTY4NTdhZWUtMzUyYi0wMzFmLTQ4NTItNTQxYzQzMzM3Yzk2IiwicyI6IlZVRTBNalJ1WTJRMFFUQnBORU0xYWxoTWJXMXdRM2M1U0ZwdVR6bHdPWFU9In0=",
+	])
+		hidden(`$ tool login ${key}\nok`, key);
+});
+
+test("a bech32 key whose prefix says private is no address, however its checksum reads", () => {
+	const key = "suiprivkey1qq7dnjukgjs2n9ss7e59rkwpsafc3qwpr0vhanl3zxrda2fpt58jvst4585";
+	hidden(`SUI_PRIVATE_KEY=${key}`, key);
+});
