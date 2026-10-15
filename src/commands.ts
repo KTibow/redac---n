@@ -505,7 +505,7 @@ export function printsSecretFile(command: string): boolean {
  * variable or a substitution (`cat "$f"`, `cat $(find …)`, `echo "$line"`), a script's `open(…).read()`.
  */
 const PRINTER =
-	/(?:-exec|\bfd(?:find)?\b[^|;&\n]*[ \t]-[xX])[ \t]+(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\(/;
+	/(?:-exec|\bxargs\b[^|&\n]*?|\bfd(?:find)?\b[^|;&\n]*[ \t]-[xX])[ \t'"]+(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)\b|(?:^|[\s;|&(])(?:cat|tac|head|tail|less|more|bat|nl|echo|printf|print)\b[^;|&\n]*\$[{(\w"]|\.read\(\)|readlines\(\)|readFileSync\(|\.read_text\(|\bFile\.read\(|file_get_contents\(/;
 
 /**
  * A secret file printed by a route the pipeline reader doesn't follow: named to `find … -exec cat {}`, `xargs cat`, a
@@ -514,8 +514,7 @@ const PRINTER =
  * redirect to a file.
  */
 function printsIndirectly(command: string): boolean {
-	if (command.length > 8192) return false;
-	if (!PRINTER.test(command) && !(/\bxargs\b/.test(command) && commandLine(command, 0).some(xargsPrints))) return false;
+	if (command.length > 8192 || !PRINTER.test(command)) return false;
 	// (A file named as a path, `.env`, `config/secrets.yml`, `$HOME/.env`: a bare word or a variable, `token`, `$TOKEN`, is
 	// no file's name here.)
 	const named = command
@@ -525,19 +524,6 @@ function printsIndirectly(command: string): boolean {
 	const run = commandsRun(command);
 	const last = run.at(-1);
 	return !!last && passesThrough(last) && stdoutFile(last) === undefined;
-}
-
-/** Programs that print the files they are given. */
-const FILE_PRINTER = /^(?:cat|tac|head|tail|less|more|bat|nl|grep|egrep|rg|sed|awk|sort|strings)$/;
-
-/**
- * Whether a command's xargs runs a program that prints the files it is given: `xargs cat`, `xargs -n 1 cat`, `xargs -I
- * {} cat {}`, `xargs -I {} sh -c 'echo {}; cat {}'` (shell.ts simpleCommand steps over xargs' options and their values).
- */
-function xargsPrints(c: ShellCommand): boolean {
-	const runs = simpleCommand(c.words);
-	if (!c.words.some((w, k) => programName(w) === "xargs" && k < c.words.length - runs.length)) return false;
-	return commandsRun(c.text).some((r) => FILE_PRINTER.test(programName(simpleCommand(r.words)[0])));
 }
 
 /** The value of an option given as `-d X`, `-dX`, `--delimiter X` or `--delimiter=X`; `short` is `-d`, `long` is `--delimiter`. */
@@ -631,14 +617,14 @@ function readsSecretFile(c: ShellCommand): boolean {
 	// (Counting, listing and testing print none of what grep reads: `grep -c`, `grep -l`, `grep -q`.)
 	if (/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep)$/.test(program) && rest.some((t) => countsMatches(program, t)))
 		return false;
-	const operands = (rest: string[]) =>
-		/^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
-			? searchedFiles(rest)
-			: rest.filter((t) => !t.startsWith("-"));
-	// (A glob's trailing wildcard, `cat .env*`, takes in the file it starts with. A word with backslashes is read as
-	// written too, a Windows path whatever else the line holds: PowerShell's `cat apps\web\.env.local`.)
-	const raw = words.slice(1).map((w) => (/\\/.test(w.raw) && !/['"$`]/.test(w.raw) ? w.raw : w.text));
-	return [...operands(rest), ...operands(raw)].some((t) => isSecretFile(t.replace(/[*?]+$/, "")));
+	// (A word with backslashes is read as written, a Windows path whatever else the line holds: PowerShell's `cat
+	// apps\web\.env.local`.)
+	const args = words.slice(1).map((w) => (/\\/.test(w.raw) && !/['"$`]/.test(w.raw) ? w.raw : w.text));
+	const files = /^(?:grep|egrep|fgrep|rg|ag|ack|zgrep|Select-String|sls)$/.test(program)
+		? searchedFiles(args)
+		: args.filter((t) => !t.startsWith("-"));
+	// (A glob's trailing wildcard, `cat .env*`, takes in the file it starts with.)
+	return files.some((t) => isSecretFile(t.replace(/[*?]+$/, "")));
 }
 
 /**
@@ -718,7 +704,7 @@ function printsWhatItReads(
 		)
 			copies.add(words.at(-1)!);
 		pipeline.push(c);
-		if (pipes(c) && run[k + 1]?.host === c.host) continue;
+		if ((c.then === "|" || c.then === "|&") && run[k + 1]?.host === c.host) continue;
 		const stages = pipeline;
 		pipeline = [];
 		const at = stages.findIndex((s) => reads(s) || readsCopy(s));
@@ -734,9 +720,8 @@ function printsWhatItReads(
 			!(CONTENT_COMMANDS.test(host) && !/^(?:export|declare|set|env|printenv)$/.test(host) && readAsFile)
 		)
 			continue;
-		const after = consumers(stages, at);
-		if (!after.every(passesThrough)) continue;
-		const file = stdoutFile(after.at(-1) ?? stages[at]);
+		if (!stages.slice(at + 1).every(passesThrough)) continue;
+		const file = stdoutFile(stages.at(-1)!);
 		if (file === undefined) return true;
 		copies.add(file);
 	}
@@ -745,31 +730,10 @@ function printsWhatItReads(
 
 /**
  * Whether what a command prints goes into the next command's input: by its own `|`, or by a group's around it, whatever
- * follows it inside the group (`{ cat .env; echo; } | sha256sum`, `ssh host 'cat .env; true' | sha256sum`).
+ * follows it inside the group (`{ echo A=1; echo B=2; } | tee .env`).
  */
 export function pipes(c: ShellCommand): boolean {
-	return [c.then, ...c.groups.map((g) => g.then)].some(isPipe);
-}
-
-const isPipe = (then: string | undefined) => then === "|" || then === "|&";
-
-/**
- * The stages of a pipeline that what stage `k` prints goes through, in order: the next by its own pipe, or the first
- * after the group whose output is piped (`ssh host 'cat .env; true' | nl`: `nl`, not `true`, reads what cat prints).
- */
-function consumers(stages: ShellCommand[], k: number): ShellCommand[] {
-	const out: ShellCommand[] = [];
-	for (let j = k; ;) {
-		const group = isPipe(stages[j].then) ? undefined : stages[j].groups.find((g) => isPipe(g.then));
-		const next = group
-			? stages.findIndex((s, i) => i > j && !s.groups.includes(group))
-			: isPipe(stages[j].then)
-				? j + 1
-				: -1;
-		if (next < 0 || next >= stages.length) return out;
-		out.push(stages[next]);
-		j = next;
-	}
+	return [c.then, ...c.groups.map((g) => g.then)].some((then) => then === "|" || then === "|&");
 }
 
 /** Devices that are what's shown: a tool's captured output holds stdout and stderr, and a terminal shows both. */

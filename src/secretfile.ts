@@ -392,13 +392,10 @@ function cookiesTxt(text: string, out: Finding[]) {
 	}
 }
 
-/**
- * htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or an LDAP scheme's (RFC 2307: `{SHA}`, `{SSHA}`,
- * `{SSHA512}`, `{PBKDF2-SHA256}`). (Not `admin:$ADMIN_PASSWORD`: a variable.)
- */
+/** htpasswd: `user:<hash>`, a crypt hash's `$id$` (`$apr1$…`, `$2y$…`) or LDAP's `{SSHA}…`. (Not `admin:$ADMIN_PASSWORD`.) */
 function htpasswd(text: string, out: Finding[]) {
 	for (const m of text.matchAll(
-		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{(?:S?SHA(?:256|384|512)?|S?MD5|CRYPT|PBKDF2(?:-SHA\d+)?|ARGON2)\}[\w+/=.$-]{10,300})[ \t]*$/dgm,
+		/^[\w.@-]{1,100}:(\$[\w.+=-]{1,30}\$[\w$./+=-]{8,300}|\{[A-Z][A-Z\d-]{1,20}\}[\w+/=.$-]{10,300})[ \t]*$/dgm,
 	))
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "password hash", rule: "file:hash", confidence: 1 });
 }
