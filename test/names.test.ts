@@ -1252,12 +1252,22 @@ test("a route or screen word marks a lookup key or UI text, not a secret or a fu
 	hidden("EVENT_SECRET=hunter22", "hunter22");
 });
 
-test("fastlane match's password is a password; next to an about word, a name is about its password", () => {
-	for (const name of ["MATCH_PASSWORD", "MATCH_KEYCHAIN_PASSWORD"]) {
+test("an about word that names a component, a word between it and the password's, leaves the name a password's", () => {
+	for (const name of [
+		"LABEL_STUDIO_PASSWORD",
+		"EVENT_STORE_PASSWORD",
+		"MESSAGE_BROKER_PASSWORD",
+		"STATUS_DB_PASSWORD",
+		"HELP_DESK_PASSWORD",
+		"VNC_VIEW_ONLY_PASSWORD",
+		"MATCH_PASSWORD",
+		"MATCH_KEYCHAIN_PASSWORD",
+	]) {
 		assert.equal(nameClass(name), "credential", name);
 		hidden(`      - ${name}=Tr0ub4dor&3x\n`, "Tr0ub4dor&3x");
 	}
 	hidden('export MATCH_PASSWORD="Harbor2291xq"', "Harbor2291xq");
+	// (Next to the password's word, or with qualifiers between, they still mark UI text, errors and flags.)
 	for (const name of [
 		"LABEL_NEW_PASSWORD",
 		"LOGIN_PAGE_PASSWORD",

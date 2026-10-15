@@ -645,6 +645,24 @@ const ABOUT_WORDS = new Set([
 /** About words that can also say what a credential belongs to. */
 const ROUTE_WORDS = new Set(["PAGE", "SCREEN", "ROUTE", "VIEW", "EVENT", "HANDLER", "DIALOG", "MODAL", "STATUS"]);
 /**
+ * About words that are also nouns a component is named with, its name's first half (`LABEL_STUDIO_PASSWORD`,
+ * `EVENT_STORE_PASSWORD`, `MESSAGE_BROKER_PASSWORD`, `STATUS_DB_PASSWORD`, `HELP_DESK_PASSWORD`): they make a name
+ * about its credential only next to its word, or with qualifiers between (`LABEL_NEW_PASSWORD`, `LOGIN_PAGE_PASSWORD`).
+ */
+const NOUN_ABOUT_WORDS = new Set([
+	...ROUTE_WORDS,
+	"LABEL",
+	"LABELS",
+	"MSG",
+	"MESSAGE",
+	"MESSAGES",
+	"TEXT",
+	"RULE",
+	"RULES",
+	"POLICY",
+	"HELP",
+]);
+/**
  * Shell variables whose names end in a credential word but hold something else (`PWD`, `OLDPWD`),
  * bare upper-case `KEY` and `AUTH` (loop keys, auth modes) and `PASS`, `XPASS` (`PASS: test name`, a test runner's
  * verdicts; named.ts still reads `PASS=value`).
@@ -1448,9 +1466,26 @@ function classify(name: string, w: string[], core: string[], last: string): Name
 		(core.length >= 2 &&
 			/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(core.at(-2)!) &&
 			/^(TOKEN|KEY)$/.test(last));
+	// (A noun about word followed by another that names what the credential belongs to names a component; not a credential
+	// phrase's first word, `LOGIN_PAGE_APP_PASSWORD`.)
 	const about =
-		core.some((x) => ABOUT_WORDS.has(x) && !(fullPhrase && ROUTE_WORDS.has(x))) ||
-		/^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
+		core.some(
+			(x, i) =>
+				ABOUT_WORDS.has(x) &&
+				!(fullPhrase && ROUTE_WORDS.has(x)) &&
+				!(
+					NOUN_ABOUT_WORDS.has(x) &&
+					core
+						.slice(i + 1, -1)
+						.some(
+							(y) =>
+								!ABOUT_WORDS.has(y) &&
+								!QUALIFIER_WORDS.test(y) &&
+								!isCredentialWord(y) &&
+								!/^(ACCESS|API|SECRET|CLIENT|APP|AUTH|SIGNING)$/.test(y),
+						)
+				),
+		) || /^NO(PASS|PASSWD|PASSWORD|AUTH)$/.test(last);
 	if (!about && isCredentialWord(last) && !(last === "PAT" && core.length > 1 && !PAT_OWNERS.has(core.at(-2)!)))
 		return "credential";
 	// A credential's word first, then whose it is: `PASSWORD_DB`, `TOKEN_GITHUB`, `SECRET_STRIPE`, `password_for_db`; not
