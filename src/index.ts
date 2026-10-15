@@ -291,7 +291,7 @@ export class Redactor {
 				...f,
 				start: n.map[f.start],
 				end: f.end > f.start ? n.ends[f.end - 1] : n.map[f.start],
-				value: f.value ?? n.text.slice(f.start, f.end),
+				value: secretValue(n.text, f),
 			}));
 			// An escaped value in markup (`<password>Vq7m&lt;Zp2</password>`, `value="a&quot;b"`): decoded, its `<` or `"`
 			// ends what the XML and attribute readers read, so the names are also read where it's written. (Escaped code in
@@ -390,7 +390,7 @@ export class Redactor {
 		const out: Finding[] = [];
 		for (const { decoded, map } of decodings) {
 			for (const f of this.detectNormalized(decoded, { ...options, hint: {} }, depth + 1))
-				out.push({ ...f, start: map[f.start], end: map[f.end], value: f.value ?? decoded.slice(f.start, f.end) });
+				out.push({ ...f, start: map[f.start], end: map[f.end], value: secretValue(decoded, f) });
 		}
 		return out;
 	}

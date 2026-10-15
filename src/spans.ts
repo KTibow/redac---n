@@ -66,9 +66,10 @@ export function isLearnable(f: Finding, value: string, minConfidence = 0.9): boo
  * The secret a finding covers, as the program reads it, so one secret written two ways gets one tag and is learned
  * once: its recorded value (a known value whichever way it was written, a literal split in pieces joined, a JSON
  * escape decoded); or the text it spans, read through a URL's percent-encoding (a userinfo's `Harbor2291%21x`, a
- * query's `%26`, `+` a blank), a double-quoted string's escapes (`"Ab\"cd9"`, `\u0041`), or a shell's backslashes
- * outside quotes (`Harbor2291\!x`). (Not a single-quoted string's: a shell's has no escapes, a SQL one doubles its
- * quote, and `'a''b'` is `ab` to a shell.)
+ * query's `%26`, `+` a blank), a double-quoted string's escapes (JSON's, `"Ab\"cd9"`, `\u0041`, or else a shell's,
+ * `"Ab\$cd9"`), a single-quoted one's quote written inside it (YAML's and SQL's `'Ab''cd9'`, a shell's `'Ab'\''cd9'`,
+ * JavaScript's and Python's `'Ab\'cd9'`), or a shell's backslashes outside quotes (`Harbor2291\!x`, `Ab\ cd9`).
+ * (A single-quoted string's other backslashes stay: a shell's has no escapes.)
  */
 export function secretValue(text: string, f: { start: number; end: number; value?: string }): string {
 	if (f.value !== undefined) return f.value;
@@ -85,9 +86,16 @@ export function secretValue(text: string, f: { start: number; end: number; value
 	if (raw.includes("\\") && /"$/.test(before)) {
 		try {
 			return JSON.parse(`"${raw}"`);
-		} catch {} // not JSON's escapes: the text as it is
+		} catch {} // not JSON's escapes: a shell's, or the text as it is
+		return raw.replace(/\\([$`"\\])/g, "$1");
 	}
-	if (/\\[^\w\s]/.test(raw) && !/["'`]$/.test(before)) return raw.replace(/\\([^\w\s])/g, "$1");
+	if (/'$/.test(before) && raw.includes("'")) {
+		// (`\'` is no shell's, whose single quotes hold no escapes: a language's that has them, `\\` included.)
+		if (/'\\''/.test(raw)) return raw.replace(/'\\''/g, "'");
+		if (/\\'/.test(raw)) return raw.replace(/\\(['\\])/g, "$1");
+		return raw.replace(/''/g, "'");
+	}
+	if (/\\[^\w\n]/.test(raw) && !/["'`]$/.test(before)) return raw.replace(/\\([^\w\n])/g, "$1");
 	return raw;
 }
 

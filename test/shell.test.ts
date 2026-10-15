@@ -161,7 +161,12 @@ test("a password's span when quotes or escapes sit inside it", () => {
 	);
 	assert.equal(
 		r.redact("mysql -u root -p'Xk9'\\''mQ2pLw7v' -h db").text.replace(/#\w+/, "#"),
-		"mysql -u root -p[REDACTED password #] -h db",
+		"mysql -u root -p'[REDACTED password #]' -h db",
+	);
+	// (Its quotes stay about it, as the word wrote them: `'admin:<it>'` keeps its closing quote.)
+	assert.equal(
+		r.redact("curl -u 'admin:Tr0ub4dor'\\''3xK9mQx7' https://x.io/api").text.replace(/#\w+/, "#"),
+		"curl -u 'admin:[REDACTED password #]' https://x.io/api",
 	);
 	assert.equal(
 		r.redact("sshpass -p Xk9\\ mQ2pLw7v ssh host").text.replace(/#\w+/, "#"),

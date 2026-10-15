@@ -412,6 +412,46 @@ test("tag characters and other invisible characters outside the basic plane are 
 	assert.equal(normalize("a&#0;b &#xD800; &#x1F600;").text, "a&#0;b &#xD800; &#x1F600;");
 });
 
+test("a value written with its quotes' escapes is learned and tagged as the program reads it", () => {
+	const tag = (text: string, hint = {}) => /#(\w+)\]/.exec(r().redact(text, { hint }).text)?.[1];
+	for (const [raw, forms] of [
+		[
+			"Tr0ub4dor'3xK9mQ",
+			[
+				"db_password: 'Tr0ub4dor''3xK9mQ'\n",
+				"CREATE USER app WITH PASSWORD 'Tr0ub4dor''3xK9mQ';\n",
+				"const password = 'Tr0ub4dor\\'3xK9mQ';\n",
+				"export DB_PASSWORD='Tr0ub4dor'\\''3xK9mQ'\n",
+			],
+		],
+		["Tr0ub4dor$3xK9mQ", ['export DB_PASSWORD="Tr0ub4dor\\$3xK9mQ"\nexport PORT=5432\n']],
+		[
+			'Tr0ub4dor"3xK9mQ',
+			['{"password": "Tr0ub4dor\\"3xK9mQ"}', '{"body": "{\\"password\\": \\"Tr0ub4dor\\\\\\"3xK9mQ\\"}"}'],
+		],
+		["Pa$$w0rd x9Kq", ["mysql --password=Pa\\$\\$w0rd\\ x9Kq -u root\n"]],
+	] as const) {
+		const expected = tag(`DB_PASSWORD=${JSON.stringify(raw)}\n`);
+		for (const text of forms) {
+			assert.equal(tag(text, { path: "setup.sh" }), expected, text);
+			const red = r();
+			red.learn(text, { hint: { path: "setup.sh" } });
+			assert.ok(!red.redact(`The login fails with ${raw} again.`).text.includes(raw), text);
+		}
+	}
+	// (A shell's single quotes hold no escapes: its backslash is the value's own.)
+	assert.equal(tag("export DB_PASSWORD='Tr0ub4dor\\3xK9mQ'\n"), tag('DB_PASSWORD="Tr0ub4dor\\\\3xK9mQ"\n'));
+});
+
+test("a known token cut short takes no path before it, only what its value is made of", () => {
+	const red = new Redactor({ fingerprintKey: "t", known: ["ghp_Zq8vK2mX9pLw4RtYabcdefghijKLMN"] });
+	const out = red.redact("see https://api.github.com/repos/o/r/ghp_Zq8vK2mX9pLw4Rt and more").text;
+	assert.ok(out.startsWith("see https://api.github.com/repos/o/r/[REDACTED part of"), out);
+	// (A value with `/` in it goes on through one.)
+	const slash = new Redactor({ fingerprintKey: "t", known: ["Zq8vK2mX9pLw4Rt/YabcdefghijKLMNxyz"] });
+	assert.ok(!slash.redact("see Zq8vK2mX9pLw4Rt/Yabcdefghij and more").text.includes("Yabcdefghij"));
+});
+
 test("a login under a name that says so teaches its password too; a base64 key or a signature is not split", () => {
 	const redactor = r();
 	redactor.learn("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n", { hint: { path: ".env" } });

@@ -654,11 +654,27 @@ export function wordSpan(word: ShellWord, from = 0): { start: number; end: numbe
 	let start = word.map[from];
 	let end = word.ends.at(-1)!;
 	const raw = (k: number) => word.raw[k - word.start];
-	if (word.raw.slice(start - word.start, end - word.start) !== word.text.slice(from)) {
+	// (A span that starts and ends in the same quotes, or outside any, keeps the word's quotes about it as they were: the
+	// `'\''` a single-quoted password writes its quote with, `'admin:pa'\''ss'`, leaves the closing quote out.)
+	if (
+		word.raw.slice(start - word.start, end - word.start) !== word.text.slice(from) &&
+		quoteAt(word.raw, start - word.start) !== quoteAt(word.raw, end - word.start)
+	) {
 		while (start > word.start && /["'$]/.test(raw(start - 1))) start--;
 		while (end < word.end && /["']/.test(raw(end))) end++;
 	}
 	return { start, end };
+}
+
+/** The quote a shell word's raw text is inside at `at`: `'`, `"`, or "" outside quotes. */
+function quoteAt(raw: string, at: number): string {
+	let quote = "";
+	for (let k = 0; k < at; k++) {
+		const c = raw[k];
+		if (c === "\\" && quote !== "'") k++;
+		else if (quote ? c === quote : c === "'" || c === '"') quote = quote ? "" : c;
+	}
+	return quote;
 }
 
 /** The command line an argument vector stands for, each word quoted as a shell needs it: `["bash", "-lc", "cat .env"]` → `bash -lc 'cat .env'`. */
