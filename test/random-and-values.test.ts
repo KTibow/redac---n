@@ -242,6 +242,37 @@ test("base64 of text is kept: a sentence, a table, words, a URL, a GraphQL node 
 	hidden(`Use this one: ${b64("Winter 2024!")}`, b64("Winter 2024!"));
 });
 
+test("short base64 of words or of a JWT's header is kept; of a pair or other JSON, hidden", () => {
+	const b64 = (s: string) => Buffer.from(s).toString("base64");
+	// A tokenizer's vocabulary: each token's bytes in base64, then its rank.
+	const vocab = [" necessarily", " regulations", " connections", " observation"].map((w, i) => `${b64(w)} ${6646 + i}`);
+	kept(vocab.join("\n"), vocab.join("\n"));
+	kept(`base64_string = "${b64("Random string")}"`, b64("Random string"));
+	kept(`const base64Content = '${b64("test content")}';`, b64("test content"));
+	kept("&assertion=eyJhbGciOiJFUzI1NiJ9.", "eyJhbGciOiJFUzI1NiJ9");
+	hidden(`Use this one: ${b64("admin:Kx9mQ2vL")}`, b64("admin:Kx9mQ2vL"));
+	hidden("tmux_session=eyJpdiI6IlZ4In0%3D", "eyJpdiI6IlZ4In0");
+});
+
+test("a word in a cased alphabet is read whole, not as its ASCII letters; a token after Chinese words is a token", () => {
+	for (const line of [
+		'    "Recovery key password" : "Endurheimtulykilorð",',
+		'    "Recovery Key disabled" : "Endurheimtulykilorð óvirkt",',
+		'    "Please check your recovery key password" : "Athugaðu endurheimtulykilorðið þitt!",',
+	])
+		kept(line, line);
+	hidden("我的令牌是Xk9mQ2vLp7Rt3Wz8nB5c，别告诉别人", "Xk9mQ2vLp7Rt3Wz8nB5c");
+});
+
+test("the name a declaration gives is an identifier; a token in the class's body is still judged", () => {
+	kept(
+		"namespace esphome::xiaomi_lywsd03mmc {\n\nclass XiaomiLYWSD03MMC final : public Component {",
+		"XiaomiLYWSD03MMC",
+	);
+	kept("struct QMI8658GyroCfg2 {\n  int range;\n};", "QMI8658GyroCfg2");
+	hidden('class Client {\n  const char *token = "Xk9mQ2vLp7Rt3Wz8nB5c";\n};', "Xk9mQ2vLp7Rt3Wz8nB5c");
+});
+
 test("a random key in groups or with underscores is neither a slug nor an identifier", () => {
 	for (const [text, token] of [
 		["Use this one: xk9mq-2vl7p-zrtq8-wn3xc-4yb5v", "xk9mq-2vl7p-zrtq8-wn3xc-4yb5v"],
