@@ -78,6 +78,15 @@ test("inJwk reads the object's own kty, and a symmetric key's k stays secret", (
 	assert.ok(inJwk(text, text.indexOf('"k"'), text.indexOf('"k"') + 3));
 	const k = b62(43);
 	hidden(`{"kty":"oct","k":"${k}","alg":"HS256"}`, k);
+	// An RSA-4096 private key's last members, 3,000 characters from its `{`, in a JWKS.
+	const [d, p, q, dp, dq, qi] = [683, 342, 342, 342, 342, 342].map(b62);
+	const jwks = `{"keys":[{"kty":"RSA","n":"${b62(683)}","e":"AQAB","d":"${d}","p":"${p}","q":"${q}","dp":"${dp}","dq":"${dq}","qi":"${qi}"}]}`;
+	for (const v of [d, p, q, dp, dq, qi]) hidden(jwks, v);
+	// In YAML, unquoted, in a mapping with a `kty`; and a `d` in a mapping without one is kept.
+	const modulus = b62(342);
+	const yaml = `jwks:\n  - kty: RSA\n    kid: signing-2026\n    n: ${modulus}\n    e: AQAB\n    d: ${d}\n    p: ${p}\n    qi: ${qi}\n`;
+	for (const v of [d, p, qi]) hidden(yaml, v);
+	kept("dimensions:\n  w: 640\n  d: depthOfFieldSetting\n", "depthOfFieldSetting");
 });
 
 test("string literals are read by their grammar: JSON's, a Python repr's, and only where JSON's syntax stands around them", () => {

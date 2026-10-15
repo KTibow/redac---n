@@ -81,10 +81,15 @@ function armoredBase64(body: string): string {
 		.replace(/[^A-Za-z0-9+/=]/g, "");
 }
 
-/** PuTTY private keys: the `Private-Lines:` section. OpenSSL `-text` dumps: `priv:` and prime sections. */
+/**
+ * PuTTY private keys: the `Private-Lines:` section, indented too (a .ppk pasted in a Markdown code block) and with
+ * trailing blanks. OpenSSL `-text` dumps: `priv:` and prime sections.
+ */
 function otherPrivateKeys(text: string, out: Finding[]) {
 	if (text.includes("Private-Lines:")) {
-		for (const m of text.matchAll(/Private-Lines: \d{1,3}\r?\n((?:[A-Za-z0-9+/=]{4,80}(?:\r?\n|$)){1,200})/g)) {
+		for (const m of text.matchAll(
+			/Private-Lines: \d{1,3}[ \t]*\r?\n[ \t]*((?:[A-Za-z0-9+/=]{4,80}[ \t]*(?:\r?\n[ \t]*|$)){1,200})/g,
+		)) {
 			const start = m.index + m[0].length - m[1].length;
 			out.push({
 				start,
@@ -119,6 +124,22 @@ function otherPrivateKeys(text: string, out: Finding[]) {
 			if (!inJwk(text, start, end) || isWordsValue(m[1])) continue;
 			out.push({ start, end, kind: "private key", rule: "structure:jwk", confidence: 0.95 });
 		}
+	}
+	// The same members in YAML (a Helm values file's `jwks:` list), unquoted, in a mapping that has a `kty`.
+	if (/^[ \t]*(?:-[ \t]+)?kty:/m.test(text)) {
+		const lines = yamlLines(text);
+		lines.forEach((l, i) => {
+			const v = l.value?.value ?? "";
+			if (!l.key || !/^(?:d|p|q|dp|dq|qi|k)$/.test(l.key) || !/^[A-Za-z0-9_-]{16,}$/.test(v) || isWordsValue(v)) return;
+			if (siblingValue(lines, i, "kty") === undefined) return;
+			out.push({
+				start: l.value!.start,
+				end: l.value!.end,
+				kind: "private key",
+				rule: "structure:jwk",
+				confidence: 0.95,
+			});
+		});
 	}
 }
 

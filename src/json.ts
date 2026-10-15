@@ -349,8 +349,12 @@ export function* jsonDocuments(text: string): Generator<JsonNode> {
 	}
 }
 
-/** The `{…}` object around [start, end), braces balanced (braces inside its strings too), within `max` characters on each side; "" if none. */
-function enclosingObject(text: string, start: number, end: number, max = 2000): string {
+/**
+ * The `{…}` object around [start, end), braces balanced (braces inside its strings too), within `max` characters on
+ * each side; "" if none. (Enough for an RSA-8192 private JWK, about 6,500 characters, whose last members sit far from
+ * its `{`.)
+ */
+function enclosingObject(text: string, start: number, end: number, max = 8000): string {
 	let depth = 0;
 	let open = -1;
 	for (let i = start - 1; i >= Math.max(0, start - max); i--) {
