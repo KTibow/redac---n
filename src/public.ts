@@ -9,6 +9,7 @@ import { base64Binary } from "./base64.ts";
 import { naturalness } from "./charlm.ts";
 import { hmacSha256 } from "./hmac.ts";
 import { type Argument, callArguments } from "./calls.ts";
+import { lastText } from "./lines.ts";
 
 /** Keys that are public by design: publishable, site and project keys meant for browsers. */
 export const PUBLIC_FORMAT =
@@ -405,6 +406,7 @@ const CLIENT_SDK_CALL =
  * if the call starts within 300 characters before it: its call as written (`algoliasearch(`).
  */
 export function clientSdkAt(text: string, at: number): string | undefined {
+	if (!hasClientSdkCall(text)) return undefined;
 	const from = Math.max(0, at - 300);
 	let last: RegExpExecArray | undefined;
 	for (const m of text.slice(from, at).matchAll(CLIENT_SDK_CALL)) last = m;
@@ -416,6 +418,9 @@ export function clientSdkAt(text: string, at: number): string | undefined {
 		arg.literal || at === arg.start || (/^[{[]/.test(arg.text) && holding(callArguments(text, arg.start + 1)));
 	return inside ? last[0] : undefined;
 }
+
+/** Whether a text calls a client SDK's initialiser anywhere: most don't, and need no look 300 characters back. */
+const hasClientSdkCall = lastText((text) => new RegExp(CLIENT_SDK_CALL.source).test(text));
 
 /** The parameters client SDKs take public keys under (positional arguments count too). */
 export const PUBLIC_SDK_PARAM =

@@ -111,3 +111,21 @@ test("a large state file read as a secret file costs about what its text costs r
 	const file = best(() => r().detect(state, { hint: { path: "infra/terraform.tfstate", secretFile: true } }));
 	assert.ok(file < 1.5 * plain, `${file.toFixed(0)} ms as a secret file, ${plain.toFixed(0)} ms plainly`);
 });
+
+test("a value repeated on many lines costs no more than as many different values", () => {
+	// (Each repeat is looked at for a client SDK it's passed to; a text that calls none needs no look.)
+	const lines = (value: (i: number) => string) =>
+		"kind: Secret\ndata:\n" + Array.from({ length: 100 }, (_, i) => `  a: ${value(i)}\n`).join("");
+	const time = (text: string) => {
+		let best = Infinity;
+		for (let i = 0; i < 3; i++) {
+			const t = performance.now();
+			r().redact(text);
+			best = Math.min(best, performance.now() - t);
+		}
+		return best;
+	};
+	const same = time(lines(() => ")".repeat(1000)));
+	const different = time(lines((i) => String.fromCharCode(33 + (i % 90)).repeat(1000)));
+	assert.ok(same < 3 * Math.max(different, 20), `${same.toFixed(0)} ms repeated, ${different.toFixed(0)} ms different`);
+});

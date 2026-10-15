@@ -94,7 +94,7 @@ function isClientSdkKey(sdk: string, name: string, before: string): boolean {
 
 /** Whether `value` is passed to a client SDK as its public key somewhere in `text` other than at `self` (isClientSdkKey). */
 function sdkKeyElsewhere(text: string, value: string, self: number): boolean {
-	for (let i = text.indexOf(value), n = 0; i >= 0 && n < 50; i = text.indexOf(value, i + 1), n++) {
+	for (let i = text.indexOf(value), n = 0; i >= 0 && n < 50; i = text.indexOf(value, i + value.length), n++) {
 		if (i === self) continue;
 		const sdk = clientSdkAt(text, i);
 		if (!sdk) continue;
