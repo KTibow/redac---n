@@ -121,6 +121,12 @@ test("spaces of other widths, full-width signs and line continuations, and backs
 	assert.equal(normalize("PASSWORD：x＝y").text, "PASSWORD:x=y");
 	assert.equal(normalize("a&amp;b \\t c").text, "a&b \\t c");
 	assert.equal(normalize("**Host:** db\\\n**Password:** x").text, "**Host:** db\\\n**Password:** x");
+	// An entity escaped twice (JSON in an attribute escaped twice) is the character.
+	assert.equal(normalize("{&amp;quot;a&amp;quot;:1} &amp;amp;lt;").text, '{"a":1} <');
+	// A word processor's dashes before a command line's flags; prose's dashes stay.
+	assert.equal(normalize("mysql –u root —password x −p").text, "mysql -u root --password x -p");
+	for (const prose of ["pages 10–12 — see above", "a well‑known value", "Paris–Berlin"])
+		assert.equal(normalize(prose).text, prose);
 });
 
 test("wrapped base64 with a prefix on the first line and a suffix on the last", () => {
@@ -329,6 +335,11 @@ test("a long finding ends at an escape, so escaped JSON around it still parses",
 test("terminal colours and entities around a value don't hide it", () => {
 	hidden("export AWS=\x1b[1mAKI\x41QZGOQKYPAR27BIHL\x1b[0mxyz", "QZGOQKYPAR27BIHL");
 	hidden("<password>Vq7m&lt;Zp2xK</password>", "Zp2xK");
+	// (JSON in an attribute escaped twice.)
+	hidden(
+		'<div data-config="{&amp;quot;user&amp;quot;:&amp;quot;bob&amp;quot;,&amp;quot;password&amp;quot;:&amp;quot;Xk29fLmq81Zt&amp;quot;}"></div>',
+		"Xk29fLmq81Zt",
+	);
 });
 
 test("values learned one at a time are all found, before and after the index is rebuilt whole", () => {
