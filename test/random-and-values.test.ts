@@ -262,7 +262,7 @@ test("hex is kept in dashed groups and with a word before it, unless a credentia
 	kept(login, "eac2dc73-2323-49d6-bd8b-aa36a28fceab");
 	hidden("token=acme_9f86d081884c7d65", "9f86d081884c7d65");
 	// In a secret file, a whole value; and a URL's path segment there.
-	hidden("RELEASE=build_9f86d081884c7d659a2f\n", "9f86d081884c7d659a2f", { secretFile: true });
+	hidden("STAGE=build_9f86d081884c7d659a2f\n", "9f86d081884c7d659a2f", { secretFile: true });
 	hidden("DOWNLOAD_URL=https://files.acme.io/d/kx9mq2vl7pzrtq8wn3xcz\n", "kx9mq2vl7pzrtq8wn3xcz", { secretFile: true });
 });
 
@@ -375,4 +375,85 @@ test("a token's context: the name and syntax the text around it gives", () => {
 		if (JSON.stringify(got) !== JSON.stringify(want)) wrong.push(`${JSON.stringify(text)} → ${JSON.stringify(got)}`);
 	}
 	assert.deepEqual(wrong, []);
+});
+
+test("keys handed over one per line are judged as keys, whatever widths they share", () => {
+	const keys = [
+		"IhRIAJZE/PEO5pJ8eQjG6ZuJftA791osjvBiB7MCDfw=",
+		"lXgCzYiAz6EwdnsyAatoWBPEVC2txVnt280dN9YDbMY=",
+		"mxeXTdT/W94sA8J0TV/BoCf2PA8zVvnHoWu/+2fUSTY=",
+	];
+	for (const key of keys) hidden(`Here are your new API keys:\n${keys.join("\n")}`, key);
+	// (A list with no handover over it, `wg show wg0 peers`, is left to the blob rule: public keys, one per line.)
+	for (const key of keys) kept(`$ wg show wg0 peers\n${keys.join("\n")}`, key);
+});
+
+test("a secret in a URL's path is one whether the URL has its scheme and host or a log shows its path alone", () => {
+	const token = "Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN";
+	for (const path of [`/hooks/${token}`, `/webhook/${token}`, `/api/keys/${token}/rotate`])
+		hidden(`10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "POST ${path} HTTP/1.1" 200 12`, token);
+	hidden(`curl -X POST https://ci.example.com/api/projects/42/webhooks/${token}`, token);
+	hidden(`curl -X POST https://gitlab.example.com/api/v4/projects/7/trigger/${token}`, token);
+	// (Other paths stay IDs and files: a resource's, a file on disk, a cloud resource's.)
+	kept(`10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "GET /api/v1/users/${token} HTTP/1.1" 200 12`, token);
+	kept(`cp /hooks/${token} /tmp/x`, token);
+	kept(`https://compute.googleapis.com/compute/v1/projects/my-proj/zones/us-central1-a/instances/${token}`, token);
+	kept(`curl https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5 -o out.mp3`, "MEpx6aWSUhHeOdc1CcZ5");
+});
+
+test("a password after a user and a colon is hidden with or without the URL's scheme", () => {
+	const pw = "Kd8fQ2mZx9Lp4VnR7sTb3WyH";
+	hidden(`export HTTPS_PROXY=svc:${pw}@proxy.corp:8080`, pw);
+	hidden(`export HTTPS_PROXY=http://svc:${pw}@proxy.corp:8080`, pw);
+	kept(`Message-ID: <CAOS${pw}@mail.gmail.com>`, pw);
+	kept(`From: ${pw}@users.noreply.github.com`, pw);
+});
+
+test("an RPC provider's key in a Solana URL is a key; an address near Solana's words stays", () => {
+	const key = "QpDQ2eodexkZNDm3FHupsikXm4fjaPeY";
+	hidden(`RPC_URL=https://solana-devnet.g.alchemy.com/v2/${key}\n`, key);
+	hidden(`solana config set --url https://mainnet.helius-rpc.com/?api-key=${key}`, key);
+	kept(`https://explorer.solana.com/address/${key}?cluster=devnet`, key);
+	kept(`solana balance ${key}`, key);
+});
+
+test("IDs where commands, logs and SDKs print them stay: a table's cells, a cache buster, a lookup's argument", () => {
+	kept("green open chunks-2026.10 z0JPk8Nk-z16-21STCuI2e 3 1 1820331 0 14.2gb 7.1gb", "z0JPk8Nk-z16-21STCuI2e");
+	kept('<link href="/css/site.css?v=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7" rel="stylesheet" />', "R1xcOGum");
+	kept('$result = ChargeBee\\Models\\Subscription::retrieve("b1AO9C0mWmtoh1Mlk");', "b1AO9C0mWmtoh1Mlk");
+	kept("pspReference=5V59S4TGC5KYYSDW&eventCode=AUTHORISATION&success=false", "5V59S4TGC5KYYSDW");
+	kept("  organization: 'org_YWW51UBRXV18GF09IKVYQMG2PN',", "org_YWW51UBRXV18GF09IKVYQMG2PN");
+	kept(
+		'{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs", "api_key": "patK9mQ2pLw7vRtZ8n.4f8a2c9e"}',
+		"tbl4tVn5FDqFM4EGs",
+	);
+	// (The same places with a credential in them: a key's parameter, a secret's lookup, a client's argument.)
+	hidden("https://x.io/app.js?token=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7", "R1xcOGum");
+	hidden('secret = client.secrets.fetch("Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te")', "Kx9mQ2vL7pZrTq8Wn3Xc4Yb5Va6Ud7Te");
+});
+
+test("a header names a value after its parameters and version tags", () => {
+	kept("svix-signature: v1,j0N+Ji4l/S09vw5xgfcXlalZr04qXkw27r3i87b/nil=", "j0N+Ji4l");
+	kept(
+		"Stripe-Signature: t=1492774577,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd",
+		"5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd",
+	);
+	hidden("X-Api-Key: v1,Kx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sW5", "Kx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sW5");
+	hidden("error: pin=dGhpc0lzQVNlY3JldEtleTEyMw8x", "dGhpc0lzQVNlY3JldEtleTEyMw8x");
+});
+
+test("a query parameter's credential words are its own: a key's parameter doesn't make the next one a key", () => {
+	const ctx = (text: string, token: string) =>
+		features(
+			new Doc(text),
+			candidates(text).find((c) => c.token === token)!,
+			false,
+		).ctx;
+	const url =
+		"https://server.smithery.ai/exa/mcp?api_key=1b2c3d4e-1111-2222-3333-444455556666&profile=loexnc-wjfyad-li2q6";
+	assert.equal(ctx(url, "loexnc-wjfyad-li2q6").lineCredential, false);
+	assert.equal(
+		ctx("token: x\nhttps://a.io/cb?profile=loexnc-wjfyad-li2q6", "loexnc-wjfyad-li2q6").lineCredential,
+		true,
+	);
 });

@@ -254,10 +254,101 @@ const SAMPLES: [reason: string, text: string, token: string][] = [
 		"Here is the archive: 9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015 (sha256)",
 		"9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015",
 	],
+	// A key shown cut short, its front before an ellipsis, a long vendor prefix's too.
+	["placeholder", "ANTHROPIC_API_KEY=sk-ant-api03-Zx9K...", "sk-ant-api03-Zx9K"],
+	["placeholder", "OPENAI_API_KEY=sk-proj-QmTxvRk9...", "sk-proj-QmTxvRk9"],
+	// A cell of a command's table among counts and sizes: Elasticsearch's `_cat/indices`, `docker images`.
+	[
+		"table-row",
+		"green open chunks-2026.10 z0JPk8Nk-z16-21STCuI2e 3 1 1820331 0 14.2gb 7.1gb",
+		"z0JPk8Nk-z16-21STCuI2e",
+	],
+	["table-row", "yellow open logs Kx9mQ2vL7pZrTq8Wn3Xc4Y 1 1 52 0 1.1mb 1.1mb", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	// A static file's cache buster, in a page and in IIS's log.
+	[
+		"cache-buster",
+		'<link href="/css/site.css?v=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7" />',
+		"R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7",
+	],
+	[
+		"cache-buster",
+		"2026-10-14 08:00:01 10.0.0.4 GET /css/site.css v=R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7 443 - 10.0.0.9",
+		"R1xcOGumKx9mQ2pLw7vRtZ8nB4cYd3HqT6uV1sWRUY7",
+	],
+	["cache-buster", '<script src="/js/app.min.js?ver=Kx9mQ2vL7pZrTq8Wn3Xc4Y"></script>', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	// The object a lookup is given.
+	["lookup-id", '$s = ChargeBee\\Models\\Subscription::retrieve("b1AO9C0mWmtoh1Mlk");', "b1AO9C0mWmtoh1Mlk"],
+	["lookup-id", 'const s = await stripe.subscriptions.retrieve("Kx9mQ2vL7pZrTq8Wn3Xc4Y");', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["lookup-id", "user = User.objects.findById('Kx9mQ2vL7pZrTq8Wn3Xc4Y')", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	// IDs by their documented prefixes: WorkOS's and Clerk's organizations, Airtable's bases and tables.
+	["object-id", "organization: 'org_YWW51UBRXV18GF09IKVYQMG2PN',", "org_YWW51UBRXV18GF09IKVYQMG2PN"],
+	["object-id", '{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs"}', "appx4ZUkcFSHS2ONg"],
+	["object-id", '{"base": "appx4ZUkcFSHS2ONg", "table": "tbl4tVn5FDqFM4EGs"}', "tbl4tVn5FDqFM4EGs"],
+	// A REST path's resource named in words.
+	[
+		"collection-id",
+		"curl https://api.elevenlabs.io/v1/text-to-speech/MEpx6aWSUhHeOdc1CcZ5 -o out.mp3",
+		"MEpx6aWSUhHeOdc1CcZ5",
+	],
+	// A name that says reference or organization says ID.
+	["name-identifier", "pspReference=5V59S4TGC5KYYSDW&eventCode=AUTHORISATION", "5V59S4TGC5KYYSDW"],
+	["name-hash", "SENTRY_RELEASE=63a66e12bb6436fe91488485a79d81f6f8966a55", "63a66e12bb6436fe91488485a79d81f6f8966a55"],
 ];
 
 /** Tokens a veto must not rule out: what looks like its case, but isn't. */
 const NOT: [reason: string, text: string, token: string][] = [
+	// A password after a user and a colon, the URL's scheme left off, is no address's local part.
+	["local-part", "export HTTPS_PROXY=svc:Kd8fQ2mZx9Lp4VnR7sTb3WyH@proxy.corp:8080", "Kd8fQ2mZx9Lp4VnR7sTb3WyH"],
+	["local-part", "proxy = deploy:Kd8fQ2mZx9Lp4VnR7sTb3WyH@10.0.0.1:3128", "Kd8fQ2mZx9Lp4VnR7sTb3WyH"],
+	// An RPC provider's key in its URL, after the API's version or in a key's parameter, near Solana's words.
+	[
+		"public-address",
+		"RPC_URL=https://solana-devnet.g.alchemy.com/v2/QpDQ2eodexkZNDm3FHupsikXm4fjaPeY",
+		"QpDQ2eodexkZNDm3FHupsikXm4fjaPeY",
+	],
+	[
+		"public-address",
+		"solana config set --url https://mainnet.helius-rpc.com/?api-key=QpDQ2eodexkZNDm3FHupsikXm4fjaPeY",
+		"QpDQ2eodexkZNDm3FHupsikXm4fjaPeY",
+	],
+	// A hook's segment after a cloud resource starts a secret's path.
+	[
+		"resource-id",
+		"curl -X POST https://ci.example.com/api/projects/42/webhooks/Kd8fQ2mZx9Lp4VnR7sTb3WyHq1Zx",
+		"Kd8fQ2mZx9Lp4VnR7sTb3WyHq1Zx",
+	],
+	[
+		"resource-id",
+		"POST https://gitlab.example.com/api/v4/projects/7/trigger/Kd8fQ2mZx9Lp4VnR7sTb3WyHq1Zx",
+		"Kd8fQ2mZx9Lp4VnR7sTb3WyHq1Zx",
+	],
+	// A request's target under a hook's segment, as an access log prints it, is a URL's path.
+	[
+		"fs-path",
+		'10.0.0.5 - - [15/Oct/2026:10:00:00 +0000] "POST /hooks/Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN HTTP/1.1" 200 12',
+		"Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN",
+	],
+	[
+		"fs-path",
+		'"POST /api/keys/Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN/rotate HTTP/1.1" 204',
+		"Zk3vQ9xT2mLp7WnR4yUc8HbDq8Xk2LmN",
+	],
+	// Keys listed one per line under a handover are keys, though their widths match as a blob's lines do.
+	[
+		"blob-line",
+		"Here are your new API keys:\nIhRIAJZE/PEO5pJ8eQjG6ZuJftA791osjvBiB7MCDfw=\nlXgCzYiAz6EwdnsyAatoWBPEVC2txVnt280dN9YDbMY=\nmxeXTdT/W94sA8J0TV/BoCf2PA8zVvnHoWu/+2fUSTY=",
+		"mxeXTdT/W94sA8J0TV/BoCf2PA8zVvnHoWu/+2fUSTY=",
+	],
+	// A table's row with a credential's word on it, or too few counts; a cache buster's name on no static file; a lookup
+	// of a secret.
+	["table-row", "prod api_key Kx9mQ2vL7pZrTq8Wn3Xc4Y 3 1 52 0 1.1mb", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["table-row", "web deploy Kx9mQ2vL7pZrTq8Wn3Xc4Y running alice prod", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["cache-buster", "https://api.acme.io/v1/export?v=Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["lookup-id", 'secret = client.secrets.fetch("Kx9mQ2vL7pZrTq8Wn3Xc4Y")', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["lookup-id", 'const c = new Client("Kx9mQ2vL7pZrTq8Wn3Xc4Y")', "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	// A resource named in words that names a credential, or a plural that is a hook's, is no collection.
+	["collection-id", "curl https://api.acme.io/v1/api-keys/Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
+	["collection-id", "curl https://api.acme.io/v1/reset-token/Kx9mQ2vL7pZrTq8Wn3Xc4Y", "Kx9mQ2vL7pZrTq8Wn3Xc4Y"],
 	// A key encoded twice decodes to a token, not text, though its base64 has a slash.
 	[
 		"base64-text",

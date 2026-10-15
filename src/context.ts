@@ -172,7 +172,10 @@ export interface Context {
 	 * on the line: "your new API key for the git server: <t>".
 	 */
 	hashPhrase: boolean;
-	/** The previous URL path segment, for `/hooks/<token>`, `/webhook/<token>`. */
+	/**
+	 * The previous URL path segment, for `/hooks/<token>`, `/webhook/<token>`; in a URL, or a request's target after its
+	 * method (`POST /hooks/<token> HTTP/1.1`).
+	 */
 	pathParent: string;
 	/** A phrase that hands over a value: "here's your key", "Token created:", "use this one". */
 	handover: boolean;
@@ -291,6 +294,19 @@ function isBlobLine(doc: Doc, start: number, end: number, i: number): boolean {
 	return true;
 }
 
+/** A line holding one token alone, or as a list's item: `- Kx9mQ2…`. */
+const LONE_TOKEN_LINE = /^[ \t]*(?:[-*•][ \t]+)?["'`]?[A-Za-z0-9+/=_.-]{16,}["'`]?[ \t]*\r?$/;
+
+/**
+ * The line above line `i`, or above the lines of lone tokens line `i` ends (keys handed over one per line: "Here are
+ * your new API keys:" over three of them).
+ */
+function listHead(doc: Doc, i: number, above: string): string {
+	let k = i - 1;
+	while (k > 0 && k >= i - 20 && LONE_TOKEN_LINE.test(doc.line(k))) k--;
+	return k < i - 1 ? doc.line(k) : above;
+}
+
 /**
  * The name the list that line `i` is an item of sits under (`api_keys:` above `- …` lines, `"keys": [` above `"…",`
  * lines), read over its other items, blank lines and comments; undefined if none. (A line that only names: `Your API
@@ -400,6 +416,16 @@ function nameFromLeft(left: string, url: string | undefined): { name: string; sy
 	// `Authorization: Bearer <token>`: the scheme word sits between name and value.
 	if ((m = /^[ \t]{0,8}([A-Za-z][\w-]{1,60}):[ \t]{1,4}(?:[A-Za-z][\w-]{0,20}[ \t]{1,3})?$/.exec(left)))
 		return { name: m[1], syntax: /^[A-Z]/.test(m[1]) || /-/.test(m[1]) ? "header" : "assign" };
+	// A header whose value is a list of parameters and version tags: Standard Webhooks' `webhook-signature: v1,<sig>`,
+	// Stripe's `Stripe-Signature: t=…,v1=<sig>`. The header names each.
+	// (A header's name: with a dash, or capitalised; `error: pin=…` is a message's pair.)
+	if (
+		(m =
+			/^[ \t]{0,8}((?:[A-Z][\w-]{0,60}|[A-Za-z]\w{0,30}-[\w-]{1,30})):[ \t]{1,4}(?:[\w-]{1,20}(?:=[^\s,;]{0,40})?[,;][ \t]*)+(?:[\w-]{1,20}=)?$/.exec(
+				left,
+			))
+	)
+		return { name: m[1], syntax: "header" };
 	if ((m = FLAG.exec(left))) return { name: m[1].replace(/^-+/, ""), syntax: "flag" };
 	if ((m = XML_TEXT.exec(left))) return { name: m[1], syntax: "xml" };
 	if ((m = XML_ATTR.exec(left)) && /<[\w:.-]+\s[^<>]*$/.test(left)) return { name: m[1], syntax: "xml" };
@@ -456,6 +482,9 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 	// An item of a list under a name (`api_keys:` then `- <key>` lines): the list's name.
 	if (!name && /^[ \t]*(?:[-*•][ \t]*["'`]?|["'`])$/.test(left)) name = listName(doc, i) ?? "";
 
+	// A request's target after its method, as access logs and HTTP dumps print it (`"POST /hooks/<token> HTTP/1.1"`): a
+	// URL's path, not a file's.
+	const requestPath = !inUrl && /\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)[ \t]+\/[^\s"]*$/.test(left);
 	const fsPath =
 		!inUrl &&
 		(/(?:^|[\s"'`=:(,\[])(?:~|\.{1,2}|[A-Za-z]:)?(?:[\\/][\w.@+-]{1,80}){1,30}[\\/]$/.test(left) ||
@@ -543,8 +572,10 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		const before = phraseBefore(textBefore(left, name), 4);
 		({ name, class: cls } = readPhrase(before, name));
 	}
-	const pathParent = inUrl ? (/\/([^/\s?#]{1,60})\/$/.exec(left)?.[1] ?? "") : "";
-	const leftAndAbove = identifierWords(`${above}\n${left}`);
+	const pathParent = inUrl || requestPath ? (/\/([^/\s?#]{1,60})\/$/.exec(left)?.[1] ?? "") : "";
+	// (A query parameter's credential words are its own name's: `?api_key=…&profile=<id>` says nothing of the profile.)
+	const ownLeft = syntax === "query" && name ? left.replace(/[?&][^?&\s"'=]+=[^&\s"']*(?=&[^&]*$)/g, "") : left;
+	const leftAndAbove = identifierWords(`${above}\n${ownLeft}`);
 	return {
 		name,
 		nameClass: cls,
@@ -565,7 +596,7 @@ export function contextOf(doc: Doc, start: number, end: number): Context {
 		sqlCell,
 		handover:
 			HANDOVER.test(identifierWords(left.slice(-200))) ||
-			(left.trim() === "" && HANDOVER.test(identifierWords(above.slice(-200)))),
+			(left.trim() === "" && HANDOVER.test(identifierWords(listHead(doc, i, above).slice(-200)))),
 		inUrl,
 		fsPath,
 		armored: armoredAt(doc, start, left),
