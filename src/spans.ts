@@ -284,6 +284,14 @@ const SETTINGS_AFTER =
  * is itself a list of settings or a URL (an `=` or `?` before), whose own separators these are (`DSN=host=db;password=…`),
  * and not after a value too short to be one.
  */
+const readsAsName = (setting: string) =>
+	naturalness(
+		setting
+			.slice(1, setting.indexOf("="))
+			.replace(/[_.-]+/g, " ")
+			.toLowerCase(),
+	) > 0;
+
 function nextSetting(value: string): number {
 	const list = value.search(/=+[^=;,&]|\?|:\/\//);
 	const separators = /[;,&]/g;
@@ -291,7 +299,9 @@ function nextSetting(value: string): number {
 		if (m.index < 6) continue;
 		let at = m.index;
 		SETTINGS_AFTER.lastIndex = at;
-		while (at < value.length && SETTINGS_AFTER.test(value)) at = SETTINGS_AFTER.lastIndex;
+		// (A setting's name reads as words, `username`, `DB_HOST`; a random password's `;jAnr=` or `;uKj=` doesn't.)
+		for (let s; at < value.length && (s = SETTINGS_AFTER.exec(value)) && readsAsName(s[0]);)
+			at = SETTINGS_AFTER.lastIndex;
 		if (at === value.length) return m.index;
 	}
 	return value.length;

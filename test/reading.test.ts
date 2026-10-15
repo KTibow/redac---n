@@ -534,3 +534,11 @@ test("a login under a name that says so teaches its password too; a base64 key o
 		"$url = 'https://cloud.laravel.com/api/jobs/test-job-id?signature=abc:test-job-id';\n$this->assertSame('test-job-id', $job->id);\n";
 	kept(php, "assertSame('test-job-id'");
 });
+
+test("a value ends at the settings after it only where their names read as names", () => {
+	kept('docker run -e "DB_PASSWORD=Kx9mQ2pLw7vR;Host=db" app', "Host=db");
+	for (const pw of ["2FayNFA;jAnr=_@wpj", "ywLhJ&mjW;uKj=JApMnWbN6g"]) {
+		hidden(`  password: "${pw}"\n`, pw.split(/[;&]/).pop()!);
+		hidden(`      - POSTGRES_PASSWORD=${pw}\n`, pw.split(/[;&]/).pop()!);
+	}
+});

@@ -97,7 +97,7 @@ Other measurements; where a set was first scored blind, that score comes first:
 
 | set | result |
 |---|---|
-| Development sets (4,550 cases, 6,942 secrets, 18,932 look-alikes; held-out 2–9 among them) | 95.7% caught, 1.4% destroyed; 95.5% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
+| Development sets (4,550 cases, 6,942 secrets, 18,932 look-alikes; held-out 2–9 among them) | 95.6% caught, 1.4% destroyed; 95.5% and 1.4% when each case is wrapped in an Anthropic or OpenAI transcript and passed to `redactValue` |
 | [CredData](https://github.com/Samsung/CredData) test split (real lines from public repositories) | 82.8% caught and 3.2% of non-secret lines hit, blind; now 83.9% and 3.5%. On the dev split it was tuned on, 91.4% and 1.8%: the gap shows how much of the tuning doesn't carry over to new repositories |
 | Six more ordinary-text sets (new repositories, trajectory shards, donated agent sessions from [Trace Commons](https://huggingface.co/datasets/trace-commons/agent-traces), agent pull requests from [AIDev](https://huggingface.co/datasets/hao-li/AIDev), repositories that handle credentials) | 5.5, 4.1, 5.6, 22.5, 17.0 and 4.8 redactions per million characters, blind (the last two hold AWS signatures in presigned URLs and recorded OAuth test runs with real tokens) |
 | [GitLab's secret-detection rules](https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules), each rule's examples | 81.4% of 2,038 caught and 23% of 168 negatives hit, blind; now 88.0% and 15% |
@@ -297,7 +297,7 @@ it as a `known` value: known values are hidden whatever they look like, as long 
 
 - **Behaviour tests** (`test/`, by topic): a few cases per rule or decision, cross-products of credential names,
   syntaxes and value shapes, and checks that long and repetitive inputs take linear time.
-- **The quality gate** (`pnpm check`) scores every development set and the 132 regression sets
+- **The quality gate** (`pnpm check`) scores every development set and the 138 regression sets
   (`eval/corpora/regress/README.md`: probes of each rule's edges) against a committed baseline
   (`eval/baseline.json.gz`), and fails on any case that newly leaks, is newly destroyed or is newly slow.
   `scripts/snap.ts` does the same with a sample of ordinary text from the external corpora added.
