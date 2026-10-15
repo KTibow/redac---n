@@ -1,6 +1,6 @@
 {
 	"name": "redac---n",
-	"version": "0.0.4",
+	"version": "0.0.5",
 	"description": "Redact secrets from text and agent transcripts before they reach an untrusted model provider",
 	"keywords": [
 		"secrets",
