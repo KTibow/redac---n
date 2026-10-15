@@ -111,3 +111,13 @@ test("a large state file read as a secret file costs about what its text costs r
 	const file = best(() => r().detect(state, { hint: { path: "infra/terraform.tfstate", secretFile: true } }));
 	assert.ok(file < 1.5 * plain, `${file.toFixed(0)} ms as a secret file, ${plain.toFixed(0)} ms plainly`);
 });
+
+test("a line of URLs with no blank between them costs linear time", () => {
+	// (Each URL's reader reads, as one URL, to the line's end: asked whether a URL reaches a token, it stops once it does.)
+	for (const separator of [",", ";", "|"])
+		assertLinear(
+			`URLs joined by ${separator}`,
+			(n) => r().redact(`http://elasticsearch-node-01.prod.example.com:9200${separator}`.repeat(n)),
+			300,
+		);
+});
