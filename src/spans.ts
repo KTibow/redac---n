@@ -201,7 +201,7 @@ function union(findings: Finding[], text?: string): Finding[] {
 			continue;
 		}
 		if (runsPastToken(text, last, f)) continue;
-		if (runsPastToken(text, f, last) && f.start === last.start) {
+		if (runsPastToken(text, f, last)) {
 			out[out.length - 1] = { ...f };
 			continue;
 		}

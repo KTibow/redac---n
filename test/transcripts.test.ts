@@ -441,7 +441,7 @@ test("a Claude Code record's toolUseResult carries its call's hint", () => {
 	assert.ok(!JSON.stringify(r().redactValue(record, { learn: false }).value).includes("Copper7781#x"));
 });
 
-test("a tool result carries its call's hint in Gemini's, Responses' and Codex's shapes", () => {
+test("a tool result carries its call's hint in Gemini's and Responses' shapes", () => {
 	const env = "APP_PORT=3000\nJWT_KEY=hello-world-service-key\nENC_KEY=kitchen-sink-moon-47\n";
 	const gemini = (call: object, response: object) => ({
 		contents: [
@@ -460,7 +460,7 @@ test("a tool result carries its call's hint in Gemini's, Responses' and Codex's 
 			{ name: "read_file", args: { absolute_path: "/app/.env" } },
 			{ name: "read_file", response: { output: env } },
 		),
-		// Responses' shell tool, its commands a list; a Codex custom tool, its input free-form text.
+		// Responses' shell tool, its commands a list.
 		[
 			{ type: "shell_call", call_id: "c1", action: { commands: ["cd /app", "cat .env"] } },
 			{
@@ -469,16 +469,12 @@ test("a tool result carries its call's hint in Gemini's, Responses' and Codex's 
 				output: [{ stdout: env, stderr: "", outcome: { type: "exit", exit_code: 0 } }],
 			},
 		],
-		[
-			{ type: "custom_tool_call", call_id: "c9", name: "exec", input: "cat .env" },
-			{ type: "custom_tool_call_output", call_id: "c9", output: env },
-		],
 	];
 	for (const v of shapes) {
 		const out = JSON.stringify(r().redactValue(v).value);
 		for (const s of ["hello-world-service-key", "kitchen-sink-moon-47"]) assert.ok(!out.includes(s), out);
 		// The envelope stays: ids, types, names and the exit's outcome.
-		for (const s of ['"exec"', '"read_file"', '"shell_call_output"', '"exit"', id])
+		for (const s of ['"read_file"', '"shell_call_output"', '"exit"', id])
 			if (JSON.stringify(v).includes(s)) assert.ok(out.includes(s), `${s} in ${out}`);
 	}
 	// Gemini's calls with no id answer in order: the result of `ls` is not the `.env`.

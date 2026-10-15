@@ -91,12 +91,9 @@ export class RedactionStream {
 		// (Up to the buffer's last line break, but at the end: no detector sees a line cut short that the whole text wouldn't.
 		// Unless that break is inside a private key whose END line has no break after it, `…-----END RSA PRIVATE KEY----- {"a":…`:
 		// the key is read to its END, and what follows on that line, cut short, is held back with it.)
-		let lineEnd = all ? -1 : this.buffer.lastIndexOf("\n");
+		const lineEnd = all ? -1 : this.buffer.lastIndexOf("\n");
 		let whole = head + (lineEnd < 0 ? this.buffer : this.buffer.slice(0, lineEnd + 1));
-		if (lineEnd >= 0 && endsInBlock(whole)) {
-			lineEnd = -1;
-			whole = head + this.buffer;
-		}
+		if (lineEnd >= 0 && endsInBlock(whole)) whole = head + this.buffer;
 		// An unfinished line, and a Secret's data whose `kind` hasn't come yet, are held until they are whole.
 		let cut = this.releasePoint(all);
 		if (cut <= 0 || (!all && this.buffer.length < MAX_HELD && openManifestData(whole)?.pending)) {

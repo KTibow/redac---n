@@ -282,20 +282,16 @@ function toolHints(value: unknown): ToolHints {
 		const o = v as Record<string, unknown>;
 		// Anthropic: {type: "tool_use", id, input: {...}}. OpenAI: {id, type: "function", function: {arguments: "<json>"}}.
 		// OpenAI Responses: {type: "function_call", call_id, arguments}; {type: "local_shell_call", call_id, action: {command: [...]}};
-		// {type: "shell_call", call_id, action: {commands: [...]}}; {type: "custom_tool_call", call_id, name, input: "<text>"}.
+		// {type: "shell_call", call_id, action: {commands: [...]}}.
 		// Gemini: {functionCall: {id?, name, args: {...}}}.
 		let input: unknown = o.input ?? o.action ?? o.arguments ?? o.args;
 		const fn =
 			o.function && typeof o.function === "object" ? (o.function as Record<string, unknown>).arguments : undefined;
 		if (fn !== undefined && fn !== null) input = fn;
 		if (typeof input === "string") {
-			const text = input;
 			try {
-				input = JSON.parse(text);
-			} catch {
-				// (A custom tool's free-form input, one line of it, is the command it runs: `exec` with `cat .env`.)
-				if (typeof o.name === "string" && !text.includes("\n")) input = { command: text };
-			}
+				input = JSON.parse(input);
+			} catch {}
 		}
 		const id = (typeof o.call_id === "string" ? o.call_id : undefined) ?? (typeof o.id === "string" ? o.id : undefined);
 		const gemini = key === "functionCall" && typeof o.name === "string";
@@ -820,34 +816,24 @@ interface LeafContext {
 function placed(text: string, context: string, at: number, written: string): LeafContext {
 	if (written.length === text.length)
 		return { text: context, at, length: text.length, toContext: (i) => i, toLeaf: (i) => i };
-	// (Where each character is written: each code point as JSON writes it in the string, a valid surrogate pair as it
-	// is, a lone surrogate escaped.)
-	const starts = new Int32Array(text.length + 1);
+	// (Where each character is written: a code point as JSON writes it, a valid surrogate pair as it is, a lone one escaped.)
+	const starts: number[] = [];
 	let w = 0;
-	for (let i = 0; i < text.length;) {
-		const c = text.codePointAt(i)!;
-		const units = c > 0xffff ? 2 : 1;
-		starts[i] = w;
-		if (units === 2) starts[i + 1] = w + 1;
-		w += JSON.stringify(text.slice(i, i + units)).length - 2;
-		i += units;
+	for (const ch of text) {
+		starts.push(w);
+		if (ch.length === 2) starts.push(w + 1);
+		w += JSON.stringify(ch).length - 2;
 	}
-	starts[text.length] = w;
+	starts.push(w);
 	return {
 		text: context,
 		at,
 		length: written.length,
 		toContext: (i) => starts[i],
+		// (The last leaf position written at or before `i`; with `after`, the first at or after it.)
 		toLeaf: (i, after) => {
-			let lo = 0;
-			let hi = text.length;
-			// (The last leaf position written at or before `i`; with `after`, the first at or after it.)
-			while (lo < hi) {
-				const mid = (lo + hi + 1) >> 1;
-				if (starts[mid] <= i) lo = mid;
-				else hi = mid - 1;
-			}
-			return after && starts[lo] < i ? lo + 1 : lo;
+			const j = starts.findLastIndex((s) => s <= i);
+			return after && starts[j] < i ? j + 1 : j;
 		},
 	};
 }
