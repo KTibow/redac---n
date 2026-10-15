@@ -8,6 +8,7 @@ import { naturalness } from "./charlm.ts";
 import { lineEnd, lineStart } from "./lines.ts";
 import { asciiSet, longRuns } from "./runs.ts";
 import { keepReason } from "./policy.ts";
+import { isJsonDocument } from "./secretfile.ts";
 import type { Finding } from "./types.ts";
 import { hasThreeClasses } from "./values.ts";
 
@@ -132,23 +133,13 @@ function isGeneratedToken(token: string): boolean {
 		return false;
 	// (Nor a JSON object or array, which its quotes and braces give three classes: a JWT's header on a line of its own,
 	// `cut -d. -f1` of a token, is `{"alg":"HS256","typ":"JWT"}`.)
-	if (/^[{[]/.test(token) && isJson(token)) return false;
+	if (isJsonDocument(token)) return false;
 	if (
 		keepReason(token, { start: 0, end: token.length, kind: "random token", rule: "unnamed", confidence: 0.8 }) !==
 		undefined
 	)
 		return false;
 	return naturalness(token) < 0.2 || (hasThreeClasses(token) && /[^A-Za-z0-9]/.test(token));
-}
-
-/** Whether `text` parses as JSON. */
-function isJson(text: string): boolean {
-	try {
-		JSON.parse(text);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 /** Base64 wrapped over lines, joined: its characters, and the span from the first line's to the last's. */
