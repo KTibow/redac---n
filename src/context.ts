@@ -260,7 +260,7 @@ const HASH_ALGORITHM = String.raw`(?:sha-?(?:1|224|256|384|512)|md5|blake2b?|bla
  * `SHA256 (app.tar.gz) = `.)
  */
 const HASH_PREFIX = new RegExp(
-	String.raw`(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:${HASH_ALGORITHM}|h1|integrity)[:=\-]:?[ \t]?$|(?<![A-Za-z0-9])(?:hash|checksum|digest)[ \t]*\([\w -]{1,20}\)[ \t]?[:=][ \t]?$|(?<![A-Za-z0-9])${HASH_ALGORITHM}[ \t]*\([^()\n]{1,100}\)[ \t]?[:=][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$`,
+	String.raw`(?:^|[\s;])bh=$|pin-sha256="?$|(?<![A-Za-z0-9])(?:${HASH_ALGORITHM}|h1|integrity)[:=\-]:?[ \t]?$|(?<![A-Za-z0-9])(?:hash|checksum|digest|${HASH_ALGORITHM})[ \t]*\([^()\n]{1,100}\)[ \t]?[:=][ \t]?$|@sha256:$|\bsha(?:1|256|512)sum\b.{0,40}$|\b(?:commit|tree|parent|object|blob|merge)[ \t]$|\bcherry picked from commit $|\bindex $|(?:^|\n)Index: [^\s=:]{1,100}$`,
 	"i",
 );
 

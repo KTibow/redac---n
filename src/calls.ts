@@ -147,13 +147,11 @@ function splitArguments(text: string, at: number, close: number, slashComments: 
 		if (first < 0) first = i;
 		// (Each closes before `close`: the pass that matched `close` read them.)
 		const stop =
-			c === "`" && text.startsWith("``", i + 1)
-				? fenceEnd(text, i)
-				: c === '"' || c === "'" || c === "`"
-					? literalEnd(text, i, { max: close - i })
-					: c === "(" || c === "[" || c === "{"
-						? closeOf(text, i, slashComments)
-						: i;
+			c === '"' || c === "'" || c === "`"
+				? literalEnd(text, i, { max: close - i })
+				: c === "(" || c === "[" || c === "{"
+					? closeOf(text, i, slashComments)
+					: i;
 		if (stop < 0) break;
 		i = stop;
 		last = i + 1;
