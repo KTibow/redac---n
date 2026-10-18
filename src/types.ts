@@ -69,8 +69,8 @@ export interface RedactOptions {
 	/**
 	 * Values that are secret wherever they appear, in every encoding: credentials the caller holds, each with a label
 	 * for its placeholders. Values are trimmed. Empty entries are skipped, and so are values too short or ordinary to
-	 * hide everywhere (under 6 characters, letters only and under 14, digits only and up to 8 digits) or over 16,384
-	 * characters: `addKnown` returns false for those.
+	 * hide everywhere (under 6 characters, letters only and under 14, digits only and up to 8 digits, no letter or digit
+	 * at all, one character repeated) or over 16,384 characters: `addKnown` returns false for those.
 	 */
 	known?: Iterable<string | { value: string; label?: string } | undefined | null>;
 	/**

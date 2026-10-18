@@ -572,6 +572,15 @@ test("a secret store's listing keeps its header, its counts and a published exam
 	hidden(listing, "Kx9mQ2pLrTvB7nWz", { command: "vault kv get secret/aws" });
 });
 
+test("a secret file's line of no letter or digit is an underline, and teaches nothing: a traceback's carets", () => {
+	const traceback =
+		'Traceback (most recent call last):\n  File "<string>", line 1, in <module>\n    json.load(sys.stdin)\n    ^^^^^^^^^^^^^^^^^^^^\n  File "/usr/lib/python3.14/json/decoder.py", line 345, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\n';
+	const red = r();
+	assert.equal(red.redact(traceback, { hint: FILE }).text, traceback);
+	red.learn(traceback, { hint: FILE });
+	assert.equal(red.redact(traceback).text, traceback);
+});
+
 test("a secret file's lines that are one token: a password before a certificate or made of words, not a table's rule", () => {
 	const cert =
 		"-----BEGIN CERTIFICATE-----\nMIIBeTCCAR+gAwIBAgIUHeKPK2ltA6P8OoCcZTscsGpeKiQwCgYIKoZIzj0EAwIw\nEjEQMA4GA1UEAwwHYWNtZS5pbzAeFw0yNjEwMTIxMDQ4NTJaFw0yNjEwMTMxMDQ4\n-----END CERTIFICATE-----\n";

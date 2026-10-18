@@ -514,6 +514,24 @@ test("a known token cut short takes no path before it, only what its value is ma
 	assert.ok(!slash.redact("see Zq8vK2mX9pLw4Rt/Yabcdefghij and more").text.includes("Yabcdefghij"));
 });
 
+test("a value with no letter or digit, or of one character repeated, is never known, nor a long value's end of one", () => {
+	const red = r();
+	for (const v of [
+		"^^^^^^^^^^^^^^^^^^^^",
+		"~~~~~~~~~~~~~~~^^^",
+		"+----------+",
+		"!@#$%^&*()",
+		"0000000000",
+		"a".repeat(16),
+	])
+		assert.equal(red.addKnown(v), false, v);
+	assert.ok(red.addKnown("!@#$%^&*()x"));
+	// (A key's zero bytes, `AAAA…`, open other blobs too: an ssh-rsa key's, here.)
+	const zeros = new Redactor({ fingerprintKey: "t", known: [`${"A".repeat(16)}Qm9yZWFsaXNLZXlNYXRlcmlhbA`] });
+	assert.equal(zeros.redact("data: AAAAAAAAAAAAAAAAB3NzaC1yc2E end").text, "data: AAAAAAAAAAAAAAAAB3NzaC1yc2E end");
+	assert.ok(!zeros.redact(`k ${"A".repeat(16)}Qm9yZWFsaXNLZXlNYXRlcmlhbA e`).text.includes("Qm9y"));
+});
+
 test("a login under a name that says so teaches its password too; a base64 key or a signature is not split", () => {
 	const redactor = r();
 	redactor.learn("NEO4J_AUTH=neo4j/Xk2mP9vLqT\n", { hint: { path: ".env" } });

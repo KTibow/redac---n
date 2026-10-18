@@ -166,7 +166,8 @@ use your own format.
 - `learn(text, { hint })` remembers what it finds, so it's hidden wherever it shows up later. It returns how many
   values were new.
 - `addKnown(value, label)` adds one value. Values too ordinary to hide everywhere are refused (it returns false):
-  under 6 characters, numbers of up to 8 digits, and letters-only values under 14 characters.
+  under 6 characters, numbers of up to 8 digits, letters-only values under 14 characters, values with no letter or
+  digit, and one character repeated.
 - `hashes: "hide"` hides password hashes too (they're kept by default).
 - The standalone `redact(text, options)` export uses a throwaway Redactor: nothing is remembered, and tags are
   random.

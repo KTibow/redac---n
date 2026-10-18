@@ -254,9 +254,10 @@ export class KnownValues {
 				this.shortForms.push({ form: v, word: false });
 			}
 		}
-		// Only values long enough that a 16-character end is still unmistakably theirs.
+		// Only values long enough that a 16-character end is still unmistakably theirs, and ends that would be found in
+		// ordinary text no more than the value would: a key's zero bytes, `AAAAAAAAAAAAAAAA`, are in every other blob.
 		if (value.length >= 24 && /^[A-Za-z0-9+/=_-]+$/.test(value)) {
-			for (const end of [value.slice(0, W), value.slice(-W)]) {
+			for (const end of [value.slice(0, W), value.slice(-W)].filter(isReplaceable)) {
 				this.ends.add(end);
 				form(end);
 			}
@@ -348,9 +349,14 @@ export class KnownValues {
 	}
 }
 
-/** Plain words and very short values would match ordinary text everywhere. */
+/**
+ * Plain words and very short values would match ordinary text everywhere; so would a value with no letter or digit
+ * (a rule, `+-----+`; an underline, Python's `~~~~^^^^` under the code a traceback points at) or of one character over
+ * and over (`0000000000`, base64's `AAAAAAAAAAAAAAAA`).
+ */
 export function isReplaceable(value: string): boolean {
 	if (value.length < 6 || value.length > 16_384) return false;
+	if (!/[\p{L}\p{N}]/u.test(value) || /^(.)\1*$/su.test(value)) return false;
 	if (/^\p{L}+$/u.test(value)) return value.length >= 14;
 	return !/^\d{1,8}$/.test(value);
 }

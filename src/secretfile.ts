@@ -458,8 +458,10 @@ function bareTokens(text: string, out: Finding[]) {
 			continue;
 		// (A name and `=` or `:`; not padded base64, whose `=` pads: `Zm9vYmFyYg==`.)
 		if (/^[A-Za-z_][\w.-]{0,80}[ \t]*(?::|=(?!=$))/.test(t)) continue;
-		// (A comment, `#…`, or a rule: `-----+-----` under psql's header, `+----+` around MySQL's, `|---|` in Markdown.)
-		if (isInert(t) || (isWordySetting(t) && naturalness(t) > 0.5) || /^#|^-{3}|^=+$|^[+|][-+=|]+$/.test(t)) continue;
+		// (A comment, `#…`; or no letter or digit, a rule or an underline: `-----+-----` under psql's header, `+----+`
+		// around MySQL's, `|---|` in Markdown, `=====`, Python's `~~~~^^^^` under the code a traceback points at.)
+		if (isInert(t) || (isWordySetting(t) && naturalness(t) > 0.5) || /^#|^-{3}/.test(t) || !/[A-Za-z0-9]/.test(t))
+			continue;
 		out.push({ start: at(m, 1)[0], end: at(m, 1)[1], kind: "secret", rule: "file:bare", confidence: 0.9 });
 	}
 }
