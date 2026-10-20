@@ -202,6 +202,10 @@ characters back, and a value named only a holdback's length after it.
 
 ## Security model
 
+- **It hides secrets in what's sent, not from what the agent does.** The provider, routers and logs get the
+  redacted text. An agent that can run commands can still read a secret and send it anywhere without it ever
+  entering the context, and an injected instruction can tell it to: limiting that is the job of the agent's
+  permissions, a sandbox or egress control.
 - **What the provider still sees:** all text that isn't a secret, each placeholder's kind (a format's name,
   `password`, or your label: keep labels free of anything sensitive), and tags that link repeats of one value.
 - **One Redactor per user or tenant.** A Redactor holds every value it was given or learned, in plain text, and
@@ -217,10 +221,13 @@ characters back, and a value named only a holdback's length after it.
 - **Failures close.** If a detector throws, the whole text becomes one placeholder. `redact` throws on input that
   isn't a string: treat a throw as "don't send".
 - **Findings carry the secret** (`value`, the secret as a program would read it). Strip it before you log them.
-- **Don't put secrets back into the model's tool calls.** A compromised router or an injected instruction could
-  send a restored secret anywhere. Let the executor or an egress proxy fill in credentials at run time
-  (`$STRIPE_KEY`). An agent that edits files it read through redaction needs its executor to restore that file's
-  values when writing it.
+- **The model writes placeholders, not secrets.** A tool call that quotes a hidden value runs with its placeholder
+  instead. Have the agent reference credentials (`$STRIPE_KEY`, read by the shell at run time), or let an egress
+  proxy attach them only to requests for their own host, which also keeps them from a call that would send them
+  elsewhere. Put a value back only where it came from: an agent that edits a file it read through redaction needs
+  its executor to restore that file's values when writing it. Restoring placeholders in every tool call hands the
+  agent's actions every value the model was shown, including ones the agent couldn't reach itself, such as your
+  `known` values.
 
 ## What it finds
 
