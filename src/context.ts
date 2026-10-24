@@ -241,6 +241,7 @@ const ASSIGN = new RegExp(
 	String.raw`${NAME_TAIL}(?:["'\x60]?\]|["'\x60])?(?:[ \t]*:[ \t]*[&*]?(?:'\w+[ \t]+)?[A-Za-z_][\w.<>\[\]|?, ]{0,40}?(?=[ \t]*=[^=>]))?[ \t]{0,40}(?:=|:=|:|=>|->|<-|\?\?=|\|\|=)[ \t]{0,40}(?:[!&*]?\w{0,10}[ \t]{1,4})?(?:(?:${STRING_PREFIX})?["'\x60]|\[[ \t]*["']?|\{[ \t]*["']?)?$`,
 	"u",
 );
+const INNER_LITERAL = new RegExp(String.raw`(["'\x60])(?:${STRING_PREFIX})?(?!\1)["']$`);
 const FLAG = /(?:^|[\s"'])(--?[A-Za-z][\w-]{0,60})(?:[ \t]{1,4}|=)["']?$/;
 const QUERY = new RegExp(String.raw`${PARAM_START}(${PARAM_NAME})=$`);
 const XML_TEXT = /<([\w:.-]{1,80})(?:\s[^<>]{0,200})?>$/;
@@ -415,6 +416,9 @@ function lineAbove(doc: Doc, i: number): string {
  */
 function nameFromLeft(left: string, url: string | undefined): { name: string; syntax: Syntax } {
 	let m: RegExpMatchArray | null;
+	// A literal written inside a string, as Python's `json.dumps(…, default=str)` prints bytes: `"SearchString":
+	// "b'<token>'"`. The name reads through the inner literal's head as through the string's own quote.
+	if ((m = INNER_LITERAL.exec(left))) left = left.slice(0, m.index! + 1);
 	if (url !== undefined) {
 		if ((m = QUERY.exec(url))) return { name: m[1], syntax: "query" };
 		if (/\/$/.test(url)) return { name: "", syntax: "path" };

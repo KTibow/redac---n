@@ -188,6 +188,8 @@ test("quoted random tokens and lists of keys are hidden", () => {
 		`{\n  "api_keys": [\n    "${t}",\n    "${u}"\n  ]\n}`,
 	])
 		hidden(s, t.slice(8, 30));
+	// Bytes as `json.dumps(…, default=str)` prints them (boto3's WAF rules): the value is named as the string is.
+	hidden(`"SearchString": "b'kyi4jvuvsmj70stz0u4nejc0agfxgdfm'",`, "kyi4jvuvsmj70stz0u4nejc0agfxgdfm");
 });
 
 test("an ID-shaped token is hidden in a key's place, and a hash is kept where a hash word heads its phrase", () => {
@@ -368,6 +370,9 @@ test("a token's context: the name and syntax the text around it gives", () => {
 		[`[\n  "${t}"\n]`, { name: "", syntax: "bare" }],
 		[`<input type="hidden" name="csrf" value="${t}">`, { syntax: "xml" }],
 		[`token="${t}"`, { name: "token", syntax: "assign" }],
+		// A literal inside a string (Python's `json.dumps(…, default=str)` of bytes) is named as the string is.
+		[`"SearchString": "b'${t}'",`, { name: "SearchString", syntax: "assign" }],
+		[`"note": "'${t}'"`, { name: "note", syntax: "assign" }],
 		// A sibling names the value: on its line, or alone on the line above.
 		[`{"name": "STRIPE_KEY", "value": "${t}"}`, { name: "STRIPE_KEY" }],
 		[`Name: DB_PASSWORD\n${t}\n`, { name: "DB_PASSWORD" }],
