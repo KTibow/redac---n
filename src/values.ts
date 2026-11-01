@@ -1370,9 +1370,10 @@ export function isTestValue(value: string): boolean {
  * Names built from short parts: `BOB_sect163r2`, `KAS-ECC-CDH_P-256_C14`, `ED448-1-PUBLIC-Raw`, `ALICE_cf_c2pnb368w1`,
  * `us-east-1a`, `login_and_password_removed`. The first part starts with a letter, and every part reads as a name
  * part: short, a number, lower-case hex, a word, an acronym, letters then digits (`amd64`, `SECP521R1`), or a word then
- * a code (`brainpoolP224r1`). Beside a word (`ALICE`, `PUBLIC`), any part of one case with digits is a code
- * (`c2pnb368w1`). A random part mixes cases with digits (`JWPa`, `Xk9mP2`), and a product key's groups are random
- * letters and digits of one length (`VKXQR-8B2MP-7WJ4T`): not names.
+ * a code (`brainpoolP224r1`). Beside a word (`ALICE`, `PUBLIC`), a part of one case is a name (`WKHTMLTOPDF`), and
+ * with digits a code while short (`c2pnb368w1`): past ten characters such a part is more often generated
+ * (`tok-c4ni6uhtu37u-…`) than named (`p256kyber768`). A random part mixes cases with digits (`JWPa`, `Xk9mP2`), and a
+ * product key's groups are random letters and digits of one length (`VKXQR-8B2MP-7WJ4T`): not names.
  */
 export function isIdentifierShaped(value: string): boolean {
 	// (A sentinel's underscores, `__n8n_BLANK_VALUE`, wrap its parts.)
@@ -1391,7 +1392,7 @@ export function isIdentifierShaped(value: string): boolean {
 		/^[A-Z]{2,5}$/.test(p) ||
 		/^(?:[a-z]+|[A-Z]+)\d+[A-Za-z]?\d*$/.test(p) ||
 		naturalness(p) > 0 ||
-		(word && /^(?:[a-z][a-z0-9]*|[A-Z][A-Z0-9]*)$/.test(p));
+		(word && /^(?:[a-z][a-z0-9]*|[A-Z][A-Z0-9]*)$/.test(p) && (p.length <= 10 || !/\d/.test(p)));
 	const wordThenCode = (p: string) =>
 		/^[a-z]{4,}[A-Z0-9][A-Za-z0-9]{0,7}$/.test(p) && naturalness(/^[a-z]+/.exec(p)![0]) > 0.3;
 	const random = (p: string) =>

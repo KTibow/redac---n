@@ -556,11 +556,19 @@ test("names built from short parts are identifiers; a product key's groups and a
 		"py3-gcc-x64",
 		"RHSA-2024:1234",
 		"prod-db01-eu01",
+		"ALICE_c2pnb368w1",
 		// A sentinel in underscores.
 		"__n8n_BLANK_VALUE",
 	])
 		assert.ok(isIdentifierShaped(v), v);
-	for (const v of ["VK7X2-QM4P8-RT9W3-HJ6N2", "VKXQR-QM4P8-RT9W3", "qzxvbK9mWpL2-key", "__Kx9mQ2vLp7Rt__"])
+	for (const v of [
+		"VK7X2-QM4P8-RT9W3-HJ6N2",
+		"VKXQR-QM4P8-RT9W3",
+		"qzxvbK9mWpL2-key",
+		"__Kx9mQ2vLp7Rt__",
+		// Beside a word, a run of one case and digits longer than a code's.
+		"tok-c4ni6uhtu37u-bt8nptzlz4uq",
+	])
 		assert.ok(!isIdentifierShaped(v), v);
 	kept("data: { oauthTokenData: '__n8n_BLANK_VALUE' },", "__n8n_BLANK_VALUE");
 	hidden("data: { oauthTokenData: 'Kx9mQ2vLp7Rt3Wz8nB5c' },", "Kx9mQ2vLp7Rt3Wz8nB5c");

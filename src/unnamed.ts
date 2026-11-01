@@ -15,7 +15,7 @@
 import { base64Binary, base64Bytes } from "./base64.ts";
 import { naturalness } from "./charlm.ts";
 import { contextOf, type Context, Doc } from "./context.ts";
-import { isCredentialName, isVendorClient, mentionsCredential } from "./names.ts";
+import { isCredentialName, isVendorClient, mentionsCredential, namesWhichCredential } from "./names.ts";
 import { isPlaceholder, isTruncated } from "./public.ts";
 import { alphabetOf, entropyZ, shape, type Alphabet } from "./random.ts";
 import type { Finding, Guessing } from "./types.ts";
@@ -448,12 +448,14 @@ function hexVeto(f: Features): string | undefined {
 
 /**
  * A place keys are passed, where an ID seldom stands alone, so an ID's shape (a ULID, a cuid, an object ID's prefix, a
- * slug) says nothing there: an HTTP header (`X-Lumen: …`, not a log's `Error: Post …`), a handover ("your key: …"), a
- * command's arguments after a prompt or a script's path (`$ ./notify.sh prod …`, not a chat's `job id …`), or a
- * client's constructor or a vendor's SDK (`new Client("k3j9…")`).
+ * slug) says nothing there: a name that says which credential (names.ts namesWhichCredential: `API key: …`,
+ * `RESEND_API_KEY=…`; not a call's, whose name is the callee's), an HTTP header (`X-Lumen: …`, not a log's `Error:
+ * Post …`), a handover ("your key: …"), a command's arguments after a prompt or a script's path (`$ ./notify.sh prod
+ * …`, not a chat's `job id …`), or a client's constructor or a vendor's SDK (`new Client("k3j9…")`).
  */
 function keyPlace({ ctx }: Features): boolean {
 	return (
+		(ctx.syntax !== "call" && namesWhichCredential(ctx.name)) ||
 		(ctx.syntax === "header" && (/-/.test(ctx.name) || /^authorization$/i.test(ctx.name))) ||
 		ctx.handover ||
 		(ctx.shellArg && /^[ \t]*(?:[$#>][ \t]|sudo[ \t]|\.{0,2}\/)/.test(ctx.left)) ||

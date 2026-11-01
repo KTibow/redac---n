@@ -1093,6 +1093,38 @@ test("a hash among words, numbers or names is a content address; a token with a 
 		"API_TOKEN=qWxZkLmBtR-9f8e7d6c5b4a39281706f5e4d3c2b1a0",
 	])
 		assert.ok(!off.redact(text).text.includes("9f8e7d6c5b4a"), text);
+	// Under a name that says which credential, words joined to a hash are a vendor's prefix; under a bare `key`, a
+	// cache key's words.
+	// (Guessing off: the named layer alone must hide them.)
+	for (const [text, value] of [
+		["API Key: si-claude-max-11a1a1a1a1a1a1a111", "si-claude-max-11a1a1a1a1a1a1a111"],
+		["API_KEY=claude-max-8f3a9c2e7b1d4f60a7c3e91b", "claude-max-8f3a9c2e7b1d4f60a7c3e91b"],
+		['"apiKey": "cal_live_06f04d1c1b9710e0b90cc90e739b17c8"', "cal_live_06f04d1c1b9710e0b90cc90e739b17c8"],
+		[
+			"client_secret: acr-credential-7b9e06dc9282c7db496ea8cf46426d31",
+			"acr-credential-7b9e06dc9282c7db496ea8cf46426d31",
+		],
+		// (An object's name says which credential as a word before it does; in one identifier, a word of which copy
+		// before the generic name leaves an earlier word to say it.)
+		['api.key = "si-claude-max-8f3a9c2e7b1d4f60a7c3e91b"', "si-claude-max-8f3a9c2e7b1d4f60a7c3e91b"],
+		["jwt.secret: si-claude-max-8f3a9c2e7b1d4f60a7c3e91b", "si-claude-max-8f3a9c2e7b1d4f60a7c3e91b"],
+		["SEGMIND_PROD_KEY=si-claude-max-8f3a9c2e7b1d4f60a7c3e91b", "si-claude-max-8f3a9c2e7b1d4f60a7c3e91b"],
+	])
+		assert.ok(!off.redact(text).text.includes(value), text);
+	// (A word of which copy, `test`, `old`, `prod`, or a determiner leaves the name as bare as `key`.)
+	for (const [text, value] of [
+		["key: linux-deps-8f3a9c2e7b1d4f60a7c3e91b", "linux-deps-8f3a9c2e7b1d4f60a7c3e91b"],
+		["Cache restored from key: linux-node-deps-8f3a9c2e7b1d4f60a7c3e91b", "linux-node-deps-8f3a9c2e7b1d4f60a7c3e91b"],
+		["test key: linux-deps-8f3a9c2e7b1d4f60a7c3e91b", "linux-deps-8f3a9c2e7b1d4f60a7c3e91b"],
+		[
+			"restore Secret: azure-storage-account-fdc6604aba0c24ef6b74e30-secret",
+			"azure-storage-account-fdc6604aba0c24ef6b74e30-secret",
+		],
+	])
+		kept(text, value);
+	assert.ok(
+		off.redact('TEST_KEY = "deps-linux-8f3a9c2e7b1d4f60a7c3e91b"').text.includes("deps-linux-8f3a9c2e7b1d4f60"),
+	);
 	// Under a bare `key`: an object key of names (an S3 one), not a key in base64.
 	kept('{"Bucket": "acme", "Key": "exports/2024/Q3"}', "exports/2024/Q3");
 	kept('"key": "apis/v1beta1/Namespaces"', "apis/v1beta1/Namespaces");

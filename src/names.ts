@@ -1682,7 +1682,7 @@ export const isGenericName = (name: string) => GENERIC_NAMES.test(name);
 
 /** Words that make a bare `key`/`token` after them a credential's (`api key`, `client secret`), with QUALIFIER_WORDS (`old key`) and vendors' names (`stripe key`); as an alternation, for the sentences that name a credential (named.ts). */
 export const CREDENTIAL_QUALIFIERS =
-	"api|secret|access|private|auth|client|signing|encryption|master|app|license|licence|admin|root|bearer|session|refresh|service|deploy|personal|bot|webhook|account|user|integration|partner|consumer|shared|write|read|ingest|dev|prod|live|test|github|gitlab|aws|gcp|azure";
+	"api|secret|access|private|auth|client|signing|jwt|encryption|master|app|license|licence|admin|root|bearer|session|refresh|service|deploy|personal|bot|webhook|account|user|integration|partner|consumer|shared|write|read|ingest|dev|prod|live|test|github|gitlab|aws|gcp|azure";
 const CREDENTIAL_QUALIFIER = new RegExp(`^(?:${CREDENTIAL_QUALIFIERS})$`, "i");
 /** Words that end a name's phrase in prose: determiners, pronouns, verbs and prepositions (`Here is the token`). */
 export const PHRASE_STOP =
@@ -1722,17 +1722,44 @@ export function readPhrase(before: string[], name: string): { name: string; clas
 		if (q && nameClass(`${q}_${name}`) !== cls) return { name: `${q}_${name}`, class: nameClass(`${q}_${name}`) };
 	}
 	const q = phrase.at(-1);
-	return {
-		name,
-		class:
-			q &&
-			cls === "credential" &&
-			!CREDENTIAL_QUALIFIER.test(q) &&
-			!QUALIFIER_WORDS.test(q.toUpperCase()) &&
-			!isVendorName(q)
-				? "neutral"
-				: cls,
-	};
+	if (!q || cls !== "credential" || leavesBare(q)) return { name, class: cls };
+	// (A word that says which credential is the name's own: `API key`, `GitHub token` read as `API_key`, `GitHub_token`.)
+	return qualifiesCredential(q) ? { name: `${q}_${name}`, class: cls } : { name, class: "neutral" };
+}
+
+/**
+ * A word before a credential's generic name that leaves it as bare as before: a qualifier of which copy (`test`,
+ * `old`, `prod`: QUALIFIER_WORDS) or a determiner (`my`, `the`: PHRASE_STOP).
+ */
+function leavesBare(word: string): boolean {
+	return QUALIFIER_WORDS.test(word.toUpperCase()) || PHRASE_STOP.test(word);
+}
+
+/** A word that says which credential a generic name after it is: CREDENTIAL_QUALIFIERS' (`api`, `client`), a vendor's name. */
+function qualifiesCredential(word: string): boolean {
+	return !leavesBare(word) && (CREDENTIAL_QUALIFIER.test(word) || isVendorName(word));
+}
+
+/**
+ * Whether a name says which credential its value is (`api_key`, `API key`, `X-Api-Key`, `client_secret`, `password`,
+ * `opts.apiKey`, `api.key`), not only that it is one: a bare generic name (`key`, `token`, `secret`) is also a map's or
+ * a cache's key and a counter's token, so a value's shape can say it is another kind of thing there. So can it under
+ * an ID's name: a session's ID is an object ID or a cookie by its shape (`sessionId`).
+ *
+ * The words before a generic name decide. Inside one identifier, any word but those that leave the name bare
+ * (`STREAMINGFAST_KEY`, `JWT_SECRET`, `SEGMIND_PROD_KEY`; not `TEST_KEY`, `MY_TOKEN`). Before it in a sentence or as its object, only a
+ * word that names a credential, as readPhrase reads one (`Client Secret:`, `segmind api key:`, `github.token`; not
+ * `restore Secret:`, a resource's name, `test key:`, `const key =`, `self.token`).
+ */
+export function namesWhichCredential(name: string): boolean {
+	const words = name.trim().split(/[ \t]+/);
+	const member = words.at(-1)!.split(/\.|->|::/);
+	const own = readName(member.at(-1)!);
+	if (own.class !== "credential" || own.last === "ID") return false;
+	if (!isGenericName(own.last)) return true;
+	if (own.core.length > 1) return own.core.slice(0, -1).some((w) => !leavesBare(w));
+	const q = member.length > 1 ? member.at(-2) : words.at(-2);
+	return !!q && qualifiesCredential(q);
 }
 
 /**

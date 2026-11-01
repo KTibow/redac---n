@@ -59,6 +59,7 @@ import {
 	isCredentialName,
 	PHRASE_STOP,
 	isGenericName,
+	namesWhichCredential,
 	readPhrase,
 	isPasswordName,
 	isPinName,
@@ -221,11 +222,15 @@ function credentialPair(name: string, value: string): number {
  * Cache keys, object keys, content addresses: a hash with words or paths around it (`linux-deps-<sha>`,
  * `objects/<sha>`, `sha256:<hex>`, `v2-cache-<sha>`). Not a vendor's key, one short prefix and the hex (Firecrawl's
  * `fc-<hex>`), nor a token with a hash beside it (a Rails cookie, `<base64>--<hmac>`): every other part is a number, a
- * short word or one that reads as a name (`fabrikam`, `PaymentApiKey`; random letters score far lower).
+ * short word or one that reads as a name (`fabrikam`, `PaymentApiKey`; random letters score far lower). Under a name
+ * that says which credential it is (names.ts namesWhichCredential: `api_key`, `API Key`), words joined to the hash by
+ * dashes and underscores are a vendor's prefix (`si-claude-max-<hex>`, `cal_live_<hex>`, `rubygems_<hex>`): a cache
+ * key's name is a bare `key`. (A path, a digest or a test vector's encoding, `hexkey:<hex>`, is one under any name.)
  */
-function isHashWithWords(value: string): boolean {
+function isHashWithWords(name: string, value: string): boolean {
 	if (!/[0-9a-f]{16,}/i.test(value) || !/[-_/.:|+~]/.test(value) || /^[a-z]{2,4}[-_][0-9a-f]{24,}$/i.test(value))
 		return false;
+	if (/^[\w-]+$/.test(value) && namesWhichCredential(name)) return false;
 	return value
 		.replace(/[0-9a-f]{16,}/gi, "")
 		.split(/[-_/.:@()=;?&|+~]+/)
@@ -425,7 +430,7 @@ export function isNamedSecret(name: string, raw: string, literal = false): boole
 	// `label:token` under a credential's name (Dagster's `user:<token>`, a catalog's `<client id>:<secret>`): a pair,
 	// not a cache key or a digest (`sha256:…`). The caller hides the part after the colon (credentialPair).
 	if (credentialPair(name, value) > 0) return true;
-	if (isHashWithWords(value)) return false;
+	if (isHashWithWords(name, value)) return false;
 	if (/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?$/i.test(value)) return false; // numbers: ports, counts, floats, numeric session ids
 	// An Authorization value, a scheme and its credential, is judged by the credential (`Bearer <token>`); a scheme's
 	// word before more words is prose (`Bearer Token Usage [RFC6750].`).
@@ -3270,7 +3275,7 @@ function prose(text: string, out: Finding[]) {
 			!isNamedSecret(name.replace(/\s+/g, "_"), `"${value}"`, true)
 		)
 			continue;
-		if (isHashWithWords(value)) continue;
+		if (isHashWithWords(name, value)) continue;
 		if (takesAnyWord(name.replace(/\s+/g, "_"))) {
 			if (/^[a-z]+(-[a-z]+)+$/.test(value) || isLabel(value, name) || isSettingOrSelfName(name, value)) continue;
 			// (`pass: 12/12`, `Pass: 98.5%`: a test count.)

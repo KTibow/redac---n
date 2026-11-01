@@ -358,6 +358,10 @@ const NOT: [reason: string, text: string, token: string][] = [
 		"9f86d081884c7d659a2feaa0c55ad0159f86d081884c7d659a2feaa0c55ad015",
 	],
 	["bare-key-hash", "Here is your key: acme_9f86d081884c7d659a2feaa0c55ad015", "acme_9f86d081884c7d659a2feaa0c55ad015"],
+	["bare-key-hash", "API key: acme_9f86d081884c7d659a2feaa0c55ad015", "acme_9f86d081884c7d659a2feaa0c55ad015"],
+	// A name that says which credential is a key's place: an object ID's prefix says nothing there.
+	["object-id", "API Key: si-claude-max-8f3a9c2e7b1d4f60a7c3e91b", "si-claude-max-8f3a9c2e7b1d4f60a7c3e91b"],
+	["object-id", "API_TOKEN: tok-c4ni6uhtu37u-bt8nptzlz4uq", "tok-c4ni6uhtu37u-bt8nptzlz4uq"],
 	// The unit repeated is short: a key written twice is a key.
 	[
 		"repeating",
