@@ -655,9 +655,8 @@ def ci_logs():
 
 def ctf():
     """CTF writeups and solve scripts: Lo4pca/NoobCTF (CC0-1.0; Chinese notes and writeups collected from many teams),
-    welchbj/ctf (MIT), Nautilus-Institute/finals-2024 (MIT; DEF CON CTF finals challenges), p4-team/ctf (no licence, so
-    evaluation only; English and Polish writeups 2015–2024). ≤20 M chars per repository. Flags (`flag{…}`) are not
-    secrets.
+    welchbj/ctf (MIT), Nautilus-Institute/finals-2024 (MIT; DEF CON CTF finals challenges). ≤20 M chars per
+    repository. Flags (`flag{…}`) are not secrets.
     """
     write("ctf.jsonl", repo_files("ctf", cap_per_repo=20_000_000))
 

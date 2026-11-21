@@ -59,9 +59,9 @@
 			"note": "Claude Code sessions their users published: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
 		},
 		"built/ctf": {
-			"sha256": "9fb87b7cd6fe29cf8e9f7012a3d0260ecf5a4211344cb1fc9bb4d9e31579fc45",
-			"bytes": 28856320,
-			"packed": 5648636,
+			"sha256": "c53ae2b38b5048acec79907790f631050f0ed6c35cb7f91c2b8343a0d5f9e411",
+			"bytes": 17602560,
+			"packed": 3178543,
 			"dir": true,
 			"note": "CTF writeups and challenge repositories: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
 		},
