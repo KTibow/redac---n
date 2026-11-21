@@ -1,0 +1,335 @@
+{
+	"stores": {
+		"public": "hf:KTibow/redact-corpora",
+		"private": "hf:KTibow/redact-corpora-private"
+	},
+	"entries": {
+		"CredData/data": {
+			"sha256": "9b0018613245064c7131a7a445b2dc8352b490fe8c6075cd129b0afd404becb4",
+			"bytes": 1030901760,
+			"packed": 47897100,
+			"dir": true,
+			"everyday": true,
+			"note": "CredData (Samsung): the labelled files, as its download_data.py fetched and obfuscated them (eval/creddata.ts)"
+		},
+		"CredData/meta": {
+			"sha256": "faa94b9169c3fb16f6d642a4ac3d6bf7b8e7613e22bcab6d976e85cce7224713",
+			"bytes": 6533120,
+			"packed": 602092,
+			"dir": true,
+			"everyday": true,
+			"note": "CredData (Samsung): the labels, one CSV per repository (eval/creddata.ts)"
+		},
+		"archive/built-reports": {
+			"sha256": "c460885087998b33cbdc55ca52b40ca6b3d917d0369f4ad6696dbd0e5f93153a",
+			"bytes": 24432640,
+			"packed": 1394794,
+			"dir": true,
+			"private": true,
+			"note": "The blind scores, scanner logs and failure lists written beside each converted set, as of 2026-11-20 (eval/HELDOUT.md)"
+		},
+		"archive/eval-out": {
+			"sha256": "63a7f08747f27379dbf1055bbe8680f60f95b42cec40c345592d9846caeed221",
+			"bytes": 157818880,
+			"packed": 11782337,
+			"dir": true,
+			"private": true,
+			"note": "A copy of eval/out as of 2026-11-20: reports, snapshots and scanner results that quote third-party text (eval/DATA.md)"
+		},
+		"archive/work": {
+			"sha256": "e40a89491a1175eeb327a8610061d5a0052f41a77cf43d0713281804128ce0f6",
+			"bytes": 1572648960,
+			"packed": 48267475,
+			"dir": true,
+			"private": true,
+			"note": "Scripts and notes of past experiments, as of 2026-11-20, without files over 5 MB (eval/DATA.md)"
+		},
+		"built/ci-logs": {
+			"sha256": "e5c1d278feeb9060ef7fd2ea827a5d227bbbc5d9c662d0ef45f6bb95b705c7f6",
+			"bytes": 55347200,
+			"packed": 3229798,
+			"dir": true,
+			"note": "CI logs, GitHub Actions runs of public repositories and LCA's Python builds: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/claude-code": {
+			"sha256": "1e289700185c8a498c949e7cbd711709738e416ed55b630c385f45659c680c95",
+			"bytes": 79216640,
+			"packed": 20574305,
+			"dir": true,
+			"note": "Claude Code sessions their users published: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/ctf": {
+			"sha256": "9fb87b7cd6fe29cf8e9f7012a3d0260ecf5a4211344cb1fc9bb4d9e31579fc45",
+			"bytes": 28856320,
+			"packed": 5648636,
+			"dir": true,
+			"note": "CTF writeups and challenge repositories: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/dev-articles": {
+			"sha256": "38da1ed86d0ef7ce88eb33a2b8799ee50f38403361c82649a842f837b7432004",
+			"bytes": 208476160,
+			"packed": 21846872,
+			"dir": true,
+			"note": "Developer articles in Japanese (Qiita) and Russian (Habr): real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/dev.jsonl": {
+			"sha256": "4adc8b0067277bf80b6c103ca8a8080b4170d011dd9fee60edcac4af45fe5c9f",
+			"bytes": 634463938,
+			"packed": 64093671,
+			"everyday": true,
+			"note": "Real text, dev split: public repositories and agent trajectories (scripts/build-negatives.ts). The false-positive sample of eval/all.ts, realtext.ts, layers.ts and scripts/snap.ts, and the guessing model's training text (scripts/unnamed-data.ts)"
+		},
+		"built/external": {
+			"sha256": "a87adb2b185a76598bd0f1e6e2801193e4eb40412508847c8cb4563b7524aa59",
+			"bytes": 6676480,
+			"packed": 1383968,
+			"dir": true,
+			"note": "SlotGuard, ProwlBench, crossvault and GitLab's rule examples as eval cases (scripts/build-external.py; eval/run.ts)"
+		},
+		"built/gamedev": {
+			"sha256": "7b993ab639911472084be3e47fd7e82e65b665bfc17cdd9b2fe575373567c29c",
+			"bytes": 53606400,
+			"packed": 4634338,
+			"dir": true,
+			"note": "Game projects for Godot, Unity, Bevy, OpenRA and Minetest: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/iac": {
+			"sha256": "814cbd41c38e440432db8f8462b1fd1718257551eb6da9c4f1eb9e25e8791463",
+			"bytes": 37089280,
+			"packed": 2567774,
+			"dir": true,
+			"note": "Infrastructure as code, Terraform modules, Helm charts and Ansible roles: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/issues-test.jsonl": {
+			"sha256": "499af12b99a1f79162f9f3c7cbe3a7416710bc41c0f952bdc35028941920c5f7",
+			"bytes": 37480631,
+			"packed": 6799933,
+			"note": "Secrets in issue reports (scripts/issuereports.py)"
+		},
+		"built/issues-test_wild.jsonl": {
+			"sha256": "05becd7846bf8bbc449288fa679ffc215f5a6983c187114d8510f45d8d86d65b",
+			"bytes": 5514596,
+			"packed": 1074136,
+			"note": "Secrets in issue reports (scripts/issuereports.py)"
+		},
+		"built/issues-train.jsonl": {
+			"sha256": "cc773851d49461861d539556b4375972b705e404f7c87262fc310778192f2313",
+			"bytes": 176508654,
+			"packed": 30563058,
+			"note": "Secrets in issue reports (scripts/issuereports.py)"
+		},
+		"built/kaggle-notebooks": {
+			"sha256": "bff188a574acebd60bf49facaaafa5d4fa1260b1983ef28bc40df86bd64c52ef",
+			"bytes": 23859200,
+			"packed": 4863883,
+			"dir": true,
+			"note": "Kaggle notebooks with their outputs: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/leak-files": {
+			"sha256": "1989222797f88f7a52d8e0300499b436b0a355088777587e764a954d2a57e331",
+			"bytes": 225280,
+			"packed": 32929,
+			"dir": true,
+			"note": "Files with committed secrets (leak-museum, leaky-repo): eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/llm-secdb": {
+			"sha256": "2e8129435366812557293f2ba164f198fae8845931ea5df5482d31beaf928c2a",
+			"bytes": 276480,
+			"packed": 44317,
+			"dir": true,
+			"note": "LLM-SecDB, secrets in LaTeX comments: eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/loghub": {
+			"sha256": "5300059f982a3cc50a44bfed3a657cb559133964bc4a2532e94f91365b1c7ddc",
+			"bytes": 94597120,
+			"packed": 4249834,
+			"dir": true,
+			"note": "Loghub system logs: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/mobile": {
+			"sha256": "437cb3a4158e618f8e6b73de92ab0e9eb4508f3b2f9c80546cf560b38d0ee122",
+			"bytes": 61276160,
+			"packed": 6677156,
+			"dir": true,
+			"note": "Android and iOS apps: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/multilingual-pii": {
+			"sha256": "035ff27a109a19064778d162c8890364885da5ecf98b963e0942574f0808ce6b",
+			"bytes": 3624960,
+			"packed": 598395,
+			"dir": true,
+			"note": "Synthetic documents with personal data in many languages (Gretel, Nym): eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/nemotron-pii": {
+			"sha256": "45668ee53ed9e139e892d29149718a1b3d81df99009b9b4361ed4b60e9a4627d",
+			"bytes": 6799360,
+			"packed": 1360517,
+			"dir": true,
+			"note": "Nemotron-PII, passwords, API keys and cookies in synthetic business documents: eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/obfuscation": {
+			"sha256": "dbce0263966f116d4ccad75e43d2366818cdc920cb182508a3852e5988fcaf77",
+			"bytes": 5314560,
+			"packed": 589328,
+			"dir": true,
+			"note": "The secret-scanner obfuscation benchmark: eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/openhands-feedback": {
+			"sha256": "70bc6217b54ea1034d6ab92fedc29330f8fc28848df0f5600d6b17b7d00d3365",
+			"bytes": 79011840,
+			"packed": 6742844,
+			"dir": true,
+			"note": "OpenHands sessions their users shared: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/osv": {
+			"sha256": "ee79da02f8989ce29196348e7b68c42840289393a65b739abfc65eb229be2f66",
+			"bytes": 66478080,
+			"packed": 7780316,
+			"dir": true,
+			"note": "OSV vulnerability advisories: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/pypi-readmes": {
+			"sha256": "a5dacd21e98bf1b1967dd318a111b77f8f2f7955ddaaff3cf59a76978d009b84",
+			"bytes": 66027520,
+			"packed": 13717690,
+			"dir": true,
+			"note": "PyPI package descriptions: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/rfc": {
+			"sha256": "250c5bcaea429b2c059730881d893994e12a1e9d83df4e36490fdda106d5df9f",
+			"bytes": 5519360,
+			"packed": 1019115,
+			"dir": true,
+			"note": "RFCs: real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/stackexchange": {
+			"sha256": "7a0e7a297424da3ad400791a99754d6c575161e33406c83052924a4f381f5f7c",
+			"bytes": 69171200,
+			"packed": 17546990,
+			"dir": true,
+			"note": "Stack Exchange posts (devops, security, serverfault): real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/swe-rebench-prs": {
+			"sha256": "79dba068d7d80b80554ce81453cc44233f9ef6dec1cc7f320452448ac59343e2",
+			"bytes": 73492480,
+			"packed": 12981673,
+			"dir": true,
+			"note": "Merged pull requests (SWE-rebench V2): real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/termgrade": {
+			"sha256": "523fbaf37420cd2f674dc9b90b9d1ac357bdaa93cafa101a5f88eeff390c4318",
+			"bytes": 64092160,
+			"packed": 8580292,
+			"dir": true,
+			"note": "Terminal-agent episodes (termgrade): real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/test.jsonl": {
+			"sha256": "c75f4a68ada514eb9d8cce9802864c9ea8ce0c54d3a0023e6350a6c5ae13e47f",
+			"bytes": 204104480,
+			"packed": 25049722,
+			"note": "Real text, test split: the repositories and trajectory shards build-negatives.ts holds out (eval/realtext.ts --split test)"
+		},
+		"built/titus-rules": {
+			"sha256": "05291336e1822ed2d8c4cd825e06ea319d3782faff800868792ad5d71ab1d9d8",
+			"bytes": 440320,
+			"packed": 77757,
+			"dir": true,
+			"note": "Titus's rule examples: eval cases (scripts/build-datasets.py; eval/run.ts)"
+		},
+		"built/toucan": {
+			"sha256": "f0e8271cf72ee8adf0dd13756de8b3e88f23d3dee904cadbc002befe1c8a4c92",
+			"bytes": 72652800,
+			"packed": 10158192,
+			"dir": true,
+			"note": "Agent runs against MCP servers (Toucan): real text (scripts/build-datasets.py; eval/realtext.ts --file)"
+		},
+		"built/unnamed-train-v2.jsonl": {
+			"sha256": "2622ec5b76779982879f04b8fe853771cfbbd6d6e1501ad6f7d7e6e328c0ebb5",
+			"bytes": 8003018,
+			"packed": 1146277,
+			"note": "Training rows for the guessing model, as scripts/unnamed-data.ts wrote them from built/dev.jsonl"
+		},
+		"built/unnamed-train-v3.jsonl": {
+			"sha256": "206dde521f484fb5086632618f4f5b10356b75af1783958fb7c04ad03a93a86b",
+			"bytes": 8724512,
+			"packed": 1237243,
+			"note": "Training rows for the guessing model, as scripts/unnamed-data.ts wrote them from built/dev.jsonl"
+		},
+		"built/unnamed-train.jsonl": {
+			"sha256": "6ec4bcc1040ac086023ee32fd1279eaad1b4336b94c5874921686b7bd2227163",
+			"bytes": 8941184,
+			"packed": 1235193,
+			"note": "Training rows for the guessing model, as scripts/unnamed-data.ts wrote them from built/dev.jsonl"
+		},
+		"ci-logs": {
+			"sha256": "423c494a03d24ba7ec349d329cc4f277d03c6c782c375e7287139e48249812b9",
+			"bytes": 80752640,
+			"packed": 4963573,
+			"dir": true,
+			"note": "CI logs as downloaded: GitHub Actions run logs, which GitHub deletes after 90 days, and LCA (input of built/ci-logs)"
+		},
+		"final/final.jsonl": {
+			"sha256": "bbc56a7b60c1b49bff7bbbea72438d1571c0bfbaf11dfaebfa474cabc5b4fa34",
+			"bytes": 273254814,
+			"packed": 27562295,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final)"
+		},
+		"final/sample.jsonl": {
+			"sha256": "d1a9e635af37ee86590e13395cf0c9f26a5c6fc5c2cc76efd32e3c015b09d302",
+			"bytes": 69009479,
+			"packed": 9684918,
+			"note": "The sample of final/final.jsonl that eval/report.ts and eval/baselines.py score (scripts/build-sample.py)"
+		},
+		"final2/final2.jsonl": {
+			"sha256": "e74ee8031fce11135c83a22f27adc99ca7c1d8dc53593350773743a28b1f772f",
+			"bytes": 306601449,
+			"packed": 32346578,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final2)"
+		},
+		"final3/final3.jsonl": {
+			"sha256": "61a52985abbca27e34555e562c4d789e283ab86229a5b1d26217c72923f341ff",
+			"bytes": 284130484,
+			"packed": 27933978,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final3)"
+		},
+		"final4/final4.jsonl": {
+			"sha256": "ef3eeb1ff97cd3e40004db44ce346312411ae89a1be24876d2aec9f84167b1cd",
+			"bytes": 204658443,
+			"packed": 20845085,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final4)"
+		},
+		"final5/final5.jsonl": {
+			"sha256": "fe0d501a66be7b84a407b857f2cda46409195ddf62c655b10394f3d3ee5868bd",
+			"bytes": 353709542,
+			"packed": 45799013,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final5)"
+		},
+		"final6/final6.jsonl": {
+			"sha256": "6ed89ce2fec144f609cb924c899b79dfb8dd418fbfa79f6a53cfa152eed2e4f8",
+			"bytes": 211993768,
+			"packed": 20810626,
+			"note": "Fresh real text, scored blind once (scripts/build-final.py; eval/realtext.ts --split final6)"
+		},
+		"icsme": {
+			"sha256": "9fb3a895d153f41578d48df2d097f321d5d5c58bc8a2aa0245e68bdd8bc97ac0",
+			"bytes": 13905920,
+			"packed": 3993416,
+			"dir": true,
+			"note": "The ICSME 2026 credential set, as downloaded and its 'no leak' class as JSONL (eval/HELDOUT.md)"
+		},
+		"levain": {
+			"sha256": "761b5496f1c07ff1a88a1ad439359ed9364f8b522c1bfd16b19460df7d4f0855",
+			"bytes": 665600,
+			"packed": 241211,
+			"dir": true,
+			"note": "levainbot/fp-corpus, false-positive and true-positive cases, as downloaded (eval/HELDOUT.md)"
+		},
+		"llmr": {
+			"sha256": "27cbf7a663c0937e3408c0d0b659b6d114fe03ed1ca925c324964b3c92376fd0",
+			"bytes": 122880,
+			"packed": 21862,
+			"dir": true,
+			"note": "LLM-Redactor's workload wl2, as downloaded (eval/HELDOUT.md)"
+		}
+	}
+}

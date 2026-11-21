@@ -33,7 +33,7 @@ import {
 	STAGES,
 } from "../src/index.ts";
 import { type Case, type CaseResult, loadCases, scoreCase, summarize, type Summary } from "./score.ts";
-import { CORPORA } from "./data-root.ts";
+import { dataFile } from "./data-root.ts";
 import { Args } from "./args.ts";
 import { devSets } from "./sets.ts";
 
@@ -42,7 +42,7 @@ const guessing = args.opt("guessing", "confident") as Guessing;
 const every = args.num("every", 10);
 const doReal = !args.flag("no-real");
 const jsonOut = args.opt("json", join(import.meta.dirname, "out", "layers.json"));
-const realFile = args.opt("real", join(CORPORA, "built/dev.jsonl"));
+const realFile = args.opt("real");
 const corpora = devSets().map((s) => s.file);
 
 /** The library's pipeline with only the layers in `on`. */
@@ -280,7 +280,7 @@ for (const r of labelled) {
 		for (const f of Object.keys(s) as (keyof LayerStats)[]) c[f] += s[f];
 	}
 }
-const real = doReal ? await scoreReal(realFile) : undefined;
+const real = doReal ? await scoreReal(realFile ?? dataFile("built/dev.jsonl")) : undefined;
 
 const sections = [...labelled, combined].map(labelledTables);
 if (real) sections.push(realTables(real));

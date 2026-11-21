@@ -18,14 +18,14 @@ import { createInterface } from "node:readline";
 import { Redactor, type Guessing } from "../src/index.ts";
 import { DAMAGE, REDACTION_KINDS, redactionKind, shapeOf } from "./shapes.ts";
 import { loadCases, scoreCase, summarize, type CaseResult } from "./score.ts";
-import { CORPORA } from "./data-root.ts";
+import { dataFile } from "./data-root.ts";
 import { Args } from "./args.ts";
 import { esc, pct, STYLE, textWidth } from "./chart.ts";
 
 const args = new Args();
 const root = join(import.meta.dirname, "..");
 const baselinesFile = args.opt("baselines", join(root, "eval/out/baselines-final.json"));
-const realFile = args.opt("real", join(CORPORA, "final/sample.jsonl"));
+const realOption = args.opt("real");
 /** How the README names a baseline that eval/baselines.py names by its command. */
 const DISPLAY: Record<string, string> = {
 	betterleaks: "Betterleaks",
@@ -90,6 +90,7 @@ if (args.flag("cached") && existsSync(cacheFile)) {
 	points = cached.points.filter((p: Point) => p.ours);
 	bars = cached.bars.filter((b: Bar) => b.ours);
 } else {
+	const realFile = realOption ?? dataFile("final/sample.jsonl");
 	for (const guessing of SETTINGS) {
 		const results: CaseResult[] = [];
 		for (const c of holdout) {

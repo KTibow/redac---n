@@ -8,7 +8,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { Args } from "./args.ts";
-import { CORPORA } from "./data-root.ts";
+import { CORPORA, notHere } from "./data-root.ts";
 import { advSets, devSets } from "./sets.ts";
 import { join } from "node:path";
 
@@ -34,10 +34,11 @@ try {
 }
 console.log(`robustness: ${robust.trim().split("\n").at(-1)}`);
 console.log(run("transcripts.ts", ...corpora.filter((f) => /\/dev/.test(f))).trim());
-// (The sets outside the repository, where they are: on a fresh clone, only eval/corpora is scored.)
-if (existsSync(join(CORPORA, "CredData"))) console.log(run("creddata.ts", "--split", "dev").trim().split("\n").at(-1));
-else console.log(`creddata: skipped (no ${join(CORPORA, "CredData")})`);
+// (The sets outside the repository, where they have been pulled: on a fresh clone, only eval/corpora is scored.)
+if (["CredData/meta", "CredData/data"].every((part) => existsSync(join(CORPORA, part))))
+	console.log(run("creddata.ts", "--split", "dev").trim().split("\n").at(-1));
+else console.log(`creddata: ${notHere("CredData")}`);
 if (existsSync(join(CORPORA, "built/dev.jsonl"))) {
 	console.log(run("realtext.ts", "--every", "20", "--src", "traj").split("\n")[0]);
 	console.log(run("realtext.ts", "--every", "40", "--src", "repo").split("\n")[0]);
-} else console.log(`real text: skipped (no ${join(CORPORA, "built/dev.jsonl")})`);
+} else console.log(`real text: ${notHere("built/dev.jsonl")}`);

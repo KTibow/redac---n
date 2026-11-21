@@ -123,16 +123,19 @@ publishable key from a secret one there needs knowledge the text doesn't hold.
 
 ## Rebuilding the model
 
-The forest is trained from a corpus of ordinary text (one JSON object per line, `{"src": …, "text": …}`, at
-`$REDACT_CORPORA/built/dev.jsonl`):
+The forest is trained with LightGBM from a corpus of ordinary text (one JSON object per line,
+`{"src": …, "text": …}`, at `$REDACT_CORPORA/built/dev.jsonl`, by default under `~/.cache/redac---n`):
 
+    pnpm data pull built/dev.jsonl      # the corpus behind the shipped model
+    node scripts/tools.ts python        # LightGBM, in the data root's tools/venv
     node scripts/unnamed-data.ts > train.jsonl
-    python3 -I scripts/train-unnamed.py train.jsonl --write src/model-data.ts
+    ~/.cache/redac---n/tools/venv/bin/python -I scripts/train-unnamed.py train.jsonl --write src/model-data.ts
 
-The corpus behind the shipped model (634 MB of public repositories and agent trajectories) isn't published: its
-sources' licences differ from this one's. With your own corpus the same two commands train a model of the same
-design, not the same model. Both steps are deterministic (the random keys are seeded, and so is LightGBM's training,
-including its sampling of rows and features), so a given corpus always gives the same model.
+That corpus is 634 MB of public repositories and agent trajectories, each under its own licence
+(`eval/sources.tsv` lists them), so it is fetched and not part of the repository. With your own corpus the same
+commands train a model of the same design, not the same model. Both steps are deterministic (the random keys are
+seeded, and so is LightGBM's training, including its sampling of rows and features), so a given corpus always gives
+the same model.
 
 The training data passes through the vetoes and the same context reading, so any change to a veto or to how context
 is read changes the data, and the model has to be retrained with it. `node scripts/model-chart.ts` redraws the chart

@@ -13,7 +13,7 @@
  * other layers already took; here the raw text is scored with nothing taken. Secret files are left to
  * findInSecretFile, so every example is scored as ordinary text.
  *
- *   node scripts/unnamed-data.ts [--statistical] > ~/Downloads/redact-corpora/built/unnamed-train.jsonl
+ *   node scripts/unnamed-data.ts [--statistical] > ~/.cache/redac---n/built/unnamed-train.jsonl
  *
  * With `--statistical`, the vetoes that judge a token's look (unnamed.ts STATISTICAL_VETOES) don't filter the examples:
  * the model is trained on the tokens they would rule out, and positives run to 200 characters.
@@ -34,13 +34,12 @@ const randomBytes = (n: number) => {
 	return b;
 };
 import { createReadStream } from "node:fs";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Doc } from "../src/context.ts";
 import { naturalness } from "../src/charlm.ts";
 import { VENDOR_CLIENTS } from "../src/names.ts";
 import { candidates, features, vector, vetoed } from "../src/unnamed.ts";
-import { CORPORA } from "../eval/data-root.ts";
+import { dataFile } from "../eval/data-root.ts";
 
 const B62 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const pick = <T>(xs: readonly T[]): T => xs[randomInt(xs.length)];
@@ -278,7 +277,7 @@ function slot(k: string): string {
 
 /** Real lines to surround the slot with, from the corpus. */
 const lines: string[] = [];
-const rl = createInterface({ input: createReadStream(join(CORPORA, "built/dev.jsonl")) });
+const rl = createInterface({ input: createReadStream(dataFile("built/dev.jsonl")) });
 let n = 0;
 let negatives = 0;
 const seenTokens = new Map<string, number>();

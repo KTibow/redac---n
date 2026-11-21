@@ -48,7 +48,7 @@ with open(os.path.join(out, "crossvault.jsonl"), "w") as f:
         f.write(json.dumps(c, ensure_ascii=False) + "\n")
 print(len(cases), "crossvault cases", file=sys.stderr)
 
-# ProwlBench (PolyForm Noncommercial: evaluation only, never redistributed): snippets with one secret
+# ProwlBench (PolyForm Noncommercial: evaluation only): snippets with one secret
 # span (label 1) or none (label 0, where any redaction is a loss). Rows from Samsung CredData
 # (origin "real") are dropped: they overlap our CredData splits.
 path = os.path.join(src, "prowlbench/prowlbench.jsonl")

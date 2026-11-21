@@ -1,0 +1,489 @@
+path	kind	url	ref	sha256	licence	fetched	notes
+CredData	git	https://github.com/Samsung/CredData	0b1940e171725ad8937311120b191602608a4801		Apache-2.0		
+CredData/data	derived					2026-10-09	files of about 300 repositories, each under its own licence, fetched and obfuscated by CredData's download_data.py (--jobs 8): rerun it to fetch them again
+bip39/english.txt	file	https://raw.githubusercontent.com/bitcoin/bips/master/bip-0039/english.txt		2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda		2026-10-10	branch master, no commit; BIP-39 wordlist, 2048 words
+ci-logs/gha/Azure_azure-cli__38007302295__success.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38007302295	38007302295			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/Azure_azure-cli__38007302317__success.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38007302317	38007302317			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/Azure_azure-cli__38007302319__success.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38007302319	38007302319			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/Azure_azure-cli__38007312327__success.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38007312327	38007312327			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/Azure_azure-cli__38012131255__failure.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38012131255	38012131255			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/Azure_azure-cli__38012131283__success.log	gh-run-log	https://github.com/Azure/azure-cli/actions/runs/38012131283	38012131283			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/apache_airflow__38025382963__success.log	gh-run-log	https://github.com/apache/airflow/actions/runs/38025382963	38025382963			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/apache_airflow__38027176455__success.log	gh-run-log	https://github.com/apache/airflow/actions/runs/38027176455	38027176455			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/apache_airflow__38027176462__success.log	gh-run-log	https://github.com/apache/airflow/actions/runs/38027176462	38027176462			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/astral-sh_uv__38018247016__success.log	gh-run-log	https://github.com/astral-sh/uv/actions/runs/38018247016	38018247016			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/astral-sh_uv__38018247315__success.log	gh-run-log	https://github.com/astral-sh/uv/actions/runs/38018247315	38018247315			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/astral-sh_uv__38020138214__success.log	gh-run-log	https://github.com/astral-sh/uv/actions/runs/38020138214	38020138214			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/astral-sh_uv__38020285839__success.log	gh-run-log	https://github.com/astral-sh/uv/actions/runs/38020285839	38020285839			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38019132057__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38019132057	38019132057			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38019132224__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38019132224	38019132224			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38019132249__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38019132249	38019132249			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38019764513__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38019764513	38019764513			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38023119476__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38023119476	38023119476			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/aws_aws-cli__38026441992__success.log	gh-run-log	https://github.com/aws/aws-cli/actions/runs/38026441992	38026441992			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/bitwarden_server__38010895519__success.log	gh-run-log	https://github.com/bitwarden/server/actions/runs/38010895519	38010895519			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/bitwarden_server__38027905989__success.log	gh-run-log	https://github.com/bitwarden/server/actions/runs/38027905989	38027905989			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38025442419__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38025442419	38025442419			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38026015605__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38026015605	38026015605			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38026015848__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38026015848	38026015848			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38026021035__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38026021035	38026021035			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38026206738__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38026206738	38026206738			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/cli_cli__38027281787__success.log	gh-run-log	https://github.com/cli/cli/actions/runs/38027281787	38027281787			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/dependabot_dependabot-core__38007757164__success.log	gh-run-log	https://github.com/dependabot/dependabot-core/actions/runs/38007757164	38007757164			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/dependabot_dependabot-core__38008126187__failure.log	gh-run-log	https://github.com/dependabot/dependabot-core/actions/runs/38008126187	38008126187			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/dependabot_dependabot-core__38010830608__success.log	gh-run-log	https://github.com/dependabot/dependabot-core/actions/runs/38010830608	38010830608			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/dependabot_dependabot-core__38015314832__success.log	gh-run-log	https://github.com/dependabot/dependabot-core/actions/runs/38015314832	38015314832			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/dependabot_dependabot-core__38015465698__success.log	gh-run-log	https://github.com/dependabot/dependabot-core/actions/runs/38015465698	38015465698			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/discourse_discourse__38027040120__success.log	gh-run-log	https://github.com/discourse/discourse/actions/runs/38027040120	38027040120			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/discourse_discourse__38027040188__success.log	gh-run-log	https://github.com/discourse/discourse/actions/runs/38027040188	38027040188			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/discourse_discourse__38027040193__success.log	gh-run-log	https://github.com/discourse/discourse/actions/runs/38027040193	38027040193			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/discourse_discourse__38027040257__success.log	gh-run-log	https://github.com/discourse/discourse/actions/runs/38027040257	38027040257			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/docker_compose__37946116881__success.log	gh-run-log	https://github.com/docker/compose/actions/runs/37946116881	37946116881			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/docker_compose__37946117812__success.log	gh-run-log	https://github.com/docker/compose/actions/runs/37946117812	37946117812			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/docker_compose__37946117968__success.log	gh-run-log	https://github.com/docker/compose/actions/runs/37946117968	37946117968			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/docker_compose__37955018159__success.log	gh-run-log	https://github.com/docker/compose/actions/runs/37955018159	37955018159			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/docker_compose__37959576142__success.log	gh-run-log	https://github.com/docker/compose/actions/runs/37959576142	37959576142			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/electron_electron__38027527053__success.log	gh-run-log	https://github.com/electron/electron/actions/runs/38027527053	38027527053			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/electron_electron__38027528378__success.log	gh-run-log	https://github.com/electron/electron/actions/runs/38027528378	38027528378			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/electron_electron__38027528476__success.log	gh-run-log	https://github.com/electron/electron/actions/runs/38027528476	38027528476			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/electron_electron__38027528551__success.log	gh-run-log	https://github.com/electron/electron/actions/runs/38027528551	38027528551			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/electron_electron__38027754464__success.log	gh-run-log	https://github.com/electron/electron/actions/runs/38027754464	38027754464			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/flutter_flutter__38026738408__success.log	gh-run-log	https://github.com/flutter/flutter/actions/runs/38026738408	38026738408			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/flutter_flutter__38026738415__success.log	gh-run-log	https://github.com/flutter/flutter/actions/runs/38026738415	38026738415			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/flutter_flutter__38026738434__success.log	gh-run-log	https://github.com/flutter/flutter/actions/runs/38026738434	38026738434			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/flutter_flutter__38026813919__success.log	gh-run-log	https://github.com/flutter/flutter/actions/runs/38026813919	38026813919			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/flutter_flutter__38026953393__success.log	gh-run-log	https://github.com/flutter/flutter/actions/runs/38026953393	38026953393			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/getsentry_sentry__38016822631__success.log	gh-run-log	https://github.com/getsentry/sentry/actions/runs/38016822631	38016822631			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/getsentry_sentry__38016912191__success.log	gh-run-log	https://github.com/getsentry/sentry/actions/runs/38016912191	38016912191			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/getsentry_sentry__38019868524__success.log	gh-run-log	https://github.com/getsentry/sentry/actions/runs/38019868524	38019868524			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38013807627__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38013807627	38013807627			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38013901698__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38013901698	38013901698			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38014448888__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38014448888	38014448888			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38014710065__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38014710065	38014710065			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38020588655__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38020588655	38020588655			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/godotengine_godot__38021935953__success.log	gh-run-log	https://github.com/godotengine/godot/actions/runs/38021935953	38021935953			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38011174247__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38011174247	38011174247			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38013142450__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38013142450	38013142450			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38016315235__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38016315235	38016315235			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38019574636__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38019574636	38019574636			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38022951075__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38022951075	38022951075			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/googleapis_google-cloud-python__38026301875__success.log	gh-run-log	https://github.com/googleapis/google-cloud-python/actions/runs/38026301875	38026301875			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/grafana_grafana__36887305232__success.log	gh-run-log	https://github.com/grafana/grafana/actions/runs/36887305232	36887305232			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/hashicorp_terraform-provider-aws__38020380603__success.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38020380603	38020380603			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/hashicorp_terraform-provider-aws__38020380820__success.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38020380820	38020380820			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/hashicorp_terraform-provider-aws__38020380836__success.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38020380836	38020380836			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/hashicorp_terraform-provider-aws__38020380858__success.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38020380858	38020380858			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/hashicorp_terraform-provider-aws__38023439177__failure.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38023439177	38023439177			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/hashicorp_terraform-provider-aws__38026705441__failure.log	gh-run-log	https://github.com/hashicorp/terraform-provider-aws/actions/runs/38026705441	38026705441			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/home-assistant_core__38027471903__cancelled.log	gh-run-log	https://github.com/home-assistant/core/actions/runs/38027471903	38027471903			2026-10-10	gh run view --log, first 3 MB; conclusion cancelled
+ci-logs/gha/home-assistant_core__38027472000__cancelled.log	gh-run-log	https://github.com/home-assistant/core/actions/runs/38027472000	38027472000			2026-10-10	gh run view --log, first 3 MB; conclusion cancelled
+ci-logs/gha/home-assistant_core__38027475287__success.log	gh-run-log	https://github.com/home-assistant/core/actions/runs/38027475287	38027475287			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/home-assistant_core__38027603021__success.log	gh-run-log	https://github.com/home-assistant/core/actions/runs/38027603021	38027603021			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/kubernetes-sigs_kind__37282201561__success.log	gh-run-log	https://github.com/kubernetes-sigs/kind/actions/runs/37282201561	37282201561			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/mastodon_mastodon__38026481179__success.log	gh-run-log	https://github.com/mastodon/mastodon/actions/runs/38026481179	38026481179			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027484466__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027484466	38027484466			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027484981__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027484981	38027484981			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027485096__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027485096	38027485096			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027505726__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027505726	38027505726			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027507996__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027507996	38027507996			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/microsoft_vscode__38027511711__success.log	gh-run-log	https://github.com/microsoft/vscode/actions/runs/38027511711	38027511711			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018883427__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018883427	38018883427			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018883513__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018883513	38018883513			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018883686__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018883686	38018883686			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018884045__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018884045	38018884045			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018884062__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018884062	38018884062			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/nextcloud_server__38018884231__success.log	gh-run-log	https://github.com/nextcloud/server/actions/runs/38018884231	38018884231			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/pydantic_pydantic__37975604409__success.log	gh-run-log	https://github.com/pydantic/pydantic/actions/runs/37975604409	37975604409			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/pydantic_pydantic__37976988812__success.log	gh-run-log	https://github.com/pydantic/pydantic/actions/runs/37976988812	37976988812			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/pydantic_pydantic__37976988813__failure.log	gh-run-log	https://github.com/pydantic/pydantic/actions/runs/37976988813	37976988813			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/pydantic_pydantic__37977008401__success.log	gh-run-log	https://github.com/pydantic/pydantic/actions/runs/37977008401	37977008401			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38022867566__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38022867566	38022867566			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38024284054__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38024284054	38024284054			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38025008640__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38025008640	38025008640			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38025564449__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38025564449	38025564449			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38026239789__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38026239789	38026239789			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/renovatebot_renovate__38027480894__success.log	gh-run-log	https://github.com/renovatebot/renovate/actions/runs/38027480894	38027480894			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/rust-lang_rustup__37971213524__success.log	gh-run-log	https://github.com/rust-lang/rustup/actions/runs/37971213524	37971213524			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/rust-lang_rustup__37973471973__success.log	gh-run-log	https://github.com/rust-lang/rustup/actions/runs/37973471973	37973471973			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/rust-lang_rustup__37982518216__success.log	gh-run-log	https://github.com/rust-lang/rustup/actions/runs/37982518216	37982518216			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/tokio-rs_tokio__37973220597__cancelled.log	gh-run-log	https://github.com/tokio-rs/tokio/actions/runs/37973220597	37973220597			2026-10-10	gh run view --log, first 3 MB; conclusion cancelled
+ci-logs/gha/tokio-rs_tokio__37973557865__success.log	gh-run-log	https://github.com/tokio-rs/tokio/actions/runs/37973557865	37973557865			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/tokio-rs_tokio__37973560574__success.log	gh-run-log	https://github.com/tokio-rs/tokio/actions/runs/37973560574	37973560574			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/tokio-rs_tokio__37973560924__failure.log	gh-run-log	https://github.com/tokio-rs/tokio/actions/runs/37973560924	37973560924			2026-10-10	gh run view --log, first 3 MB; conclusion failure
+ci-logs/gha/tokio-rs_tokio__38017086381__success.log	gh-run-log	https://github.com/tokio-rs/tokio/actions/runs/38017086381	38017086381			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/vercel_next.js__38025955679__success.log	gh-run-log	https://github.com/vercel/next.js/actions/runs/38025955679	38025955679			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/vercel_next.js__38026038356__success.log	gh-run-log	https://github.com/vercel/next.js/actions/runs/38026038356	38026038356			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/vercel_next.js__38026785707__success.log	gh-run-log	https://github.com/vercel/next.js/actions/runs/38026785707	38026785707			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/vercel_next.js__38026947232__success.log	gh-run-log	https://github.com/vercel/next.js/actions/runs/38026947232	38026947232			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/gha/vercel_next.js__38027654670__success.log	gh-run-log	https://github.com/vercel/next.js/actions/runs/38027654670	38027654670			2026-10-10	gh run view --log, first 3 MB; conclusion success
+ci-logs/lca/README.md	file	https://huggingface.co/datasets/JetBrains-Research/lca-ci-builds-repair/resolve/main/README.md		23cc6f9610c414ed81e2a0d8174be82d483381d043c8f7225d0c5b901897b2f3	none	2026-10-10	
+ci-logs/lca/test.parquet	file	https://huggingface.co/datasets/JetBrains-Research/lca-ci-builds-repair/resolve/main/data/python/test-00000-of-00001.parquet		0b690ed61eef63f74be425df0010e04afb61ab3821d992a32b76c7c50e81f282	none	2026-10-10	68 Python builds; evaluation only
+claude-code-sessions/armand0e_claude-fable-5-claude-code/dl	file	https://huggingface.co/datasets/armand0e/claude-fable-5-claude-code/resolve/main/<each path in claude-code-sessions/armand0e_claude-fable-5-claude-code/files.txt>			mit	2026-10-10	64 files listed in files.txt (only *.jsonl and README kept); branch main, no revision pinned; MIT; real session transcripts
+claude-code-sessions/crispwisp_wisp-claude-code-sessions/dl	file	https://huggingface.co/datasets/crispwisp/wisp-claude-code-sessions/resolve/main/<each path in claude-code-sessions/crispwisp_wisp-claude-code-sessions/files.txt>			mit	2026-10-10	105 files listed in files.txt (only *.jsonl and README kept); branch main, no revision pinned; MIT; real session transcripts
+ctf/Lo4pca_NoobCTF	git	https://github.com/Lo4pca/NoobCTF	1fb029694a9c2f05b6df378212cff7771de4aec8		CC0-1.0		
+ctf/Nautilus-Institute_finals-2024	git	https://github.com/Nautilus-Institute/finals-2024	f17456fed4ff40e6f4f1237ed4b82c242e52ec67		MIT		
+ctf/p4-team_ctf	git	https://github.com/p4-team/ctf	d7862e2c995fb04599a71f601d3fdababf52934b		none		
+ctf/welchbj_ctf	git	https://github.com/welchbj/ctf	8050dac9256c3160dc258fd1a3fc98fd733a3b60		MIT		
+final/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00010-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00010-of-00047.parquet		a917295eedafc9d14c173041f75432d5a572c9d6b98a8f35707659945f85590f	mit	2026-10-09	branch main at fetch time, no revision pinned
+final/hf/SWE-Gym_OpenHands-Sampled-Trajectories_resolve_main_data_train.raw-00001-of-00003.parquet	file	https://huggingface.co/datasets/SWE-Gym/OpenHands-Sampled-Trajectories/resolve/main/data/train.raw-00001-of-00003.parquet		64a5d435b777a47e2544de1cc3bf61e5452bab1237fc43e70220e13f2f901516	none	2026-10-09	branch main at fetch time, no revision pinned
+final/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00009-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00009-of-00012.parquet		8b4c45d8811f0fbbbc5fc46157312ddccb010c439d9e18289ae3ca3e5387ff09	cc-by-4.0	2026-10-09	branch main at fetch time, no revision pinned
+final/repos/apache_airflow	git	https://github.com/apache/airflow			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/cli_cli	git	https://github.com/cli/cli			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/fastapi_fastapi	git	https://github.com/fastapi/fastapi			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/go-gitea_gitea	git	https://github.com/go-gitea/gitea			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/hashicorp_consul	git	https://github.com/hashicorp/consul			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/laravel_framework	git	https://github.com/laravel/framework			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/minio_minio	git	https://github.com/minio/minio			AGPL-3.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/pypa_pip	git	https://github.com/pypa/pip			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/rust-lang_rustup	git	https://github.com/rust-lang/rustup			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/sveltejs_svelte	git	https://github.com/sveltejs/svelte			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/traefik_traefik	git	https://github.com/traefik/traefik			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final/repos/withastro_astro	git	https://github.com/withastro/astro			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 2 MB left out (--filter=blob:limit=2m)
+final2/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00020-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00020-of-00047.parquet		320cc5aafc9630464f9c346ae205782fd42ac4b3785ef0abf48e648c80c41915	mit	2026-10-09	branch main at fetch time, no revision pinned
+final2/hf/SWE-Gym_OpenHands-Sampled-Trajectories_resolve_main_data_train.raw-00002-of-00003.parquet	file	https://huggingface.co/datasets/SWE-Gym/OpenHands-Sampled-Trajectories/resolve/main/data/train.raw-00002-of-00003.parquet		1e388384f0dbf65421b53ef37d4f92c10e1e458f597bf61326fa047b8e21b597	none	2026-10-09	branch main at fetch time, no revision pinned
+final2/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00010-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00010-of-00012.parquet		419e02daa099343e73d45d298b64e574ee012398ebbe19e5798526e5f1336b12	cc-by-4.0	2026-10-09	branch main at fetch time, no revision pinned
+final2/repos/caddyserver_caddy	git	https://github.com/caddyserver/caddy	d588d5c8f0a48a44851a218bbfc3d6edc0e4be17		Apache-2.0		
+final2/repos/celery_celery	git	https://github.com/celery/celery	a478a2ac84f6af5162e3597ef8c98f286ac31f5f		NOASSERTION		
+final2/repos/encode_httpx	git	https://github.com/encode/httpx	b5addb64f0161ff6bfe94c124ef76f6a1fba5254		BSD-3-Clause		
+final2/repos/fastify_fastify	git	https://github.com/fastify/fastify	5c081d4b7237f0eb2db9f1204dc6400e3aa1325e		MIT		
+final2/repos/hashicorp_nomad	git	https://github.com/hashicorp/nomad	802823357fbaeb12d80d5407bcc04a914bdaa0fb		NOASSERTION		
+final2/repos/honojs_hono	git	https://github.com/honojs/hono	f78a245abc393368583085e19c7f5b28b460bf51		MIT		
+final2/repos/nestjs_nest	git	https://github.com/nestjs/nest	2731c18054fb348779311d81e4e20949e313be78		MIT		
+final2/repos/pydantic_pydantic	git	https://github.com/pydantic/pydantic	68a839f0712c367f17be497b6850ebcb6825d76c		MIT		
+final2/repos/sqlalchemy_sqlalchemy	git	https://github.com/sqlalchemy/sqlalchemy	900646931b7fd03845ebe4fc8be84f77a8580123		MIT		
+final2/repos/strapi_strapi	git	https://github.com/strapi/strapi	5ca3fb208a882258c07f10d590a934db718ba8fb		NOASSERTION		
+final2/repos/temporalio_temporal	git	https://github.com/temporalio/temporal	7ffef7bec1c9b25fef934e5de526315be79a2a70		MIT		
+final2/repos/tokio-rs_axum	git	https://github.com/tokio-rs/axum	dcfd5e3442b2a8b021ccc954501157ebd602d2a2		MIT		
+final3/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00030-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00030-of-00047.parquet		d9f5791cb8582f8010934f2840c60635787c36c6d74b51653d495061ee2528b8	mit	2026-10-09	branch main at fetch time, no revision pinned
+final3/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00040-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00040-of-00047.parquet		08d9f1826f61134b96fd1d0e933efb8e8fbb6c1b538a7a6fa695e8135667bfbe	mit	2026-10-09	branch main at fetch time, no revision pinned
+final3/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00011-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00011-of-00012.parquet		7c3ccb843bab5457e29a82d9a36a3d59b8e1778c1d97324643c5f85a0d3f9492	cc-by-4.0	2026-10-09	branch main at fetch time, no revision pinned
+final3/repos/django_channels	git	https://github.com/django/channels	531894e5b2a825168e16fd82f1766f748f71faf4		BSD-3-Clause		
+final3/repos/fastapi_sqlmodel	git	https://github.com/fastapi/sqlmodel	5ce1a472488734363b2ab36f8ce2bcc773e4593e		MIT		
+final3/repos/go-chi_chi	git	https://github.com/go-chi/chi	167e1e3bd039d060696b99c8da4e876ae04f42c1		MIT		
+final3/repos/gofiber_fiber	git	https://github.com/gofiber/fiber	56cd561f7d57addc730992c75a8bde59f050c413		MIT		
+final3/repos/grafana_loki	git	https://github.com/grafana/loki	2c0d74ea9d0bdb30e338143b13f245318703ec0e		AGPL-3.0		
+final3/repos/hashicorp_packer	git	https://github.com/hashicorp/packer	4bb4b91351b5a62ed4c1df26ff230aecda5bfbe6		NOASSERTION		
+final3/repos/kubernetes-sigs_kind	git	https://github.com/kubernetes-sigs/kind	54e57d2af1f9b2ac922c2ad2c0528d2ddc04ef06		Apache-2.0		
+final3/repos/ory_kratos	git	https://github.com/ory/kratos	b86338da04a040247a07f46100a86dcfb3875909		Apache-2.0		
+final3/repos/psf_black	git	https://github.com/psf/black	c9b1148b5b8799758756cbec7c0d1ac187d37f1a		MIT		
+final3/repos/remix-run_remix	git	https://github.com/remix-run/remix	3c25f7abd7ad6ea24cd4593a3061d0b18b43e321		MIT		
+final3/repos/spf13_cobra	git	https://github.com/spf13/cobra	adbc8813901bba65827259daa8e22ff94ec1f30e		Apache-2.0		
+final3/repos/vitejs_vite	git	https://github.com/vitejs/vite	3b72997d42e7dd2b31898d0e68461e3025e836b6		MIT		
+final4/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00045-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00045-of-00047.parquet		1e96becac8f2a7ece9c571e2e96c6141bf54f370486dcb450b5c48aa9835a0cd	mit	2026-10-10	branch main at fetch time, no revision pinned
+final4/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00003-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00003-of-00012.parquet		b6a4e13118de1792b383c077bf6023881a9ff5d4c171a75e767ffb5ad7c037c5	cc-by-4.0	2026-10-10	branch main at fetch time, no revision pinned
+final4/repos/dotnet_eShop	git	https://github.com/dotnet/eShop	dc7ea499cd356924fb6689b3702964a5869dbae9		MIT		
+final4/repos/grafana_k6	git	https://github.com/grafana/k6	b408672aacb99a48d1a62a81f40083a9067fd55e		AGPL-3.0		
+final4/repos/httpie_cli	git	https://github.com/httpie/cli	5b604c37c6c67e18e7c3e9aee6c88a8c22b98345		BSD-3-Clause		
+final4/repos/ktorio_ktor	git	https://github.com/ktorio/ktor	4717dd5fe8270a40fc97ba0b03bb63f722717786		Apache-2.0		
+final4/repos/nats-io_nats-server	git	https://github.com/nats-io/nats-server	64dda80fdd87b41b2afcdc5faf5d846db6c189b0		Apache-2.0		
+final4/repos/phoenixframework_phoenix	git	https://github.com/phoenixframework/phoenix	5a9e92f34bc763231a356f7011de0387d29d863a		MIT		
+final4/repos/prisma_prisma	git	https://github.com/prisma/prisma	6e12cc25deebf249d12ec211b35ebb45d25e7db5		Apache-2.0		
+final4/repos/redis_redis-py	git	https://github.com/redis/redis-py	3defe76b135b16b087acfce2a59ce95295d6458c		MIT		
+final4/repos/sinatra_sinatra	git	https://github.com/sinatra/sinatra	cb22afd7902b566b6eaba6c4ea89739494a65d12		MIT		
+final4/repos/spf13_viper	git	https://github.com/spf13/viper	528f7416c4b56a4948673984b190bf8713f0c3c4		MIT		
+final4/repos/symfony_console	git	https://github.com/symfony/console	679a0587ef43b2f1be1dd8db4c2db4e63c9a01eb		MIT		
+final4/repos/vitest-dev_vitest	git	https://github.com/vitest-dev/vitest	69e6369f64455b4d78a6338521bbfc5fdb909af0		MIT		
+final4/tracecommons/train.parquet	file	https://huggingface.co/datasets/trace-commons/agent-traces/resolve/main/data/train-00000-of-00001.parquet		7c2c6ee4342ff014c47b906425501b4dc4f368df8af5280c158e827944da11e7	cc-by-4.0	2026-10-10	branch main, no revision pinned
+final5/aidev/pr_review_comments.parquet	file	https://huggingface.co/datasets/hao-li/AIDev/resolve/main/pr_review_comments.parquet		cd4ee56fc1ad5e74ab06e140dd054ef5060614433f8e448018adfb297fa179ac	cc-by-4.0	2026-10-10	branch main, no revision pinned
+final5/aidev/pull_request.parquet	file	https://huggingface.co/datasets/hao-li/AIDev/resolve/main/pull_request.parquet		c0b8e81e1d099905ef9ea420bf907d45179771ff5972afce6c219d8cafcef3e8	cc-by-4.0	2026-10-10	branch main, no revision pinned
+final5/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00035-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00035-of-00047.parquet		f9207f9087ca018def67d66904a7fb9668f2a84590509f5b411a27f4a1cd50f6	mit	2026-10-10	branch main at fetch time, no revision pinned
+final5/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00007-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00007-of-00012.parquet		65547ce464ae1bbff550eacfcfec251ee1cb9b439744389a66bb97a8d5aa1cdb	cc-by-4.0	2026-10-10	branch main at fetch time, no revision pinned
+final5/repos/appwrite_appwrite	git	https://github.com/appwrite/appwrite	ab112e0b5a2764ace6169bb1bed0d0fec5cd29da		BSD-3-Clause		
+final5/repos/coder_coder	git	https://github.com/coder/coder	8697b91870dc6dcf28c45c9e8cf0cf09fd58cba6		AGPL-3.0		
+final5/repos/directus_directus	git	https://github.com/directus/directus	8e140f94250834cea0a0fb6eb822cac39ed9faec		NOASSERTION		
+final5/repos/discourse_discourse_docker	git	https://github.com/discourse/discourse_docker	ac99052ff83bb79df1ad99684aa40e879aff2b27		MIT		
+final5/repos/goharbor_harbor	git	https://github.com/goharbor/harbor	4d425b805f318eb8dfe621842c02bef8dc0c0959		Apache-2.0		
+final5/repos/keycloak_keycloak-quickstarts	git	https://github.com/keycloak/keycloak-quickstarts	8d8e8a4a72e74c37fa26cefbd40a821352aaba51		Apache-2.0		
+final5/repos/mattermost_mattermost	git	https://github.com/mattermost/mattermost	47eebd5530c0485391efa77915965b4b7317f16c		NOASSERTION		
+final5/repos/outline_outline	git	https://github.com/outline/outline	a6b50dcc11eb846dae82deee742e947d7ec829bd		NOASSERTION		
+final5/repos/pocketbase_pocketbase	git	https://github.com/pocketbase/pocketbase	6f370ea741f33adf889eef02e3c1b884a47aa522		MIT		
+final5/repos/supabase_auth	git	https://github.com/supabase/auth	ce9a8eee0cc042be8c7a42981a7ddae631e41d91		MIT		
+final5/repos/woodpecker-ci_woodpecker	git	https://github.com/woodpecker-ci/woodpecker	cfb44200c6ce2294af7484765a1122149dc29d11		Apache-2.0		
+final5/repos/zulip_zulip	git	https://github.com/zulip/zulip	d7c57ed15b82b0bc8aefe2007f5ee2abeebd0ea2		Apache-2.0		
+final6/hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00025-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00025-of-00047.parquet		b08d23dca04f5e3ccd84fd7a03bcfbee8d066b5284cac279bfeb0c93f7463ebf	mit	2026-10-10	branch main at fetch time, no revision pinned
+final6/hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00004-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00004-of-00012.parquet		d1a8d8d3bafbfd589d32a42d4b0a321f107d9aab170e3dc2f749b0f252a958c5	cc-by-4.0	2026-10-10	branch main at fetch time, no revision pinned
+final6/repos/Kong_kong	git	https://github.com/Kong/kong	2d2e67ea7a90cc9d81c53177e9fdbe61bd142236		Apache-2.0		
+final6/repos/ansible_awx	git	https://github.com/ansible/awx	f8314ada72926580f2fe465c8eed7d41a726c363		NOASSERTION		
+final6/repos/authelia_authelia	git	https://github.com/authelia/authelia	2ed18389ec3eebb2c054abdc1b617f38b3ed952b		Apache-2.0		
+final6/repos/dexidp_dex	git	https://github.com/dexidp/dex	05a275057112ba93e17db21f600b756f000f1c21		Apache-2.0		
+final6/repos/goauthentik_authentik	git	https://github.com/goauthentik/authentik	a40205dc5525e09566b01a48c05918d762f8206c		NOASSERTION		
+final6/repos/jaredhanson_passport	git	https://github.com/jaredhanson/passport	217018dbc46dcd4118dd6f2c60c8d97010c587f8		MIT		
+final6/repos/lucia-auth_lucia	git	https://github.com/lucia-auth/lucia	e1ef2bc66a070f61813ed03d25c1ba8061c4d9f0		MIT		
+final6/repos/nextauthjs_next-auth	git	https://github.com/nextauthjs/next-auth	a1a16a5a7780488c7449feece410033f445d0b31		ISC		
+final6/repos/oauth2-proxy_oauth2-proxy	git	https://github.com/oauth2-proxy/oauth2-proxy	bea3f04bf87b93f5354f392fe2216a88e6031350		MIT		
+final6/repos/open-webui_open-webui	git	https://github.com/open-webui/open-webui	8bd8b4fac5e059578ac0c74b3c18d11139f88b7d		NOASSERTION		
+final6/repos/ory_hydra	git	https://github.com/ory/hydra	4174065ffb052799890f7480f5360a877a67ffc1		Apache-2.0		
+final6/repos/pennersr_django-allauth	git	https://github.com/pennersr/django-allauth	231d55eea8634a0bd781aa8debd17d60905f645b		MIT		
+gamedev/OpenRA_OpenRA	git	https://github.com/OpenRA/OpenRA	e7e9e4ad270221d7fb9725b348c75504d48c1ebd		GPL-3.0		
+gamedev/Unity-Technologies_EntityComponentSystemSamples	git	https://github.com/Unity-Technologies/EntityComponentSystemSamples	6786a741ee1f118ed14cecfa02beae8e926937b0		NOASSERTION		
+gamedev/Unity-Technologies_ml-agents	git	https://github.com/Unity-Technologies/ml-agents	2f97e1cbb408fe40169b720aa82a46f3f8a0a8e9		NOASSERTION		
+gamedev/UnityTechnologies_open-project-1	git	https://github.com/UnityTechnologies/open-project-1	608eac98df29cd97821a6115cd52dfb9027345b1		Apache-2.0		
+gamedev/bevyengine_bevy	git	https://github.com/bevyengine/bevy	0e93c7ab7d5ec016990dcb226ec544aee1636d70		Apache-2.0		
+gamedev/godotengine_godot-demo-projects	git	https://github.com/godotengine/godot-demo-projects	b761b4cd5718a7118f2c95eb55f181d0a5f004f1		MIT		
+gamedev/godotengine_tps-demo	git	https://github.com/godotengine/tps-demo	a82f15448e9b015440d3bbdf5e10801b260c4e9f		NOASSERTION		
+gamedev/minetest_minetest_game	git	https://github.com/minetest/minetest_game	c42e4d0c0ff9d27ff7b9b308c3cfc14098dd3a0f		NOASSERTION		
+gretel-multi/Dutch_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/Dutch_test-00000-of-00001.parquet		7bd4f3979cca98c1855289802d84982efadae6bfe6b80bfb58b2186016b938cd	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/English_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/English_test-00000-of-00001.parquet		c02b06d3c5b7c375525136d6f74acc52ab8fc07fa863d0aa50734910ec0ef2ad	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/France_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/France_test-00000-of-00001.parquet		39fc2777822bbecab2d89bb23cbed40d9825ff4117897b8b025c02287f4ba845	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/German_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/German_test-00000-of-00001.parquet		bfc64380bc24453f3460ffee6afbd7a3442b60dd26d5341c9fe0f1cca43216c3	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/Italian_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/Italian_test-00000-of-00001.parquet		f9e8681604bf96ed03d7b275ea5259b1a6ab3e2d7a3dfdbcc27571a608dda30d	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/README.md	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/README.md		1818d7f7cd27101ee9f8c932baf5183482e49e54e4b108a1ba9138db60a3e8c8	apache-2.0	2026-10-10	
+gretel-multi/Spanish_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/Spanish_test-00000-of-00001.parquet		89ff0e5b6cfd14119d299a17ce08d4bc46ce69b32cfb3740ec3bdef64de1f427	apache-2.0	2026-10-10	Apache-2.0
+gretel-multi/Swedish_test.parquet	file	https://huggingface.co/datasets/gretelai/synthetic_pii_finance_multilingual/resolve/main/data/Swedish_test-00000-of-00001.parquet		d1f6daa950b48f11f56125648ad9bd0927f0e8c56dfae1351158e2b62c4fdaca	apache-2.0	2026-10-10	Apache-2.0
+habr/README.md	file	https://huggingface.co/datasets/volosati/habr/resolve/main/README.md		114aade8789ac8d5d596f8079ad5dbbdf311098da6d7458d4d79b5215ca9087a	none	2026-10-10	
+habr/train-00007.parquet	file	https://huggingface.co/datasets/volosati/habr/resolve/main/data/train-00007-of-00031.parquet		0901aad5c542ca98deb1bad916edd5a1fb3863bef99ed7aa20f2cc5e90c0ed14	none	2026-10-10	no licence tag (re-upload of IlyaGusev/habr): evaluation only
+habr/train-00023.parquet	file	https://huggingface.co/datasets/volosati/habr/resolve/main/data/train-00023-of-00031.parquet		441c3153051644f83e668fded327ac1a9554a9434f05f953d85f519cb993fa4e	none	2026-10-10	no licence tag (re-upload of IlyaGusev/habr): evaluation only
+hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00000-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00000-of-00047.parquet		2b4e34a9d1dfa84aa950f2a945b5c9ec62ac64edc64a9fa2bb1d24b857503fb8	mit	2026-10-09	branch main at fetch time, no revision pinned
+hf/Kwai-Klear_SWE-smith-mini_swe_agent_plus-trajectories-66k_resolve_main_data_train-00001-of-00047.parquet	file	https://huggingface.co/datasets/Kwai-Klear/SWE-smith-mini_swe_agent_plus-trajectories-66k/resolve/main/data/train-00001-of-00047.parquet		f885e10c4d2e24136c730be5dd1b9979f115d7481b3bf12ba996a7f0fcf37828	mit	2026-10-09	branch main at fetch time, no revision pinned
+hf/SWE-Gym_OpenHands-Sampled-Trajectories_resolve_main_data_train.raw-00000-of-00003.parquet	file	https://huggingface.co/datasets/SWE-Gym/OpenHands-Sampled-Trajectories/resolve/main/data/train.raw-00000-of-00003.parquet		29d038b0c34eb0e50a19730f3cf3daa5a156c2d7e9c871c01b568acbab6aae07	none	2026-10-09	branch main at fetch time, no revision pinned
+hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00000-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00000-of-00012.parquet		5a395e8c7bb8ddc4b8f4d268506b3a0e2cf9b5ec3922600117322fe788067a13	cc-by-4.0	2026-10-09	branch main at fetch time, no revision pinned
+hf/nebius_SWE-agent-trajectories_resolve_main_data_train-00005-of-00012.parquet	file	https://huggingface.co/datasets/nebius/SWE-agent-trajectories/resolve/main/data/train-00005-of-00012.parquet		c507212cd721512240a1bb87a8554bb7b429a9c03649c1473eb3d9e4673e6aca	cc-by-4.0	2026-10-09	branch main at fetch time, no revision pinned
+iac/Azure_terraform-azurerm-aks	git	https://github.com/Azure/terraform-azurerm-aks	58ffc7c71a36871dc955ded13816fd29ac798791		MIT		
+iac/ansible-collections_community.hashi_vault	git	https://github.com/ansible-collections/community.hashi_vault	eb163dd331cdb421eb79bc50eff5e1f525c7a209		GPL-3.0		
+iac/ansible-collections_community.mysql	git	https://github.com/ansible-collections/community.mysql	4cf7a3176fbd07be43459f1366e8066381df6d97		NOASSERTION		
+iac/ansible-collections_community.postgresql	git	https://github.com/ansible-collections/community.postgresql	877fc0da10b759b4141ccf187d3180c7fdb27dba		NOASSERTION		
+iac/ansible_ansible-examples	git	https://github.com/ansible/ansible-examples	b50586543c6c4be907fdc88f9f78a2b35d2a895f		none		
+iac/bitnami_charts	git	https://github.com/bitnami/charts	bb5e98a6e3c5ca196420d2414769b681c9284101		NOASSERTION		
+iac/geerlingguy_ansible-role-gitlab	git	https://github.com/geerlingguy/ansible-role-gitlab	025a0c517fe3d4eda76a6efe53c4f81fbe8d9ec7		MIT		
+iac/geerlingguy_ansible-role-jenkins	git	https://github.com/geerlingguy/ansible-role-jenkins	5c58839e261a56661011a8efb55277c9d71c372f		MIT		
+iac/geerlingguy_ansible-role-mysql	git	https://github.com/geerlingguy/ansible-role-mysql	0a0ea6b728120b3ab3918332d9404bb65836834d		MIT		
+iac/geerlingguy_ansible-role-postgresql	git	https://github.com/geerlingguy/ansible-role-postgresql	2730bffd00c22d0df9d939e6b810af3ff7cb56cf		MIT		
+iac/grafana_helm-charts	git	https://github.com/grafana/helm-charts	434266a8ba2e1e859b58d82084d976cc411580cc		Apache-2.0		
+iac/prometheus-community_helm-charts	git	https://github.com/prometheus-community/helm-charts	6e96d8396763c5fafa1c701cf9aed2e5dde27fd6		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-eks	git	https://github.com/terraform-aws-modules/terraform-aws-eks	91b8a8d944e3cf169483108acd12d5b1e47856f7		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-iam	git	https://github.com/terraform-aws-modules/terraform-aws-iam	da8e6a8673933ee651f0f0fe611d5ac6b9f9bcb9		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-lambda	git	https://github.com/terraform-aws-modules/terraform-aws-lambda	851d20939b25ee7ebadba96a3eab31ff6450134d		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-rds	git	https://github.com/terraform-aws-modules/terraform-aws-rds	175da043429cbbe41c512f976105719f6d0e538c		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-rds-aurora	git	https://github.com/terraform-aws-modules/terraform-aws-rds-aurora	d72cba285514b5e2e83bea7dd1272c1c206a4f64		Apache-2.0		
+iac/terraform-aws-modules_terraform-aws-vpc	git	https://github.com/terraform-aws-modules/terraform-aws-vpc	b3abd6df2ecf052451a361ed55b8f06f8742a795		Apache-2.0		
+iac/terraform-google-modules_terraform-google-kubernetes-engine	git	https://github.com/terraform-google-modules/terraform-google-kubernetes-engine	068af04e164ab3d0061d70b809ff603027e944b8		Apache-2.0		
+iac/terraform-google-modules_terraform-google-sql-db	git	https://github.com/terraform-google-modules/terraform-google-sql-db	5178f8274e8c58965af7ee4508f4a64bbf9edc54		Apache-2.0		
+icsme/cld.zip	file	https://zenodo.org/api/records/22942243/files/CLD_34_2026-main.zip/content		1ac50fd73c29b4a629ce6dd9cff8abc0db1702f660230eaa4bd0710f6724eed4		2026-10-10	Zenodo record 22942243 ("Separating Secrets from Placeholders", ICSME 2026); CC-BY-4.0 (GitHub repo says research/academic use); unzipped to icsme/x/
+icsme/neg.jsonl	derived					2026-10-10	CSV Sanitized_CCLD_dataset.csv converted to {text,lang,url} jsonl
+icsme/record.json	file	https://zenodo.org/api/records/22942243		63f24db4757b7a9debb85d316d1c6b6a8a66e73a067d605db06be4ff86c9d9ab		2026-10-10	Zenodo metadata JSON
+issuereports/Secret-Leak-Detection-Issue-Report	derived					2026-10-09	unzipped from issuereports/d.zip
+issuereports/d.zip	file	https://zenodo.org/api/records/19622962/files/Secret-Leak-Detection-Issue-Report.zip/content		0512d4aebc0612c161e9036d26746573acc00fb8a29d7fe3d8156486de559cbf		2026-10-09	unzipped in place to issuereports/Secret-Leak-Detection-Issue-Report/
+kaggle-notebooks/README.md	file	https://huggingface.co/datasets/bigcomputer/kaggle-notebooks-outputs-filtered-57/resolve/main/README.md		aac648913ec74a7e1f90fe2e26a4c8ac8ca717810abccc4cb62976c36302933e	none	2026-10-10	
+kaggle-notebooks/train-00003.parquet	file	https://huggingface.co/datasets/bigcomputer/kaggle-notebooks-outputs-filtered-57/resolve/main/data/train-00003-of-00006.parquet		b8d50e620cfb386852ed74b250588a14bf60bc01b0a392082d684f102f48f255	none	2026-10-10	no licence tag: evaluation only
+leak-museum	git	https://github.com/printemps-tokyo/leak-museum	6b1483a00cfa7bb47551b7304c1e2d4bc9a3a919		MIT		
+leaky-repo	git	https://github.com/Plazmaz/leaky-repo	2e951359cac53addbee56437da3ffb546e3dfe24		MIT		
+levain/fp-corpus	git	https://github.com/levainbot/fp-corpus	c130c321aa9046af17a6c876cb97e2ed71397110		MIT		
+levain/fp.jsonl	derived					2026-10-10	extracted from levain/fp-corpus; also tp.json (decoded from tp-corpus.json.b64) and tp.jsonl
+levain/tp.json	derived					2026-10-10	base64-decoded tp-corpus.json.b64 from levain/fp-corpus
+levain/tp.jsonl	derived					2026-10-10	derived from levain/tp.json; the script was not kept
+llm-secdb/LLM-SecDB.json	file	https://zenodo.org/api/records/20035860/files/LLM-SecDB.json/content		affa90f46ae562030726c7e013028e2e88bb61d0f0e2fe479dc880ec05bb7a66		2026-10-10	CC-BY-4.0
+llm-secdb/README.md	file	https://zenodo.org/api/records/20035860/files/README.md/content		e862eb37ab3261e7dd08c032dd83b83260feebe658b24816861d61550770a7c9		2026-10-10	
+llmr/wl2.jsonl	derived					2026-10-10	derived from priorart/llm-redactor/evals/workloads/wl2_secrets/annotations.jsonl
+loghub/src	git	https://github.com/logpai/loghub	dd61d0952749ee7963bde24220d1be5ede023033		NOASSERTION		
+loghub/zenodo/Apache.tar.gz	file	https://zenodo.org/api/records/8196385/files/Apache.tar.gz/content		f2cb5014453c8a0f71596838e1639a2131ff6d360839ad280409f621a6cac452		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/HPC.zip	file	https://zenodo.org/api/records/8196385/files/HPC.zip/content		3df2d31235c441083d8bee41f15bebd9ca5997f1a2ba9e6a967118865dfb1811		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/Hadoop.zip	file	https://zenodo.org/api/records/8196385/files/Hadoop.zip/content		79e63c6521e90ae164754a29d13e04e0c6c5e782490a7fe1e2b124f4f5737ced		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/HealthApp.tar.gz	file	https://zenodo.org/api/records/8196385/files/HealthApp.tar.gz/content		157f5ae299b2cc3ece65d61541ade6f5f4282d428bb0cddb50f6b466d3ee6ffd		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/Linux.tar.gz	file	https://zenodo.org/api/records/8196385/files/Linux.tar.gz/content		7e1f820d8d45ae086032e515d9ce8d079a102a9b37dcff5b41a8e60b1f857820		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/Mac.tar.gz	file	https://zenodo.org/api/records/8196385/files/Mac.tar.gz/content		a3ebaae341af38f397924cc4f00f2e0e95ff9db4e97abd0dd23986eda239a5a3		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/OpenStack.tar.gz	file	https://zenodo.org/api/records/8196385/files/OpenStack.tar.gz/content		87c98c5ed03262e05cdb7a6f3717033df76d88fda0f7d2db23bd9fa4200f1879		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/Proxifier.tar.gz	file	https://zenodo.org/api/records/8196385/files/Proxifier.tar.gz/content		b56d93eb87188e1284b5b35e92cb6f4151aec22975d82c5387d8e81a52d2a96d		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/SSH.tar.gz	file	https://zenodo.org/api/records/8196385/files/SSH.tar.gz/content		296610a35773f58b7c295e5407fc5ccdf48beb3c544fc14a6309addf904a2712		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+loghub/zenodo/Zookeeper.tar.gz	file	https://zenodo.org/api/records/8196385/files/Zookeeper.tar.gz/content		ea350b0d3ff22bca4764ae4a1521bd1b79c448db4ee99aac02fd82b9a0995f19		2026-10-10	Loghub 2.0 record 8196385 (version-specific record id); CC-BY-4.0 on Zenodo; evaluation only; extracted to loghub/zenodo/x
+mobile/AntennaPod_AntennaPod	git	https://github.com/AntennaPod/AntennaPod	9c7ffa16736c020045571d274aef4cdcf0878100		GPL-3.0		
+mobile/bitwarden_android	git	https://github.com/bitwarden/android	2cb8b8fa793a9d954acd35d4fcf2b193f8f38898		GPL-3.0		
+mobile/element-hq_element-x-ios	git	https://github.com/element-hq/element-x-ios	14e33866ced2456f99a0039087363357d946c551		AGPL-3.0		
+mobile/firebase_quickstart-android	git	https://github.com/firebase/quickstart-android	f8032fac478f967b424fbff551628ce26f06a13e		Apache-2.0		
+mobile/firebase_quickstart-ios	git	https://github.com/firebase/quickstart-ios	087e4f426baf5eddc61b8589fa3bf2462e710777		Apache-2.0		
+mobile/flutter_samples	git	https://github.com/flutter/samples	5541c59ab8e9d7e74c1a35ef22bd43a487fc596c		NOASSERTION		
+mobile/home-assistant_android	git	https://github.com/home-assistant/android	9e658ce520b7a5e5f09113f215b0a77ce437c08f		Apache-2.0		
+mobile/mastodon_mastodon-ios	git	https://github.com/mastodon/mastodon-ios	2ef5a0cbe5c88e2d48c51a40a9590c372100d968		GPL-3.0		
+mobile/nextcloud_android	git	https://github.com/nextcloud/android	1ae824cc88cd4c6928d45682571f637a8c855141		GPL-2.0		
+mobile/thunderbird_thunderbird-android	git	https://github.com/thunderbird/thunderbird-android	e3fb7f3341827eb756327e26198f97b7c3f1821e		Apache-2.0		
+mobile/wikimedia_wikipedia-ios	git	https://github.com/wikimedia/wikipedia-ios	d41deed3abd52c664a48d3a7212093a1fa8ac188		MIT		
+nemotron-pii/test.parquet	file	https://huggingface.co/datasets/nvidia/Nemotron-PII/resolve/main/data/test-00000-of-00001.parquet		1a4b0512ecb5370f0992d29d0f9c07351e6de13f0d7ea33bb18cecb984780247	cc-by-4.0	2026-10-10	CC-BY-4.0
+noseyparker-rules/src	git	https://github.com/praetorian-inc/noseyparker	2e6e7f36ce36619852532bbe698d8cb7a26d2da7		Apache-2.0		
+nym-pii/README.md	file	https://huggingface.co/datasets/Wismut/nym-pii-multilingual-data/resolve/main/README.md		dfcc37fcab0e48ac88eea97dd015bb67e7fb819117a564211d0fe255a8426251	mit	2026-10-10	
+nym-pii/test.jsonl	file	https://huggingface.co/datasets/Wismut/nym-pii-multilingual-data/resolve/main/test.jsonl		7b07818ec2767c0ac81b91ed3701771d5f23038da1b71ba4705f02fa5fe85ff9	mit	2026-10-10	MIT
+obfuscation-bench	git	https://github.com/umashankarak/secret-scanner-obfuscation-benchmark	42b0aeb6760b818ac0ec956884ede5894e9c399b		MIT		
+openhands-feedback/train.parquet	file	https://huggingface.co/datasets/OpenHands/openhands-feedback/resolve/main/data/train-00000-of-00001.parquet		f8176795f554d2e40296ad17154f1539a4eb20474dee71de3bb1b3f36d41a9a0	mit	2026-10-10	MIT
+osv/Go.zip	file	https://osv-vulnerabilities.storage.googleapis.com/Go/all.zip		e7d4223055247763ed69cd3d8cffc9af1df38a0df75327019c503825c5db965a		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/Maven.zip	file	https://osv-vulnerabilities.storage.googleapis.com/Maven/all.zip		c0e8f6d2aaeab6904d0b0277b002c759290611d725e9446884eb5a833e84dfaf		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/NuGet.zip	file	https://osv-vulnerabilities.storage.googleapis.com/NuGet/all.zip		b590e301e245c9920a9f696fa91039d685ddbb788f4c27475adcd53372490b35		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/Packagist.zip	file	https://osv-vulnerabilities.storage.googleapis.com/Packagist/all.zip		76352e959bd83e96c3a5d3cf9d4288e32860139fb4d5919322bee3ceed649226		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/PyPI.zip	file	https://osv-vulnerabilities.storage.googleapis.com/PyPI/all.zip		0377e128bd8d870826f7bceab403a3940b912d30ddd42f6ad4ea8b091a8cc8c4		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/RubyGems.zip	file	https://osv-vulnerabilities.storage.googleapis.com/RubyGems/all.zip		2468393b6f83d5ff2e21f2f59d114a3a0f1d5665d5429717f69351045cb95279		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/crates.io.zip	file	https://osv-vulnerabilities.storage.googleapis.com/crates.io/all.zip		b24f179d0985a66f5f7f425afda26f31dd89ed5f2768323b3ae6e71257c63308		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+osv/npm.zip	file	https://osv-vulnerabilities.storage.googleapis.com/npm/all.zip		802734dd469fb0c546c99702738cf621344d5ec8d5dfdf33f34ac746505eb160		2026-10-10	Rolling dump (no version): contents change daily; GHSA/PYSEC/GO CC-BY-4.0, RUSTSEC CC0, MAL Apache-2.0
+pii-arena	git	https://github.com/Quakeer444/pii-arena	1aa2c3f52d5bdf05f600a7843ffc230fd87badcb		MIT		
+priorart/BeyondTrust_bedrock-keys-security	git	https://github.com/BeyondTrust/bedrock-keys-security	4a0213dddcc0f4ed914f9a002bd378baf46b23a8		Apache-2.0		
+priorart/CassiopeiaCode_CosyRedactGateway	git	https://github.com/CassiopeiaCode/CosyRedactGateway	0e2be2e3ba7fcbe982942a941e3a2fd1b89e87f6		Apache-2.0		
+priorart/EwenQuim_entropy	git	https://github.com/EwenQuim/entropy	64a09c9b8df7ade6a5a857d8abd08b27ae64f3af		MIT		
+priorart/Infatoshi_traces	git	https://github.com/Infatoshi/traces	3e3b2cb05809f7e5d533ad53f422b476c4442bbf		MIT		
+priorart/Ishannaik_agent-sweep	git	https://github.com/Ishannaik/agent-sweep	1aa93dc712371083f165f31d0c5a09cf81899f13		MIT		
+priorart/IssueGuard	git	https://github.com/disa-lab/IssueGuard	70ed19b9ecc959dc71c27bb7fcc5be67e5a545e4		none		
+priorart/Lercas_prowl	git	https://github.com/Lercas/prowl	61126387b51a714cd13339eefcf09d5b25cc68fd		NOASSERTION		
+priorart/SecretBench	git	https://github.com/setu1421/SecretBench	290553d30a8a54748032b3b582779eab5e8a6836		MIT		
+priorart/ShindouMihou_cc-redact	git	https://github.com/ShindouMihou/cc-redact	50893ffa81cf5cfbf0fb9520262b514ba6c1ebc4		none		
+priorart/SlotGuard	git	https://github.com/illinoisdata/SlotGuard	65be8b8c4e8522949354ac0dfa997d2afb72bde4		Apache-2.0		
+priorart/SpecterOps_DeepPass2	git	https://github.com/SpecterOps/DeepPass2	e51a6960b1e9a4714ed502aaf14d14fc5d50bcbc		Apache-2.0		
+priorart/Suryansh-23_secretty	git	https://github.com/Suryansh-23/secretty	ae7c2b68e2ffdf516f8ac6250e5d1d87f204292c		MIT		
+priorart/atuin	git	https://github.com/atuinsh/atuin	3dae96b1f0eedfd566bc7f36f16df52879a85f5b		MIT		
+priorart/avito-tech_deepsecrets	git	https://github.com/avito-tech/deepsecrets	4afd597d3997a2bdbac8059e405659715faa51d4		MIT		
+priorart/awslabs_ferret-scan	git	https://github.com/awslabs/ferret-scan	c3ea64a4cc584efa1663af5cc6ea6fca54b628d5		Apache-2.0		
+priorart/betterleaks	git	https://github.com/betterleaks/betterleaks	43f0ee932d05ef2bd79b2e530994b9c9851127bc		MIT		
+priorart/censgate_redact	git	https://github.com/censgate/redact	6d10a140a8400188704399b1385fb2df89035736		Apache-2.0		
+priorart/cld34/cld.zip	file	https://zenodo.org/records/22942243/files/CLD_34_2026-main.zip?download=1		1ac50fd73c29b4a629ce6dd9cff8abc0db1702f660230eaa4bd0710f6724eed4		2026-10-09	same record as icsme/cld.zip
+priorart/crossvault_redact-transcripts	git	https://github.com/crossvault/redact-transcripts	bcb13a8efdc726f5baf483f5ca2fb1d1df0a9708		Apache-2.0		
+priorart/dd-sds	git	https://github.com/DataDog/dd-sensitive-data-scanner	1251d82354edaddcf397c55238ec769bb6e527e6		Apache-2.0		
+priorart/docker_portcullis	git	https://github.com/docker/portcullis	a2eb85db2b08ca2c73739d87df4de58e99fe1b86		Apache-2.0		
+priorart/flare-collection_flare-redact	git	https://github.com/flare-collection/flare-redact	c652ea7946028b70527069d7c282752b8a0ccee3		MIT		
+priorart/gitlab-runner	git	https://gitlab.com/gitlab-org/gitlab-runner	a278fd0507debd103f90ce8a8c62ca4743a97a10		MIT		
+priorart/gitlab-sd-rules	git	https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules	cae5670b0d83aaea0ff37c085119e82ff394f283		MIT		
+priorart/litellm	git	https://github.com/BerriAI/litellm	883e3210ee4075a556d0b26a03866a2c704809e8		NOASSERTION		
+priorart/llm-guard	git	https://github.com/protectai/llm-guard	168c1034ffdb33837e7ae6fd6a16b80567c1be03		MIT		
+priorart/llm-redactor	git	https://github.com/jayluxferro/llm-redactor	4aa056321d27c73b9ac8ad3824316d65136a55c6		none		
+priorart/microsoft_security-utilities	git	https://github.com/microsoft/security-utilities	4ce293f8a42ccfe2e2a1b9dc13846284e1121b62		MIT		
+priorart/mintmcp_agent-security	git	https://github.com/mintmcp/agent-security	3d78e6f88a305d23c4621cbe7419cd4dc075750b		Apache-2.0		
+priorart/moneycaringcoder_herdr-redact	git	https://github.com/moneycaringcoder/herdr-redact	8ecaac2c57f72eca30f84e6de870ab0ee29da938		MIT		
+priorart/ms-security-utilities	git	https://github.com/microsoft/security-utilities	4ce293f8a42ccfe2e2a1b9dc13846284e1121b62		MIT		
+priorart/musman550_musfira-ai-purpose-built-model-for-leaked-secret-detection	git	https://github.com/musman550/musfira-ai-purpose-built-model-for-leaked-secret-detection	45c45b060af17e76ea5f7a8e3f96ac9278f63d48		MIT		
+priorart/nafiurahman00_Source-Code-Secret-Detection-with-LLMs	git	https://github.com/nafiurahman00/Source-Code-Secret-Detection-with-LLMs	8fa28771df7b4cefd1feba02f82995e7507a93e9		none		
+priorart/ninadphalak_LLM-Shield-Proxy	git	https://github.com/ninadphalak/LLM-Shield-Proxy	7fcb878769e73e113bf6358cbcd88cace466d477		Apache-2.0		
+priorart/openai_privacy-filter	git	https://github.com/openai/privacy-filter	f7f00ca7fb869683eb732c010299d901457f19c3		Apache-2.0		
+priorart/openguardrails_openafw	git	https://github.com/openguardrails/openafw	5eea41b5596cdda78af1a13dd29bb05c63559c4f		NOASSERTION		
+priorart/packyme_privacy-filter	git	https://github.com/packyme/privacy-filter	64b8de3c206059b187d65381189b70c267550392		MIT		
+priorart/pii-shield_pii-shield	git	https://github.com/pii-shield/pii-shield	201fae69b9b5591fcd3812f803a67c4fd8250df3		Apache-2.0		
+priorart/praetorian-inc_titus	git	https://github.com/praetorian-inc/titus	efdea19b8420c36a50a5f08194f9c3b02e250025		Apache-2.0		
+priorart/prowl	git	https://github.com/Lercas/prowl	61126387b51a714cd13339eefcf09d5b25cc68fd		NOASSERTION		
+priorart/prowlbench	git	https://github.com/Lercas/prowlbench	53d6fc1e2006185c0fadd5cd761af3f1aacfd025		NOASSERTION		
+priorart/purebyte-train	git	https://github.com/purebyte-ai/purebyte-train	f310bc3bff159b3abb5585060244e4597008186e		Apache-2.0		
+priorart/redact-secret_redact-secret	git	https://github.com/redact-secret/redact-secret	ca09aeb6bb360aed20914e475230836250e2759a		MIT		
+priorart/relay	git	https://github.com/getsentry/relay	37ed509e4d41d5dbcdb2ee94ffe6134eb6c0062d		NOASSERTION		
+priorart/ripsecrets	git	https://github.com/sirwart/ripsecrets	34c9e03cfa9a0b2c4576dcce6bd624e743c1c355		MIT		
+priorart/runner	git	https://github.com/actions/runner	67f01c276e0a91d967ba499ce4cdc9a95efa0262		MIT		
+priorart/slhck_scrub-agent-sessions	git	https://github.com/slhck/scrub-agent-sessions	f57244b4fe3cd27a18f8de4114f3ec6c79818f84		MIT		
+priorart/spences10_nopeek	git	https://github.com/spences10/nopeek	0b733d1d493d44e2144768c2df8ce13dc34d7d7c		MIT		
+priorart/teyhouse_jev-secret-detection	git	https://github.com/teyhouse/jev-secret-detection	fc707416f00a6891b6a03458cc5c6de598fe47b2		none		
+priorart/thoughtbot_top_secret	git	https://github.com/thoughtbot/top_secret	340792450b7fed26dbf9c2768028de1341f91432		MIT		
+priorart/titus	git	https://github.com/praetorian-inc/titus	efdea19b8420c36a50a5f08194f9c3b02e250025		Apache-2.0		
+priorart/updatecli_logmask	git	https://github.com/updatecli/logmask	940db302ed569df0c0f0b6bed5e3447b65e337f3		MIT		
+priorart/v_Aider-AI_aider	git	https://github.com/Aider-AI/aider	5dc9490bb35f9729ef2c95d00a19ccd30c26339c		Apache-2.0		
+priorart/v_OpenHands_OpenHands	git	https://github.com/OpenHands/OpenHands	03f356c5c81aefed7afad926c54e53f75230f5f6		MIT		
+priorart/v_OpenHands_software-agent-sdk	git	https://github.com/OpenHands/software-agent-sdk	1cfba2117e92730b0fe1c32520a39aad8611bb8c		MIT		
+priorart/v_QwenLM_qwen-code	git	https://github.com/QwenLM/qwen-code	085a44f336dc94ce43e46daaa3a035ff7bf32720		Apache-2.0		
+priorart/v_SWE-agent_SWE-agent	git	https://github.com/SWE-agent/SWE-agent	3ea751c087f32b16e039a2233dd6eefecef325d5		MIT		
+priorart/v_block_goose	git	https://github.com/block/goose	3bd852002903e016ff30947e973f76e2fcfcf90f		Apache-2.0		
+priorart/v_charmbracelet_crush	git	https://github.com/charmbracelet/crush	8b1824282eccc78cc62c188c245cf375230a18ce		NOASSERTION		
+priorart/v_cline_cline	git	https://github.com/cline/cline	d20b337eb591d661b8927e288bb0034d53f1fabb		Apache-2.0		
+priorart/v_continuedev_continue	git	https://github.com/continuedev/continue	5522c6f44ca0ac3528b37244818fbfa39b5af470		Apache-2.0		
+priorart/v_docker_docker-agent	git	https://github.com/docker/docker-agent	cd65d7c776dda80d554735ee20572d09cfe2d791		Apache-2.0		
+priorart/v_google-gemini_gemini-cli	git	https://github.com/google-gemini/gemini-cli	9b6e0265d16bbd29ca51e33c9e0c01dc4cec5e83		Apache-2.0		
+priorart/v_openai_codex	git	https://github.com/openai/codex	7efd184c2410c02a9d0feb4896855f0f18a8f47e		Apache-2.0		
+priorart/v_sst_opencode	git	https://github.com/sst/opencode	055d95bb7e278c94baf06235a52cac79dd13ba67		MIT		
+pypi-meta/part-0100.parquet	file	https://huggingface.co/datasets/labofsahil/pypi-packages-metadata-dataset/resolve/main/pypi-packages-metadata-000000000100.parquet		7ec2e47444a984c73312c588cd58c86469913b86f2e3bebe7dfbbb77bec0e548	mit	2026-10-10	MIT
+pypi-meta/part-0600.parquet	file	https://huggingface.co/datasets/labofsahil/pypi-packages-metadata-dataset/resolve/main/pypi-packages-metadata-000000000600.parquet		00243b2b7ab6433627384dd38f9da9261a1dad654f938a65c9b12c36d80376b7	mit	2026-10-10	MIT
+pypi-meta/part-1000.parquet	file	https://huggingface.co/datasets/labofsahil/pypi-packages-metadata-dataset/resolve/main/pypi-packages-metadata-000000001000.parquet		f6703e3c79fe6fe5dede58b1dbc9724d04239963d63571b9d9b04108bd7f1b54	mit	2026-10-10	MIT
+pypi-meta/part-1500.parquet	file	https://huggingface.co/datasets/labofsahil/pypi-packages-metadata-dataset/resolve/main/pypi-packages-metadata-000000001500.parquet		893c46d17d1339f50563ff577596d7e3c0af28caa005a7b150a916602010ceaa	mit	2026-10-10	MIT
+pypi-meta/part-1900.parquet	file	https://huggingface.co/datasets/labofsahil/pypi-packages-metadata-dataset/resolve/main/pypi-packages-metadata-000000001900.parquet		8a745b6b63010c5b8ffc2aab79e70f64d13ea9eaba6ed235e0f26201a19301f2	mit	2026-10-10	MIT
+qiita/README.md	file	https://huggingface.co/datasets/OmniAICreator/Qiita-1.07M/resolve/main/README.md		42a5c82fd7e7e6a425e85e2b68617039201e2bfb1cf015c898959de4160f04a3	mit	2026-10-10	
+qiita/train-00010.parquet	file	https://huggingface.co/datasets/OmniAICreator/Qiita-1.07M/resolve/main/data/train-00010-of-00052.parquet		97b841db21ce13dc36b3a562a831ecc6510de5b98e0138b5af60ec1a571059ea	mit	2026-10-10	MIT
+qiita/train-00031.parquet	file	https://huggingface.co/datasets/OmniAICreator/Qiita-1.07M/resolve/main/data/train-00031-of-00052.parquet		d02defb722ee2f20e867db5a2c449b0ca715474ad9a405380fd972643b0af607	mit	2026-10-10	MIT
+repos/Azure_azure-cli	git	https://github.com/Azure/azure-cli			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/ansible_ansible	git	https://github.com/ansible/ansible			GPL-3.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/argoproj_argo-cd	git	https://github.com/argoproj/argo-cd			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/aws_aws-cli	git	https://github.com/aws/aws-cli			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/bitnami_charts	git	https://github.com/bitnami/charts			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/discourse_discourse	git	https://github.com/discourse/discourse			GPL-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/django_django	git	https://github.com/django/django			BSD-3-Clause	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m); tree says django VERSION 6.2.0 alpha
+repos/docker_docs	git	https://github.com/docker/docs			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/getsentry_sentry	git	https://github.com/getsentry/sentry			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/gitlabhq_gitlabhq	git	https://github.com/gitlabhq/gitlabhq			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/googleapis_google-cloud-python	git	https://github.com/googleapis/google-cloud-python			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/grafana_grafana	git	https://github.com/grafana/grafana			AGPL-3.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/hashicorp_terraform	git	https://github.com/hashicorp/terraform			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/hashicorp_vault	git	https://github.com/hashicorp/vault			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/hist_expressjs_express	git	https://github.com/expressjs/express	9efc29e280018dafc1f0617f3a3d28f4e463b7be		MIT	2026-10-09	full-history clone, files over 1 MB left out (--filter=blob:limit=1m); package.json 5.2.1
+repos/hist_pallets_flask	git	https://github.com/pallets/flask	d086db856be187255b8ec61ef409357393020f32		BSD-3-Clause	2026-10-09	full-history clone, files over 1 MB left out (--filter=blob:limit=1m); pyproject 3.2.0.dev
+repos/hist_psf_requests	git	https://github.com/psf/requests	611c6162cbc4ac2020a2f91c7cfa4f3abf9bbb60		Apache-2.0	2026-10-09	full-history clone, files over 1 MB left out (--filter=blob:limit=1m); requests __version__ 2.34.2
+repos/home-assistant_core	git	https://github.com/home-assistant/core			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/kubernetes_kubernetes	git	https://github.com/kubernetes/kubernetes			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/langchain-ai_langchain	git	https://github.com/langchain-ai/langchain			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/logpai_loghub	git	https://github.com/logpai/loghub			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m); also cloned separately into loghub/src (pinned there)
+repos/mastodon_mastodon	git	https://github.com/mastodon/mastodon			AGPL-3.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/microsoft_vscode	git	https://github.com/microsoft/vscode			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/n8n-io_n8n	git	https://github.com/n8n-io/n8n			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/openai_openai-cookbook	git	https://github.com/openai/openai-cookbook			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/openssl_openssl	git	https://github.com/openssl/openssl			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/prometheus_prometheus	git	https://github.com/prometheus/prometheus			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/python_cpython	git	https://github.com/python/cpython			NOASSERTION	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/rails_rails	git	https://github.com/rails/rails			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/rust-lang_cargo	git	https://github.com/rust-lang/cargo			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/spring-projects_spring-boot	git	https://github.com/spring-projects/spring-boot			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/stripe_stripe-node	git	https://github.com/stripe/stripe-node			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/supabase_supabase	git	https://github.com/supabase/supabase			Apache-2.0	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/twilio_twilio-python	git	https://github.com/twilio/twilio-python			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+repos/vercel_next.js	git	https://github.com/vercel/next.js			MIT	2026-10-09	depth-1 clone of the default branch, no commit pinned; files over 5 MB left out (--filter=blob:limit=5m)
+rfc/rfc2617.txt	file	https://www.rfc-editor.org/rfc/rfc2617.txt		cf5492136782d9e9fce492c254ca39e2c93328cf38c4dd006039abb5d8e27ba7		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc4226.txt	file	https://www.rfc-editor.org/rfc/rfc4226.txt		db6974cd02ca33560ec3a191ee9b1016067cd11d1f5d89e7efa36be69482229d		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc4648.txt	file	https://www.rfc-editor.org/rfc/rfc4648.txt		84e14418f795d503be5f34bf23ce4ebaa119e9ec7c9f667d8caeb111385b178f		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc5802.txt	file	https://www.rfc-editor.org/rfc/rfc5802.txt		12fcaba0dd78fe7aeb1c63f433314722977ef6746a638fce0f168c63a5bd24ba		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc5849.txt	file	https://www.rfc-editor.org/rfc/rfc5849.txt		89e6fca18e4028c8b684e9b53a113acfdd0e5267a6c52f29e295a88eeea31441		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc6238.txt	file	https://www.rfc-editor.org/rfc/rfc6238.txt		82947ed9064450850547f55959dc79d2de775f0fa33f7b3f9622fb6c93e69a7a		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc6265.txt	file	https://www.rfc-editor.org/rfc/rfc6265.txt		dc4177094813e85a44a7897b892b76bc09160b3a03aea44f0f511f3a98f91933		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc6749.txt	file	https://www.rfc-editor.org/rfc/rfc6749.txt		f204fc8661d6c92d2ec6e0b54808f961a9ad26e792f57f312d9528335519bd71		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc6750.txt	file	https://www.rfc-editor.org/rfc/rfc6750.txt		9dc385cf4ecdd85024e5a95e447ede9230e11700bf35251906b25b37557d604b		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7515.txt	file	https://www.rfc-editor.org/rfc/rfc7515.txt		ecbf84674118e62526511c1237e1deaa86aada86d25b247623a2a7e04ae62e40		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7516.txt	file	https://www.rfc-editor.org/rfc/rfc7516.txt		722cfcddc15f58e746891ba4b846853d3711153a774e4dd55ad6db100474a21f		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7517.txt	file	https://www.rfc-editor.org/rfc/rfc7517.txt		681c19b92a85068716b7e89c5815aa821bd3f11c755ff1c641b40ae9851bb33c		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7518.txt	file	https://www.rfc-editor.org/rfc/rfc7518.txt		9a9ae524b09ea700ad3f189bac115df95ba69af84b26ffdbe3cdfb8d2152b1fc		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7519.txt	file	https://www.rfc-editor.org/rfc/rfc7519.txt		fecd930e9ccf2276b95c0017c6c4ff5d09352e4bc3c7629946447894e0f97248		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7520.txt	file	https://www.rfc-editor.org/rfc/rfc7520.txt		14798c3b2d72e35375d5fb86d280a1e8df6109a6ee6cbfc091a0c57a8cc076c6		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7523.txt	file	https://www.rfc-editor.org/rfc/rfc7523.txt		ae24f77a8fc4338903c805c6ace38def1f23d40194aea87b123b13c5b3d2d915		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7591.txt	file	https://www.rfc-editor.org/rfc/rfc7591.txt		f9cd8b8eefdb2d1b1bd5734310f246926db0abb4ec1b2f933f358d58327964e3		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7616.txt	file	https://www.rfc-editor.org/rfc/rfc7616.txt		65e4770b3c3bfe129cdaaca358454118a6c10fd261dd3822e07ca786199e907b		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7617.txt	file	https://www.rfc-editor.org/rfc/rfc7617.txt		bc941321da9912fbb1bc92ad1820848ddfd3283dbfbc30f26ea2800bdaf541db		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7636.txt	file	https://www.rfc-editor.org/rfc/rfc7636.txt		1972e5d81cbaba7066cfd46374207bc2b4546b085ed5dd9b034e79e023e0ca31		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7638.txt	file	https://www.rfc-editor.org/rfc/rfc7638.txt		98b29ab9652070e6a5fec748d43e221bbedc66b6b22e05903fb5366c04ef3110		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7662.txt	file	https://www.rfc-editor.org/rfc/rfc7662.txt		2b7d688cb849f093e860557ac97e6cddac2556d69a4386561b22cdf97bf13657		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7677.txt	file	https://www.rfc-editor.org/rfc/rfc7677.txt		81490224a838bf5da7bfcce53e4ec1b1d2f69717c43c600111dec6652a386c71		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc7800.txt	file	https://www.rfc-editor.org/rfc/rfc7800.txt		051514a781038027c2ac07c26ebe8533556012b2353cdaec8f3baeac53a7c919		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8017.txt	file	https://www.rfc-editor.org/rfc/rfc8017.txt		1e72dc473d18df3fc5598cdc12795a9f18f36f1aef15abc23a55eb0d58151d11		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8037.txt	file	https://www.rfc-editor.org/rfc/rfc8037.txt		f14347f9d8eead78ef6e7a1ea3d795d35d664033095a76a80fcd567904aaedaa		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8176.txt	file	https://www.rfc-editor.org/rfc/rfc8176.txt		1ce9b7b6b8af9871b6e03c03c59537c17e10f678546cd2742efbee8a5aa116da		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8252.txt	file	https://www.rfc-editor.org/rfc/rfc8252.txt		4233c0650ec7e7918c20e0fde2dc565f85e2aa2d4c18123e3cd834295c2f68d0		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8414.txt	file	https://www.rfc-editor.org/rfc/rfc8414.txt		16c816e4e0fdbffb7e910ff3017867bf39debe9cb7f52f5cbc508a052ed660e8		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8446.txt	file	https://www.rfc-editor.org/rfc/rfc8446.txt		47871bc8820a2c3b6ea89f061055577058862cf543686b82d10131239702b3bd		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8448.txt	file	https://www.rfc-editor.org/rfc/rfc8448.txt		6564d1376d1ec744fc7a9993da15ebc1b9be361908b166091f47ef605c537fba		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8628.txt	file	https://www.rfc-editor.org/rfc/rfc8628.txt		ebd3c37415aa665b55b412fccd9571943e8dbd3f2bf0b18fee4924264252decd		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8693.txt	file	https://www.rfc-editor.org/rfc/rfc8693.txt		358d658014738bf4dc56c8aae2094ce716ede23b6d5a80488a7dc8e8d72da609		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8705.txt	file	https://www.rfc-editor.org/rfc/rfc8705.txt		6e45a1ee94c6a6a177a4cb077fe67d74bd70c1218c9362f2db2f153239612414		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc8725.txt	file	https://www.rfc-editor.org/rfc/rfc8725.txt		737b7013a2495dcfd5481cf4c57c87e2455d537c4cec1140c9096a71fcef0812		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9068.txt	file	https://www.rfc-editor.org/rfc/rfc9068.txt		68d3ff3910c0f2340fd7b93b430e00053da845b6eebe095ebef0c8bfda5e14c5		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9101.txt	file	https://www.rfc-editor.org/rfc/rfc9101.txt		a1400b5b8d27cfabb127325458a88415f83bb04b2ff9e6facbe50b8ef4ea2b60		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9110.txt	file	https://www.rfc-editor.org/rfc/rfc9110.txt		21c1cdce6ab0e5509b04d84a28000836c7a087cf786efe6f04877ebfff47232a		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9111.txt	file	https://www.rfc-editor.org/rfc/rfc9111.txt		aeb52adb3279d5f23dae34f68af11bd5cef0a0aff7ffcd014c9ca93c5302cf3e		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9112.txt	file	https://www.rfc-editor.org/rfc/rfc9112.txt		e4f426bac6206b67fdf9e0da826154f70588db2133a0a86b15cde4ff725d8937		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9180.txt	file	https://www.rfc-editor.org/rfc/rfc9180.txt		f45a8b7c30231b26d668b1e8168074e5ab514b174d656b67e859895117f1f8f6		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9200.txt	file	https://www.rfc-editor.org/rfc/rfc9200.txt		92f37f6eaa160c970a4899836b9562eb7050ad3c7bd1187f28c6404e18dca1ba		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9278.txt	file	https://www.rfc-editor.org/rfc/rfc9278.txt		c84d83e485a078599b4a022602ce336910b6d7c166fb9072a72ad8d923414816		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9421.txt	file	https://www.rfc-editor.org/rfc/rfc9421.txt		612655786bf4293bfc486e4177571467fbb3de6e6f0eea90cb74c346a34fdf3c		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9449.txt	file	https://www.rfc-editor.org/rfc/rfc9449.txt		3842c58e1f6043389416023b9bb8d765048266024982fbbd90640e05943f4e13		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9470.txt	file	https://www.rfc-editor.org/rfc/rfc9470.txt		02d742f49cc0a03fb09197563c436b6f38928a71b0d8e41cde9cfe0362363e56		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9500.txt	file	https://www.rfc-editor.org/rfc/rfc9500.txt		838d15624be54dc05b5b803d1b7e117f3e15ad34337e83c1b24e9ce7bf0f2a1a		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9562.txt	file	https://www.rfc-editor.org/rfc/rfc9562.txt		041870106b8701d9fa9261dcbc1679a6b7ab18cb179b37b69d7232431eac8042		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9578.txt	file	https://www.rfc-editor.org/rfc/rfc9578.txt		bc3cb0d503f6998813ea6c9815031865beb255e00cb194d725a5c4012c3f2c83		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9591.txt	file	https://www.rfc-editor.org/rfc/rfc9591.txt		fd8366795c833348d552e6a4141e8bf413310940fd50af484283207716d1a6a7		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9635.txt	file	https://www.rfc-editor.org/rfc/rfc9635.txt		81ca9f4d23204c63c27e6364fa31250b5f7e0f3b9a03a1bba5ae29182b07fab7		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9700.txt	file	https://www.rfc-editor.org/rfc/rfc9700.txt		9919d061d40a97886ca866b51c69389b6c81c65cd4b979056c14fdbebfcf622a		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+rfc/rfc9701.txt	file	https://www.rfc-editor.org/rfc/rfc9701.txt		5969f0d8c514469285271949fa7b35eec52e1458ebc50778659610ede37cf923		2026-10-10	RFCs are immutable; IETF Trust Legal Provisions
+stackexchange/devops.stackexchange.com.jsonl.gz	file	https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_titlebody_best_voted_answer_jsonl/resolve/main/devops.stackexchange.com.jsonl.gz		89b53c1efc20f75ea167d56d1089dffe6645469f803d865afff287e39a6fedc4	cc-by-nc-sa-4.0	2026-10-09	branch main, no revision pinned; Stack Exchange content is CC-BY-SA
+stackexchange/security.stackexchange.com.jsonl.gz	file	https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_titlebody_best_voted_answer_jsonl/resolve/main/security.stackexchange.com.jsonl.gz		40144f6a1275b6d87795bc01f4e620e872adb32620923a67bc4f71b609faa6d2	cc-by-nc-sa-4.0	2026-10-09	branch main, no revision pinned; Stack Exchange content is CC-BY-SA
+stackexchange/serverfault.com.jsonl.gz	file	https://huggingface.co/datasets/flax-sentence-embeddings/stackexchange_titlebody_best_voted_answer_jsonl/resolve/main/serverfault.com.jsonl.gz		ce2ef625ff32e4d0db467df1a3786df97badfaaa57a893f7f4b6d63699e6093a	cc-by-nc-sa-4.0	2026-10-09	branch main, no revision pinned; Stack Exchange content is CC-BY-SA
+swe-rebench-v2-prs/train-00001.parquet	file	https://huggingface.co/datasets/nebius/SWE-rebench-V2-PRs/resolve/main/data/train-00001-of-00003.parquet		2d754c0b1edb075e791d1299eb2e7a88e10c9c655282e26c24c56410dc6dfd49	cc-by-4.0	2026-10-10	CC-BY-4.0
+termgrade/README.md	file	https://huggingface.co/datasets/ai-and/termgrade-trajectories/resolve/main/README.md		8d8e18b7d2e2156c8910eaffadb2d578907e27d5758c79d2c7864d7efac4a809	apache-2.0	2026-10-10	
+termgrade/messages-deepseek.parquet	file	https://huggingface.co/datasets/ai-and/termgrade-trajectories/resolve/main/data/messages/deepseek.parquet		24a9817177f79f1847f897ef7ddc6516db4d0c03bd9048bdb0919e20c3c39d44	apache-2.0	2026-10-10	Apache-2.0
+termgrade/messages-glm.parquet	file	https://huggingface.co/datasets/ai-and/termgrade-trajectories/resolve/main/data/messages/glm.parquet		188f045e10b2ff41bbfcd7b7b941d7be1df8288ac57c19cd4b5f49b2b0a4df6e	apache-2.0	2026-10-10	Apache-2.0
+termgrade/messages-kimi.parquet	file	https://huggingface.co/datasets/ai-and/termgrade-trajectories/resolve/main/data/messages/kimi.parquet		8979ae1bddf2d7580a9f4f879100cf719c32211db0c3b48e85106daef8004cd5	apache-2.0	2026-10-10	Apache-2.0
+termgrade/messages-qwen.parquet	file	https://huggingface.co/datasets/ai-and/termgrade-trajectories/resolve/main/data/messages/qwen.parquet		2ef54aa6eeb2ea876cfa5aa6582b931a3d2482fadeb77da8de3ff4c61e8a620f	apache-2.0	2026-10-10	Apache-2.0
+text/gitlog_hist_expressjs_express.txt	derived					2026-10-09	from repos/hist_expressjs_express; first line of the file is the HEAD sha
+text/gitlog_hist_pallets_flask.txt	derived					2026-10-09	from repos/hist_pallets_flask; first line of the file is the HEAD sha
+text/gitlog_hist_psf_requests.txt	derived					2026-10-09	from repos/hist_psf_requests; first line of the file is the HEAD sha
+text/trajectories.jsonl	derived					2026-10-09	derived from the five hf/*.parquet shards; the script was not kept
+titus-rules/src	git	https://github.com/praetorian-inc/titus	efdea19b8420c36a50a5f08194f9c3b02e250025		Apache-2.0		
+toucan/kimi-00007.parquet	file	https://huggingface.co/datasets/Agent-Ark/Toucan-1.5M/resolve/main/Kimi-K2/train-00007-of-00040.parquet		c61cd2ece277316b2bf76e353432698d489b5181ce6ca65f21000023d0f12cb0	apache-2.0	2026-10-10	Apache-2.0; one shard of 40

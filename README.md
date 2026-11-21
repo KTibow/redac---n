@@ -317,12 +317,13 @@ it as a `known` value: known values are hidden whatever they look like, as long 
   `node eval/creddata-chart.ts` draws the CredData charts (its header gives the steps before it).
 - **The demo** (`site/`): `pnpm site` builds it into `_site/`, and every push to `main` deploys it to GitHub Pages
   (`.github/workflows/pages.yml`).
-- **Corpora:** the third-party corpora live outside the repository (`$REDACT_CORPORA`, by default
-  `~/Downloads/redact-corpora`); on a fresh clone, the scripts score `eval/corpora` and skip the rest. The corpora in
-  the repository are gzipped, because the fake credentials in them would otherwise look like real ones to secret
-  scanners, GitHub's push protection among them.
-- **The model** is trained on public text and synthetic keys, never on the evaluation sets. That corpus isn't
-  published; the training scripts are, and train a model of the same design on yours
+- **Corpora:** the third-party corpora live outside the repository, in a store that `pnpm data pull` fetches into a
+  cache on disk (`$REDACT_CORPORA`, by default `~/.cache/redac---n`); until then, the scripts score `eval/corpora` and
+  skip the rest. `eval/DATA.md` covers the store, where every set came from, and installing the scanners the
+  benchmarks compare against. The corpora in the repository are gzipped, because the fake credentials in
+  them would otherwise look like real ones to secret scanners, GitHub's push protection among them.
+- **The model** is trained on public text and synthetic keys, never on the evaluation sets. `pnpm data pull` fetches
+  that text, and the training scripts train the model on it, or a model of the same design on yours
   ([How it guesses](docs/guessing.md#rebuilding-the-model)).
 
 </details>

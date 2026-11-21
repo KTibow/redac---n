@@ -6,12 +6,11 @@
  *   node scripts/check-formats.ts eval/out/betterleaks-rules.json [dev.jsonl] [every-nth]
  */
 import { createReadStream, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { CORPORA } from "../eval/data-root.ts";
+import { dataFile } from "../eval/data-root.ts";
 
 const rulesFile = process.argv[2];
-const corpus = process.argv[3] ?? join(CORPORA, "built/dev.jsonl");
+const corpus = process.argv[3] ?? dataFile("built/dev.jsonl");
 const every = Number(process.argv[4] ?? 5);
 const { rules } = JSON.parse(readFileSync(rulesFile, "utf8")) as {
 	rules: { id: string; regex: string; flags: string; keywords: string[] }[];

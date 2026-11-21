@@ -14,7 +14,7 @@ Scoring (as score.ts): a secret is caught if neither the full value nor any cont
 verbatim. Two file-naming variants: every case as .txt, and an extension chosen from the case context
 (.env for dotenv/env-dump, .py for python-code, ...).
 
-Real text: the first N MB (default 30) of `traj:` records from ~/Downloads/redact-corpora/built/dev.jsonl,
+Real text: the first N MB (default 30) of `traj:` records from ~/.cache/redac---n/built/dev.jsonl,
 one file per record, reporting findings per MB.
 
   python3 -I eval/baselines.py --bin DIR --venv DIR [--scratch DIR] [--corpora dev,dev_c] [--real FILE] [--real-src traj:]
@@ -42,8 +42,9 @@ import tempfile
 import time
 from collections import defaultdict
 
-# Corpora outside the repository: $REDACT_CORPORA, or ~/Downloads/redact-corpora (eval/data-root.ts).
-CORPORA_ROOT = os.environ.get("REDACT_CORPORA", os.path.expanduser("~/Downloads/redact-corpora"))
+# Corpora outside the repository: $REDACT_CORPORA, or ~/.cache/redac---n (eval/data-root.ts).
+CORPORA_ROOT = os.environ.get("REDACT_CORPORA") or os.path.join(
+    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "redac---n")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REAL = os.path.join(CORPORA_ROOT, "built/dev.jsonl")

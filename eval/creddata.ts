@@ -16,11 +16,11 @@
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { extname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { Redactor, type Guessing } from "../src/index.ts";
 import { leaked } from "./score.ts";
 import { redactionKind } from "./shapes.ts";
-import { CORPORA } from "./data-root.ts";
+import { dataFile } from "./data-root.ts";
 import { Args } from "./args.ts";
 
 const args = new Args();
@@ -28,7 +28,9 @@ const guessing = args.opt("guessing", "confident") as Guessing;
 const split = args.opt("split", "dev");
 const showSamples = args.num("samples", 0);
 const casesDir = args.opt("cases");
-const ROOT = join(CORPORA, "CredData");
+// (Its two halves are stored apart: the labels, and the files the labels point into.)
+const ROOT = dirname(dataFile("CredData/meta"));
+dataFile("CredData/data");
 const NOT_SECRET =
 	/AWS S3 Bucket|App ID|Firebase Domain|^Info$|Client ID$|AWS Client ID|^UUID|^Nonce|^Auth:Nonce|^API:UUID/;
 

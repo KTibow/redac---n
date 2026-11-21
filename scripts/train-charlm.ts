@@ -6,9 +6,8 @@
  *   node scripts/train-charlm.ts > src/charlm-data.ts
  */
 import { createReadStream } from "node:fs";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { CORPORA } from "../eval/data-root.ts";
+import { dataFile } from "../eval/data-root.ts";
 
 const A = 37; // boundary, a-z, 0-9
 const idx = (c: string) => {
@@ -20,7 +19,7 @@ const idx = (c: string) => {
 
 const partChunks = new Map<string, number>();
 const partCount = new Map<string, number>();
-const rl = createInterface({ input: createReadStream(join(CORPORA, "built/dev.jsonl")) });
+const rl = createInterface({ input: createReadStream(dataFile("built/dev.jsonl")) });
 let rows = 0;
 for await (const line of rl) {
 	if (++rows % 4 !== 0) continue; // a quarter is plenty

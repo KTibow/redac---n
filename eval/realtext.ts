@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { Redactor, type Guessing } from "../src/index.ts";
 import { DAMAGE, shapeOf } from "./shapes.ts";
-import { CORPORA } from "./data-root.ts";
+import { dataFile } from "./data-root.ts";
 import { Args } from "./args.ts";
 
 const args = new Args();
@@ -26,8 +26,8 @@ const file = args.opt("file", "");
 const corpus = file
 	? file
 	: /^final\d*$/.test(split)
-		? join(CORPORA, `${split}/${split}.jsonl`)
-		: join(CORPORA, `built/${split}.jsonl`);
+		? dataFile(`${split}/${split}.jsonl`)
+		: dataFile(`built/${split}.jsonl`);
 
 const byRule = new Map<string, number>();
 const byShape = new Map<string, number>();

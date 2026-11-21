@@ -1,0 +1,15 @@
+# The Python environment of the benchmarks and the model's training (scripts/tools.ts installs it): the versions the
+# published numbers were measured with, on Python 3.14.
+# The scanners eval/baselines.py compares against.
+detect-secrets==1.5.0
+credsweeper==1.19.2
+# The guessing model's trainer (scripts/train-unnamed.py), and what its arithmetic rests on.
+lightgbm==4.7.0
+scikit-learn==1.9.1
+numpy==2.5.3
+scipy==1.18.1
+# The `hf` command that scripts/data.ts push uploads with.
+huggingface_hub==2.4.0
+# Parquet and YAML inputs of the build scripts (scripts/build-final.py, build-datasets.py).
+pyarrow==26.0.0
+pyyaml==6.0.3

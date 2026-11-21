@@ -6,8 +6,9 @@ every 6th trajectory record and every 2nd repository record of final.jsonl (see 
 """
 import json, os
 
-# Corpora outside the repository: $REDACT_CORPORA, or ~/Downloads/redact-corpora (eval/data-root.ts).
-CORPORA_ROOT = os.environ.get("REDACT_CORPORA", os.path.expanduser("~/Downloads/redact-corpora"))
+# Corpora outside the repository: $REDACT_CORPORA, or ~/.cache/redac---n (eval/data-root.ts).
+CORPORA_ROOT = os.environ.get("REDACT_CORPORA") or os.path.join(
+    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "redac---n")
 
 F = os.path.join(CORPORA_ROOT, "final")
 traj = repo = size = 0

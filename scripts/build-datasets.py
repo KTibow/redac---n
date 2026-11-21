@@ -1,6 +1,6 @@
 """
 Converts fresh public downloads into eval cases for one blind run each (the sets eval/HELDOUT.md lists).
-Inputs live in ~/Downloads/redact-corpora/<name>/, outputs in ~/Downloads/redact-corpora/built/<name>/
+Inputs live in ~/.cache/redac---n/<name>/, outputs in ~/.cache/redac---n/built/<name>/
 (outside the repository: their licences differ from ours, and some allow evaluation only).
 
 Labelled sets become {id, kind, context, text, secrets, keep} for eval/run.ts; unlabelled text becomes

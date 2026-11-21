@@ -71,9 +71,9 @@ in them would otherwise read as real ones to secret scanners.
 | holdout8.jsonl | dev_j.jsonl |
 | holdout9.jsonl | dev_k.jsonl |
 | final2–final6 | real-text sets used to find false positives |
-| levainbot/fp-corpus | ~/Downloads/redact-corpora/levain (outside the repository); its misses drove the Resend, Airtable and email-user URL fixes and the protobuf veto |
-| ICSME 2026 "no leak" snippets | ~/Downloads/redact-corpora/icsme (outside the repository); its hits drove the code-shape rules in src/policy.ts and the guard in test/benign.test.ts |
-| SlotGuard, ProwlBench, GitLab rule examples | converted by scripts/build-external.py into ~/Downloads/redact-corpora/built/external/ (outside the repository); their failures were inspected and drove fixes. ProwlBench's licence (PolyForm Noncommercial) was used for that analysis only; none of its data is redistributed |
+| levainbot/fp-corpus | ~/.cache/redac---n/levain (outside the repository); its misses drove the Resend, Airtable and email-user URL fixes and the protobuf veto |
+| ICSME 2026 "no leak" snippets | ~/.cache/redac---n/icsme (outside the repository); its hits drove the code-shape rules in src/policy.ts and the guard in test/benign.test.ts |
+| SlotGuard, ProwlBench, GitLab rule examples | converted by scripts/build-external.py into ~/.cache/redac---n/built/external/ (outside the repository); their failures were inspected and drove fixes. ProwlBench's licence is PolyForm Noncommercial: it is used here for evaluation only, and its converted copy in the data store stays under that licence |
 
 ## Scores after fixes (not blind)
 
@@ -118,4 +118,4 @@ holdout8) was stopped by a safety classifier before writing anything, and wasn't
 written on data and analytics tooling instead.
 
 From cycle 7 on, a data agent finds, converts and scores new sets in parallel; its blind scores are copied above
-unchanged. (Its notes, which quote the sets' text, stay out of the repository with the sets.) Converted sets live under ~/Downloads/redact-corpora/built/, never in the repository.
+unchanged. (Its notes, which quote the sets' text, stay out of the repository with the sets.) Converted sets live under ~/.cache/redac---n/built/, never in the repository.

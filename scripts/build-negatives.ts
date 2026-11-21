@@ -1,7 +1,7 @@
 /**
  * Builds the real-text corpora used to measure false redactions: chunks of public repositories and
  * public coding-agent trajectories, split by source into dev and test so the test split never informs
- * tuning. Everything lives under ~/Downloads/redact-corpora (third-party text, never committed).
+ * tuning. Everything lives under ~/.cache/redac---n (third-party text, never committed).
  *
  *   node scripts/build-negatives.ts
  */

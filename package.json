@@ -44,6 +44,7 @@
 		"test": "node --test test/*.test.ts",
 		"eval": "node eval/all.ts",
 		"check": "node eval/check.ts",
+		"data": "node scripts/data.ts",
 		"site": "node scripts/build-site.ts",
 		"format": "prettier --write .",
 		"lint": "prettier --check . && knip"
