@@ -325,11 +325,11 @@
 			"note": "levainbot/fp-corpus, false-positive and true-positive cases, as downloaded (eval/HELDOUT.md)"
 		},
 		"llmr": {
-			"sha256": "27cbf7a663c0937e3408c0d0b659b6d114fe03ed1ca925c324964b3c92376fd0",
+			"sha256": "360b61bff9ff7d7c2edc8d5f48516d79bd24600caa75b3b25cd9ee7ee011a625",
 			"bytes": 122880,
-			"packed": 21862,
+			"packed": 22694,
 			"dir": true,
-			"note": "LLM-Redactor's workload wl2, as downloaded (eval/HELDOUT.md)"
+			"note": "LLM-Redactor's workload wl2, as downloaded, with its MIT LICENSE (eval/HELDOUT.md)"
 		}
 	}
 }

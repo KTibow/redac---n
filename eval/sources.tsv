@@ -336,7 +336,7 @@ priorart/gitlab-runner	git	https://gitlab.com/gitlab-org/gitlab-runner	a278fd050
 priorart/gitlab-sd-rules	git	https://gitlab.com/gitlab-org/security-products/secret-detection/secret-detection-rules	cae5670b0d83aaea0ff37c085119e82ff394f283		MIT		
 priorart/litellm	git	https://github.com/BerriAI/litellm	883e3210ee4075a556d0b26a03866a2c704809e8		NOASSERTION		
 priorart/llm-guard	git	https://github.com/protectai/llm-guard	168c1034ffdb33837e7ae6fd6a16b80567c1be03		MIT		
-priorart/llm-redactor	git	https://github.com/jayluxferro/llm-redactor	4aa056321d27c73b9ac8ad3824316d65136a55c6		none		
+priorart/llm-redactor	git	https://github.com/jayluxferro/llm-redactor	4aa056321d27c73b9ac8ad3824316d65136a55c6		MIT		its LICENSE file came later (fd0da2fd2fbcab182cafd6642973763b5afcee3f, after jayluxferro/llm-redactor#18); pyproject.toml and the README already said MIT
 priorart/microsoft_security-utilities	git	https://github.com/microsoft/security-utilities	4ce293f8a42ccfe2e2a1b9dc13846284e1121b62		MIT		
 priorart/mintmcp_agent-security	git	https://github.com/mintmcp/agent-security	3d78e6f88a305d23c4621cbe7419cd4dc075750b		Apache-2.0		
 priorart/moneycaringcoder_herdr-redact	git	https://github.com/moneycaringcoder/herdr-redact	8ecaac2c57f72eca30f84e6de870ab0ee29da938		MIT		
