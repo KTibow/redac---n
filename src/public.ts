@@ -11,9 +11,9 @@ import { hmacSha256 } from "./hmac.ts";
 import { type Argument, callArguments } from "./calls.ts";
 import { lastText } from "./lines.ts";
 
-/** Keys that are public by design: publishable, site and project keys meant for browsers. */
+/** Keys that are public by design: publishable, site and project keys meant for browsers (Wompi `pub_prod_`, Toss Payments client keys `test_ck_`). */
 export const PUBLIC_FORMAT =
-	/^(?:pk_(?:live|test)_|NRJS-[0-9a-f]{19}$|rzp_(?:live|test)_[A-Za-z0-9]{14}$|pk\.(?:eyJ|[A-Za-z0-9]{20})|pub[0-9a-f]{32}$|phc_|sb_publishable_|sq0idp-|sqb_[0-9a-f]{40}$)/;
+	/^(?:pk_(?:live|test)_|NRJS-[0-9a-f]{19}$|rzp_(?:live|test)_[A-Za-z0-9]{14}$|pk\.(?:eyJ|[A-Za-z0-9]{20})|pub[0-9a-f]{32}$|phc_|sb_publishable_|sq0idp-|sqb_[0-9a-f]{40}$|pub_(?:prod|test)_|(?:test|live)_ck_)/;
 
 /** Where the bracket that encloses the end of `before` opens, skipping balanced pairs, or -1. */
 function openingBracket(before: string): number {

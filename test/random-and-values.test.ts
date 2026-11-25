@@ -507,3 +507,56 @@ test("a base64 digest is kept where its line names the digest: HTTP's digest fie
 	hidden(`Secret (base64): ${secret}`, secret);
 	hidden("api_key (prod): Xk9mQ2vLp7RtN3wY8cBdZq4T", "Xk9mQ2vLp7RtN3wY8cBdZq4T");
 });
+
+test("a key glued to a name of words is judged by its body, and a name's own words, a public key's or an ID's are kept", () => {
+	// (Whole, `ACME_API_KEY_<body>` read as a constant's name, and the name's words watered a body's randomness down.)
+	const names = ["ACME_API_KEY_", "ACME_ADMIN_KEY_", "MYVENDOR_", "ACME-KEY-", "acme_live_"];
+	const contexts = [
+		(k: string) => k,
+		(k: string) => `"${k}"`,
+		(k: string) => `here is my key ${k} try it`,
+		(k: string) => `const k = "${k}";`,
+		(k: string) => `curl -d ${k} https://x.io`,
+	];
+	for (const body of ["Qm7xT2vLp9RkZ4nW8sYb3HcJ6dFg1aEu", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA"])
+		for (const name of names) for (const at of contexts) hidden(at(name + body), body);
+	for (const body of ["uXK3m9QpZ7rT2vW8nL4yB6cH1dF5gJ0s_Rk-Xp", "T9wq2LmZ8vR4kX7pN3yB6cH1dF5gJ0sQe2Rx-Wm_K7"])
+		for (const name of names) for (const at of contexts.filter((_, i) => i !== 1)) hidden(at(name + body), body);
+	// Hex under a word that names a credential, the word kept: only the body is judged.
+	hidden("ACME_API_KEY_7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e", "7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e");
+	hidden("acme_secret_7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e", "7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e");
+	kept("x = acme_secret_7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e", "acme_secret_");
+	// A name that reads as an ID's or a URL's, where a key is passed or handed over, is no ID's.
+	hidden('const client = new Acme("acme_org_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA")', "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	hidden("paste this into the app: acme_user_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	hidden("acme_url_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	hidden("vault_secret_id_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	hidden("SESSION_ID_7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e", "7f3a9c2e1b4d8f6a0c5e3b9d7a1f4c2e");
+	// A type's or a function's name, its tail words too.
+	for (const id of [
+		"PFN_vkGetPhysicalDeviceProperties2KHR",
+		"TLSEXT_SIGALG_ecdsa_brainpoolP256r1_sha256_name",
+		"EVP_PKEY_CTX_set1_rsa_keygen_pubexp",
+		"DER_AID_SZ_mgf1SHA512_256Identifier",
+	])
+		kept(`call ${id} here`, id);
+	// A public key by its prefix or its name; an ID by its own shape or its name; a word before hex.
+	kept(
+		"'public_key' => env('WOMPI_PUBLIC_KEY', 'pub_prod_PnJpJz2orXOzFhN4PdW8n4aqXrHaIUwW'),",
+		"PnJpJz2orXOzFhN4PdW8n4aqXrHaIUwW",
+	);
+	kept("클라이언트 키는 test_ck_17Pw6hppBrLin8WNkzt8 이고", "17Pw6hppBrLin8WNkzt8");
+	kept("ACME_SITE_KEY_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	kept("ACME_CLIENT_ID_Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA", "Kf8pQ2zR7mX4vN9tL3wB6yH1cJ5sD0gA");
+	kept('{"id": "evt_8GEPzaRERYfi0F02V39c7Y9g", "type": "charge.succeeded"}', "evt_8GEPzaRERYfi0F02V39c7Y9g");
+	kept("ORDER_ITEM_01ARZ3NDEKTSV4RRFFQ69G5FAV", "ORDER_ITEM_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+	kept("cache_entry_cjld2cjxh0000qzrmn831i7rn", "cache_entry_cjld2cjxh0000qzrmn831i7rn");
+	kept("deploy_build_SGVsbG8gV29ybGQgdGhpcyBpcyB0ZXh0", "deploy_build_SGVsbG8gV29ybGQgdGhpcyBpcyB0ZXh0");
+	kept("cache: gradle-7e2320944e9ecd11dd38f366bad4c32e", "7e2320944e9ecd11dd38f366bad4c32e");
+	// A branch an agent named, a chain's hash, a name's words after an ID, random letters as the "name".
+	kept("git push -u origin claude/explain-codebase-011CUN7j4yCwqzH2Xq3Ki6k9", "011CUN7j4yCwqzH2Xq3Ki6k9");
+	kept("git checkout -b claude/review-code-quality-011CUqP2nAhB7vXkWm9TzR4e", "011CUqP2nAhB7vXkWm9TzR4e");
+	kept("-A KUBE-SVC-XPGD46QRK7WJZT7O -j KUBE-SEP-SXIVWICOYRO3J4NJ", "KUBE-SEP-SXIVWICOYRO3J4NJ");
+	kept('"vault-kv_9a8f68ad-my-secret-1"', "vault-kv_9a8f68ad-my-secret-1");
+	kept("/TT_TuneCUETP8M1_13TeV-powheg-pythia8/RunIIFall15MiniAODv2", "TT_TuneCUETP8M1_13TeV-powheg-pythia8");
+});

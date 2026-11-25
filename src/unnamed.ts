@@ -15,7 +15,7 @@
 import { base64Binary, base64Bytes } from "./base64.ts";
 import { naturalness } from "./charlm.ts";
 import { contextOf, type Context, Doc } from "./context.ts";
-import { isCredentialName, isVendorClient, mentionsCredential, namesWhichCredential } from "./names.ts";
+import { isCredentialName, isVendorClient, mentionsCredential, nameClass, namesWhichCredential } from "./names.ts";
 import { isPlaceholder, isTruncated } from "./public.ts";
 import { alphabetOf, entropyZ, shape, type Alphabet } from "./random.ts";
 import type { Finding, Guessing } from "./types.ts";
@@ -430,7 +430,9 @@ function urlPathId(f: Features): string | undefined {
  */
 function hexVeto(f: Features): string | undefined {
 	const t = f.token;
-	const cred = f.ctx.nameClass === "credential";
+	// (Or the name glued before it, which namedBody cut off: `ACME_API_KEY_<hex>`.)
+	const cred =
+		f.ctx.nameClass === "credential" || (/[_-]$/.test(f.lead) && isCredentialName(f.lead.replace(/[_-]+$/, "")));
 	const wholeValue = f.secretFile && /(?:[=:][ \t]*["']?|^[ \t]*)$/.test(f.ctx.left);
 	// Hex in dashed groups: traceparent `00-<32>-<16>-01`, X-Ray `1-<8>-<24>`, UUID variants. IDs, not keys.
 	if (/^[0-9a-f]{1,8}(?:-[0-9a-f]{2,32}){2,}$/i.test(t) && !cred) return "hex-groups";
@@ -439,8 +441,10 @@ function hexVeto(f: Features): string | undefined {
 		(mentionsCredential(f.ctx.name) || f.ctx.handover || (f.ctx.syntax === "call" && isVendorClient(f.ctx.name))) &&
 		!f.ctx.hashPhrase;
 	// A word prefix before hex (`build-9f3a…`, `etag-…`, `jb-env-…`): judged as the hex it carries.
+	// (Not under a word that names a credential: `ACME_API_KEY_<hex>`, `acme_secret_<hex>`.)
 	const hexTail = /^(?:[a-z][a-z0-9]*[-_])+([0-9a-f]{16,})$/i.exec(t)?.[1];
-	if (hexTail && !cred && !wholeValue && !((f.ctx.lineCredential || keyContext) && hexTail.length >= 32))
+	const keyWord = hexTail !== undefined && hexTail.length >= 32 && isCredentialName(t.slice(0, -hexTail.length - 1));
+	if (hexTail && !cred && !wholeValue && !keyWord && !((f.ctx.lineCredential || keyContext) && hexTail.length >= 32))
 		return "hex-suffix";
 	if (!alphaIsHex(f.alphabet) || cred || wholeValue) return undefined;
 	return t.length < 32 || !keyContext ? "hex" : undefined;
@@ -672,7 +676,10 @@ const VETOES: Veto[] = [
 	["callee", (f, t) => /^(?:\.[A-Za-z_$][\w$]*)*\(/.test(f.ctx.right) && /^[A-Za-z_$][\w$]*$/.test(t)],
 	// A type name: `H225_ArrayOf_CryptoH323Token`, its parts words, acronyms and numbers (each lower-case run follows a
 	// capital: no digit before one).
-	["identifier-shaped", (_, t) => /^[A-Z][A-Za-z0-9]*(?:_[A-Z][A-Za-z0-9]*){2,}$/.test(t) && !/\d[a-z]/.test(t)],
+	[
+		"identifier-shaped",
+		(_, t) => /^[A-Z][A-Za-z0-9]*(?:_[A-Z][A-Za-z0-9]*){2,}$/.test(t) && !/\d[a-z]/.test(t) && !hasRandomPart(t),
+	],
 	// Codecov's report anchors (`#diff-<base64 of a file path>`), GitHub's diff anchors (`/files#diff-<sha256>`, to a
 	// line `…R55`), Alpine's APK checksums (`Z:Q1<base64 SHA-1>=`, 30 characters; in a diff, `+Z:…`).
 	[
@@ -740,7 +747,7 @@ const VETOES: Veto[] = [
 		(_, t, cred) =>
 			!cred &&
 			(/^[A-Z0-9]{1,10}(?:[_-][A-Z0-9]{1,10}){2,}$/.test(t) ||
-				/^[A-Z]{2,}(?:_[A-Za-z0-9]+){2,}$/.test(t) ||
+				(/^[A-Z]{2,}(?:_[A-Za-z0-9]+){2,}$/.test(t) && !hasRandomPart(t)) ||
 				isIdentifierShaped(t)),
 	],
 	["pod-name", (_, t, cred) => !cred && isPodName(t)],
@@ -1087,6 +1094,80 @@ function isLoneQuotedKey(f: Features): boolean {
 	);
 }
 
+/**
+ * Whether a token joined by `_` or `-` has a part no name has: long, of mixed case and digits, and not words
+ * (`ACME_API_KEY_Qm7xT2vLp9RkZ4nW8sYb3Hc`; not `TLSEXT_SIGALG_ecdsa_brainpoolP256r1_sha256`), or a digest's worth of hex.
+ */
+function hasRandomPart(t: string): boolean {
+	return t
+		.split(/[_-]/)
+		.some(
+			(p) =>
+				/^[0-9a-f]{32,}$/i.test(p) ||
+				(p.length >= 16 && /[a-z]/.test(p) && /[A-Z]/.test(p) && /\d/.test(p) && !readsAsWords(p)),
+		);
+}
+
+/** The shortest body judged apart from the name glued before it: a key's random part is longer. */
+const MIN_BODY = 20;
+
+/**
+ * The body a token carries after a name: `ACME_API_KEY_<body>`, `VENICE_INFERENCE_KEY_<body>`, `acme_live_<body>`. Whole,
+ * the name's words water the body's randomness down. The name is every leading part that is a word of one case (a run
+ * of separators one cut: `button--primary-`), long enough to water a body down: two words or one of six letters (the
+ * model reads a short prefix whole, Render's `dep-<id>`, `tok-<key>`). The body, all the rest, must be long and hold no
+ * word of its own (`vault-kv_9a8f68ad-my-secret-1` is a name's). Only that one cut: a shallower one would judge a name's word with the
+ * body (`ITEM_<ulid>` scores higher than the ULID, which a veto keeps). A name of mixed-case parts is a type's or a
+ * function's, `PFN_vkGetPhysical…`. (Hex is judged with the word before it, `hex-suffix`, unless that word names a
+ * credential: `ACME_API_KEY_<hex>`, whose hex hexVeto reads under that name.)
+ */
+export function namedBody(c: Candidate): Candidate | undefined {
+	const name = gluedName(c.token);
+	const at = name.length;
+	const body = c.token.slice(at);
+	if (!/[_-][A-Za-z]|[A-Za-z]{6}/.test(name) || body.length < MIN_BODY) return undefined;
+	if (/^[0-9a-f]+$/i.test(body) && !isCredentialName(c.token.slice(0, at).replace(/[_-]+$/, ""))) return undefined;
+	if (body.split(/[_-]+/).some((p) => p.length >= 3 && /^[A-Za-z]+$/.test(p) && readsAsWords(p))) return undefined;
+	return { start: c.start + at, end: c.end, token: body, lead: (c.lead ?? "") + c.token.slice(0, at) };
+}
+
+/** The name glued before a key in its token, with its separators: its leading parts that are words of one case (`ACME_API_KEY_`, `acme_live_`). */
+export function gluedName(token: string): string {
+	let at = 0;
+	for (let m; (m = /^([A-Za-z]+)[_-]+/.exec(token.slice(at))) && isNameWord(m[1]);) at += m[0].length;
+	return token.slice(0, at);
+}
+
+/**
+ * A body's features with the name glued before it as its name, where nothing else names it and the name says what the
+ * body is: `ACME_API_KEY_<hex>` is a key's place, `ACME_CLIENT_ID_<id>` an ID's. (Not a name of neutral words: the model
+ * learned names from `name=value`, and one glued on raises a body's score whatever it says, a branch's session ID in
+ * `claude/explain-codebase-<id>` among them.)
+ */
+export function withGluedName(f: Features): Features {
+	if (f.ctx.name) return f;
+	const name = f.lead.replace(/[_-]+$/, "");
+	const cls = nameClass(name.replace(/-/g, "_"));
+	if (cls === "neutral") return f;
+	return {
+		...f,
+		ctx: {
+			...f.ctx,
+			name,
+			nameClass: cls,
+			lineCredential: f.ctx.lineCredential || mentionsCredential(name),
+		},
+	};
+}
+
+/** A part of a name glued before a key: a word, in one case (`ACME`, `live`, `Venice`); random letters (`YMD`, `IYCY`) aren't. */
+function isNameWord(part: string): boolean {
+	return /^(?:[A-Z]{2,12}|[a-z]{2,12}|[A-Z][a-z]{1,11})$/.test(part) && readsAsWords(part);
+}
+
+/** A glued name's last word that says the token is an ID or a digest. */
+const ID_NAME = /(?:^|[_-])(?:id|uid|guid|uuid|ref|sha|hash|digest|commit)$/i;
+
 /** The vetoes that say a token is an ID by its shape where it stands, and the shapes they read (another veto may come first). */
 const ID_VETOES = new Set(["ulid", "cuid", "cuid2", "public-id", "object-id"]);
 const ID_SHAPED = /^[a-z][a-z0-9]{23,24}$|^[0-7][0-9A-Za-z]{25}$|^[a-z]{2,12}_/;
@@ -1118,23 +1199,43 @@ export function findUnnamed(
 			? features(new Doc(c.token), { start: 0, end: c.token.length, token: c.token }, secretFile)
 			: features(doc, c, secretFile);
 		const reason = without.has("vetoes") ? undefined : vetoed(f, { statistical: !without.has("statistical-vetoes") });
-		if (reason) {
-			if (ID_VETOES.has(reason) || (ID_SHAPED.test(c.token) && vetoes(f).some((r) => ID_VETOES.has(r))))
-				ids.add(c.token);
-			continue;
+		if (reason && (ID_VETOES.has(reason) || (ID_SHAPED.test(c.token) && vetoes(f).some((r) => ID_VETOES.has(r)))))
+			ids.add(c.token);
+		let p = reason ? 0 : score(f);
+		if (!reason && isLoneQuotedKey(f)) p = Math.max(p, THRESHOLD.confident);
+		let hit: [Candidate, Features, number] | undefined = p >= threshold ? [c, f, p] : undefined;
+		// Kept whole only for reading as a name, it may be a name glued to a key: the body judged on its own, the name its
+		// lead. (Not one kept for what it is, an object's ID, a hash, a path: `evt_<id>` is public whatever its body.)
+		const b =
+			!hit && (!reason || reason === "identifier-shaped") && text.slice(c.start, c.end) === c.token
+				? namedBody(c)
+				: undefined;
+		if (b) {
+			const plain = without.has("token-context")
+				? features(new Doc(b.token), { start: 0, end: b.token.length, token: b.token }, secretFile)
+				: features(doc, b, secretFile);
+			const bf = withGluedName(plain);
+			let bp =
+				without.has("vetoes") || !vetoed(bf, { statistical: !without.has("statistical-vetoes") }) ? score(bf) : 0;
+			// (A name and its key quoted alone, `"ACME_API_KEY_<key>"`, are the lone quoted key isLoneQuotedKey reads.)
+			if (bp && isLoneQuotedKey(plain)) bp = Math.max(bp, THRESHOLD.confident);
+			if (bp >= threshold) hit = [b, bf, bp];
 		}
-		let p = score(f);
-		if (isLoneQuotedKey(f)) p = Math.max(p, THRESHOLD.confident);
-		if (p < threshold) continue;
+		if (!hit) continue;
+		// A token glued after a name that says ID (`ORDER_ID_<id>`, `build_sha_<x>`) is that ID, but not where a key is
+		// passed (`new Acme("acme_org_<key>")`), nor under a credential's name that ends so (Vault's `secret_id`).
+		const glued = gluedName(c.token).replace(/[_-]+$/, "");
+		if (ID_NAME.test(glued) && !isCredentialName(glued) && !keyPlace(f)) continue;
+		const [hc, hf, hp] = hit;
 		const finding: Finding = {
-			start: c.start,
-			end: c.end,
+			start: hc.start,
+			end: hc.end,
 			kind: "random token",
 			rule: "unnamed",
-			confidence: p,
-			...(f.ctx.name ? { name: f.ctx.name } : {}),
+			confidence: hp,
+			...(hf.ctx.name ? { name: hf.ctx.name } : {}),
 		};
-		if (keyPlace(f) || (f.ctx.name && isCredentialName(f.ctx.name))) keyed.add(finding);
+		if (keyPlace(hf) || (hf.ctx.name && isCredentialName(hf.ctx.name))) keyed.add(finding);
 		out.push(finding);
 	}
 	return ids.size ? out.filter((f) => !ids.has(text.slice(f.start, f.end)) || keyed.has(f)) : out;

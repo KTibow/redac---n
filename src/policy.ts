@@ -42,7 +42,7 @@ import {
 import { CONTRACTION, escapedLineStart } from "./syntax.ts";
 import { isGuess, isKeyMaterial, isVouched, layerOf, readsByPlace } from "./rules.ts";
 import { Doc } from "./context.ts";
-import { publicReason } from "./unnamed.ts";
+import { gluedName, publicReason } from "./unnamed.ts";
 
 /**
  * Passwords products ship with and document, each with the line it is that product's on: the JDK's truststore
@@ -285,6 +285,11 @@ export function keepReason(text: string, f: Finding, hashes: "keep" | "hide" = "
 	// unnamed layer's own name vetoes say, for a finding whose name only this stage sees (a transcript leaf's key).
 	if (isGuess(f.rule) && ["identifier", "hash"].includes(nameClass(name.replace(/\s+/g, "_"))))
 		return "an ID by its name";
+	// A key glued after a name that says public, whether the unnamed layer judged the body apart or the token whole
+	// (`ACME_SITE_KEY_<key>`, `ACME_PUBKEY_<key>`). (An ID's name glued so is the unnamed layer's, which knows where a key
+	// is passed: `new Acme("acme_org_<key>")`.)
+	const glued = gluedName(trailingRun(leftRun, /[^A-Za-z0-9_-]/) + value).replace(/[_-]+$/, "");
+	if (isGuess(f.rule) && glued && nameClass(glued.replace(/-/g, "_")) === "public") return "public by its name";
 	// JWTs meant to be public (anon and publishable roles, published samples). Under a credential's name, only
 	// a published sample is, unless the name itself says anon or public: an anon key assigned to `SUPABASE_KEY`
 	// is treated as the key it's named; `anon key:` in `supabase status` is what it says.

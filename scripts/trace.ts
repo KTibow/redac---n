@@ -11,7 +11,7 @@ import { type Guessing, Redactor } from "../src/index.ts";
 import { findNamed } from "../src/named.ts";
 import { keepReason } from "../src/policy.ts";
 import { findStructure } from "../src/structure.ts";
-import { candidates, features, score, vetoes } from "../src/unnamed.ts";
+import { type Candidate, candidates, features, namedBody, score, vetoes, withGluedName } from "../src/unnamed.ts";
 
 const args = process.argv.slice(2);
 const option = (name: string) => {
@@ -28,11 +28,17 @@ for (const f of [...findFormats(text), ...findStructure(text), ...findNamed(text
 	);
 }
 const doc = new Doc(text);
-for (const c of candidates(text)) {
-	const f = features(doc, c, false);
+const show = (label: string, c: Candidate, body = false) => {
+	const f = body ? withGluedName(features(doc, c, false)) : features(doc, c, false);
 	const veto = vetoes(f).join(", ");
 	console.log(
-		`unnamed ${JSON.stringify(c.token).padEnd(40)} ${veto ? `veto ${veto}` : `p=${score(f).toFixed(3)}`}  name=${f.ctx.name || "-"}/${f.ctx.nameClass} syntax=${f.ctx.syntax} natural=${f.natural.toFixed(2)}`,
+		`${label} ${JSON.stringify(c.token).padEnd(40)} ${veto ? `veto ${veto}` : `p=${score(f).toFixed(3)}`}  name=${f.ctx.name || "-"}/${f.ctx.nameClass} syntax=${f.ctx.syntax} natural=${f.natural.toFixed(2)}`,
 	);
+};
+for (const c of candidates(text)) {
+	show("unnamed", c);
+	// (Judged only where the whole is kept for reading as a name, or scores low: findUnnamed.)
+	const b = namedBody(c);
+	if (b) show("  body (if the whole is kept)", b, true);
 }
 console.log("=>", new Redactor({ guessing }).redact(text, { hint }).text);
