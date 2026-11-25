@@ -152,6 +152,14 @@ test("Baseten, Moonshot and Zhipu keys are hidden whole in prose", () => {
 	kept("b10\x5fabcd1234.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef", "abcd1234");
 });
 
+test("a Venice inference key is hidden whole, bare or named, and a variable of its prefix is kept", () => {
+	const key = `VENICE\x5fINFERENCE_KEY_${b62(20)}-${b62(10)}_${b62(10)}`;
+	hidden(key, key);
+	hidden(`VENICE_API_KEY=${key}`, key);
+	hidden(`here is my key ${key} try it`, key);
+	kept("VENICE\x5fINFERENCE_KEY_FOR_PRODUCTION_DEPLOYMENTS_ONLY", "FOR_PRODUCTION");
+});
+
 test("an Elasticsearch encoded API key is hidden", () => {
 	hidden(
 		'{"id":"VuaCfGcBCdbkQm-e5aOx","name":"filebeat-edge","api_key":"9895ofo_JwQ36cFgBMoWCM","encoded":"VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6OTg5NW9mb19Kd1EzNmNGZ0JNb1dDTQ=="}',

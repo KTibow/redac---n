@@ -186,6 +186,14 @@ export const CORE_FORMATS: [name: string, rule: RegExp, keywords: string[]][] = 
 	// Baseten's keys since October 2026: `b10_`, the key's visible ID, a dot and the secret. (Older keys have no prefix; the
 	// random layer hides their secret half.)
 	["Baseten API key", /\b(b10_[A-Za-z0-9]{8}\.[A-Za-z0-9]{32})\b/, ["b10_"]],
+	// Venice's inference keys: `VENICE_INFERENCE_KEY_` and 42 base64url characters. Bare, the key reads as an all-caps
+	// variable name, so the secret must hold a lowercase letter (random base64url lacks one about once in 3e9) to tell it
+	// from a name like `VENICE_INFERENCE_KEY_FOR_PRODUCTION_DEPLOYMENTS`.
+	[
+		"Venice inference key",
+		/(?<![A-Za-z0-9_-])(VENICE_INFERENCE_KEY_(?=[A-Za-z0-9_-]{0,63}[a-z])[A-Za-z0-9_-]{32,64})(?![A-Za-z0-9_-])/,
+		["venice_inference_key_"],
+	],
 	["Tavily API key", /\b(tvly-(?:dev-|prod-)?[A-Za-z0-9]{24,48})\b/, ["tvly-"]],
 	["Fireworks API key", /\b(fw_[A-Za-z0-9]{24,48})\b/, ["fw_"]],
 	["NVIDIA API key", /\b(nvapi-[A-Za-z0-9_-]{60,72})/, ["nvapi-"]],
